@@ -1,0 +1,46 @@
+<!-- Sidebar compartido para todos los módulos de estudiante -->
+<div class="col-md-2 sidebar">
+    <h5 class="text-white px-3 mb-4">
+        <i class="fas fa-user-graduate me-2"></i>{{ current_user.empresa.nombre }}
+    </h5>
+    
+    <a href="{{ url_for('estudiante.dashboard_general') }}" class="{{ 'active' if request.endpoint == 'estudiante.dashboard_general' else '' }}">
+        <i class="fas fa-home me-2"></i>Dashboard General
+    </a>
+    
+    <hr class="bg-light mx-3">
+    
+    <a href="{{ url_for('estudiante.dashboard_ventas') }}" class="{{ 'active' if 'ventas' in request.endpoint else '' }}">
+        <i class="fas fa-chart-line me-2"></i>Ventas
+    </a>
+    
+    <a href="{{ url_for('estudiante.dashboard_planeacion') }}" class="{{ 'active' if 'planeacion' in request.endpoint else '' }}">
+        <i class="fas fa-calendar-alt me-2"></i>Planeación
+    </a>
+    
+    <a href="{{ url_for('estudiante.dashboard_compras') }}" class="{{ 'active' if 'compras' in request.endpoint else '' }}">
+        <i class="fas fa-shopping-cart me-2"></i>Compras
+    </a>
+    
+    <a href="{{ url_for('estudiante.dashboard_logistica') }}" class="{{ 'active' if 'logistica' in request.endpoint else '' }}">
+        <i class="fas fa-warehouse me-2"></i>Logística
+    </a>
+    
+    <hr class="bg-light mx-3">
+    
+    <div class="px-3 py-2">
+        <small class="text-white-50 d-block mb-1">Mi Rol</small>
+        <span class="badge {{ 'badge-ventas' if current_user.rol == 'ventas' 
+                              else 'badge-planeacion' if current_user.rol == 'planeacion'
+                              else 'badge-compras' if current_user.rol == 'compras'
+                              else 'badge-logistica' }} badge-rol w-100">
+            {{ current_user.rol.upper() }}
+        </span>
+    </div>
+    
+    <hr class="bg-light mx-3">
+    
+    <a href="{{ url_for('auth.logout') }}">
+        <i class="fas fa-sign-out-alt me-2"></i>Cerrar Sesión
+    </a>
+</div>

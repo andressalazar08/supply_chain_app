@@ -1,0 +1,384 @@
+{% extends "base.html" %}
+
+{% block title %}Análisis Regional - {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sidebar {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 0;
+    }
+    
+    .sidebar a {
+        display: block;
+        padding: 15px 20px;
+        color: rgba(255,255,255,0.8);
+        text-decoration: none;
+        transition: all 0.3s;
+        border-left: 3px solid transparent;
+    }
+    
+    .sidebar a:hover,
+    .sidebar a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-left-color: #fff;
+    }
+    
+    .region-card {
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+        border-left: 5px solid;
+        transition: all 0.3s;
+    }
+    
+    .region-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 25px rgba(0,0,0,0.15);
+    }
+    
+    .region-caribe { border-left-color: #3498db; }
+    .region-pacifica { border-left-color: #2ecc71; }
+    .region-orinoquia { border-left-color: #f39c12; }
+    .region-amazonia { border-left-color: #27ae60; }
+    .region-andina { border-left-color: #9b59b6; }
+    
+    .region-header {
+        display: flex;
+        justify-content: between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    
+    .region-title {
+        font-size: 1.5rem;
+        font-weight: bold;
+        margin: 0;
+    }
+    
+    .region-icon {
+        font-size: 3rem;
+        opacity: 0.2;
+    }
+    
+    .stat-item {
+        margin: 10px 0;
+    }
+    
+    .stat-label {
+        color: #7f8c8d;
+        font-size: 0.9rem;
+        margin-bottom: 5px;
+    }
+    
+    .stat-value {
+        font-size: 1.3rem;
+        font-weight: bold;
+        color: #2c3e50;
+    }
+    
+    .comparison-chart {
+        height: 400px;
+        margin: 30px 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar">
+            <h5 class="text-white px-3 py-4">
+                <i class="fas fa-chart-line me-2"></i>Módulo Ventas
+            </h5>
+            <a href="{{ url_for('estudiante.dashboard_ventas') }}">
+                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+            </a>
+            <a href="{{ url_for('estudiante.analisis_regional') }}" class="active">
+                <i class="fas fa-map-marked-alt me-2"></i>Análisis Regional
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_ventas') }}#ajuste-precios">
+                <i class="fas fa-tag me-2"></i>Ajuste de Precios
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_ventas') }}#historico">
+                <i class="fas fa-history me-2"></i>Historial
+            </a>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-md-10 p-4">
+            <!-- Header -->
+            <div class="mb-4">
+                <h1><i class="fas fa-map-marked-alt me-2"></i>Análisis por Regiones de Colombia</h1>
+                <p class="text-muted">
+                    Análisis detallado de ventas en las 5 regiones geográficas de Colombia
+                    <span class="badge bg-info">Últimos {{ dias_analisis }} días</span>
+                </p>
+            </div>
+
+            <!-- Gráfico de Comparación General -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-chart-bar me-2"></i>Comparación de Ingresos por Región
+                    </h5>
+                    <div class="comparison-chart">
+                        <canvas id="chartComparacionRegiones"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cards Detalladas por Región -->
+            <div class="row">
+                {% for region in regiones %}
+                {% set datos = datos_regionales[region] %}
+                <div class="col-md-12">
+                    <div class="region-card region-{{ region.lower() }}">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="region-header">
+                                    <h3 class="region-title">
+                                        <i class="fas fa-map-pin me-2"></i>Región {{ region }}
+                                    </h3>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <div class="stat-item">
+                                            <div class="stat-label">Ingresos Totales</div>
+                                            <div class="stat-value text-success">
+                                                ${{ "{:,.2f}".format(datos['total_ingresos']) }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="stat-item">
+                                            <div class="stat-label">Unidades Vendidas</div>
+                                            <div class="stat-value text-primary">
+                                                {{ "{:,.0f}".format(datos['total_unidades']) }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="stat-item">
+                                            <div class="stat-label">Ventas Perdidas</div>
+                                            <div class="stat-value text-danger">
+                                                {{ "{:,.0f}".format(datos['ventas_perdidas']) }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="stat-item">
+                                            <div class="stat-label">Promedio Diario</div>
+                                            <div class="stat-value text-info">
+                                                ${{ "{:,.0f}".format(datos['ingreso_promedio_dia']) }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Indicador de Desempeño -->
+                                <div class="mt-3">
+                                    {% set total_demandado = datos['total_unidades'] + datos['ventas_perdidas'] %}
+                                    {% set nivel_cumplimiento = (datos['total_unidades'] / total_demandado * 100) if total_demandado > 0 else 100 %}
+                                    <div class="stat-label">Nivel de Cumplimiento</div>
+                                    <div class="progress" style="height: 25px;">
+                                        {% set bar_class = 'success' if nivel_cumplimiento >= 95 else 'warning' if nivel_cumplimiento >= 80 else 'danger' %}
+                                        <div class="progress-bar bg-{{ bar_class }}" 
+                                             role="progressbar" 
+                                             style="width: {{ nivel_cumplimiento }}%"
+                                             aria-valuenow="{{ nivel_cumplimiento }}" 
+                                             aria-valuemin="0" 
+                                             aria-valuemax="100">
+                                            {{ "%.1f"|format(nivel_cumplimiento) }}%
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4 text-end">
+                                <i class="fas fa-{{ 
+                                    'water' if region == 'Caribe' else 
+                                    'ship' if region == 'Pacifica' else 
+                                    'horse' if region == 'Orinoquia' else 
+                                    'tree' if region == 'Amazonia' else 
+                                    'mountain'
+                                }} region-icon"></i>
+                                
+                                {% if datos['ventas_perdidas'] > 0 %}
+                                <div class="alert alert-warning mt-3">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    <strong>Atención:</strong> Hay demanda insatisfecha en esta región.
+                                    Coordina con Logística para mejorar la distribución.
+                                </div>
+                                {% else %}
+                                <div class="alert alert-success mt-3">
+                                    <i class="fas fa-check-circle me-2"></i>
+                                    Excelente cobertura en esta región!
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Insights y Recomendaciones -->
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-lightbulb me-2"></i>Insights y Recomendaciones
+                    </h5>
+                    
+                    {% set mejor_region = regiones[0] %}
+                    {% set mejor_ingreso = datos_regionales[regiones[0]]['total_ingresos'] %}
+                    {% for region in regiones %}
+                        {% if datos_regionales[region]['total_ingresos'] > mejor_ingreso %}
+                            {% set mejor_region = region %}
+                            {% set mejor_ingreso = datos_regionales[region]['total_ingresos'] %}
+                        {% endif %}
+                    {% endfor %}
+
+                    {% set peor_region = regiones[0] %}
+                    {% set peor_ingreso = datos_regionales[regiones[0]]['total_ingresos'] %}
+                    {% for region in regiones %}
+                        {% if datos_regionales[region]['total_ingresos'] < peor_ingreso %}
+                            {% set peor_region = region %}
+                            {% set peor_ingreso = datos_regionales[region]['total_ingresos'] %}
+                        {% endif %}
+                    {% endfor %}
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="alert alert-success">
+                                <h6><i class="fas fa-trophy me-2"></i>Mejor Desempeño</h6>
+                                <p class="mb-0">
+                                    La región <strong>{{ mejor_region }}</strong> lidera con ingresos de 
+                                    <strong>${{ "{:,.2f}".format(mejor_ingreso) }}</strong>.
+                                    Mantén las estrategias que están funcionando en esta zona.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="alert alert-info">
+                                <h6><i class="fas fa-chart-line me-2"></i>Oportunidad de Mejora</h6>
+                                <p class="mb-0">
+                                    La región <strong>{{ peor_region }}</strong> tiene potencial de crecimiento con 
+                                    <strong>${{ "{:,.2f}".format(peor_ingreso) }}</strong> en ingresos.
+                                    {% if datos_regionales[peor_region]['ventas_perdidas'] > 0 %}
+                                    Aumenta el inventario para capturar más demanda.
+                                    {% else %}
+                                    Considera estrategias de marketing para incrementar la demanda.
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recomendación de Coordinación con Logística -->
+                    {% set total_perdidas_todas = namespace(valor=0) %}
+                    {% for region in regiones %}
+                        {% set total_perdidas_todas.valor = total_perdidas_todas.valor + datos_regionales[region]['ventas_perdidas'] %}
+                    {% endfor %}
+
+                    {% if total_perdidas_todas.valor > 50 %}
+                    <div class="alert alert-warning">
+                        <h6><i class="fas fa-truck me-2"></i>Coordinación con Logística Necesaria</h6>
+                        <p class="mb-0">
+                            Se han perdido <strong>{{ "{:,.0f}".format(total_perdidas_todas.valor) }} unidades</strong> 
+                            en ventas por falta de inventario. Es crítico que te coordines con el equipo de 
+                            <strong>Logística</strong> para optimizar la distribución regional y evitar quiebres de stock.
+                        </p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    // Gráfico de Comparación de Regiones
+    const ctx = document.getElementById('chartComparacionRegiones').getContext('2d');
+    
+    const regiones = {{ regiones | tojson }};
+    const datos = {{ datos_regionales | tojson }};
+    
+    const ingresos = regiones.map(region => datos[region].total_ingresos);
+    const unidades = regiones.map(region => datos[region].total_unidades);
+    const perdidas = regiones.map(region => datos[region].ventas_perdidas);
+    
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: regiones,
+            datasets: [{
+                label: 'Ingresos ($)',
+                data: ingresos,
+                backgroundColor: '#3498db',
+                yAxisID: 'y'
+            }, {
+                label: 'Unidades Vendidas',
+                data: unidades,
+                backgroundColor: '#2ecc71',
+                yAxisID: 'y1'
+            }, {
+                label: 'Ventas Perdidas',
+                data: perdidas,
+                backgroundColor: '#e74c3c',
+                yAxisID: 'y1'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                title: {
+                    display: true,
+                    text: 'Desempeño Comparativo por Región (Últimos {{ dias_analisis }} días)'
+                }
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Ingresos ($)'
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Unidades'
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,516 @@
+{% extends "base.html" %}
+
+{% block title %}Despacho Regional - {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sidebar {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        min-height: 100vh;
+        padding: 0;
+    }
+    
+    .sidebar a {
+        display: block;
+        padding: 15px 20px;
+        color: rgba(255,255,255,0.8);
+        text-decoration: none;
+        transition: all 0.3s;
+        border-left: 3px solid transparent;
+    }
+    
+    .sidebar a:hover,
+    .sidebar a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-left-color: #fff;
+    }
+    
+    .card-producto {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: all 0.3s;
+        border-left: 5px solid #3498db;
+    }
+    
+    .card-producto:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    
+    .stock-progress {
+        height: 25px;
+        background: #ecf0f1;
+        border-radius: 5px;
+        overflow: hidden;
+        position: relative;
+    }
+    
+    .stock-bar {
+        height: 100%;
+        transition: width 0.5s;
+    }
+    
+    .stock-critico { background: #e74c3c; }
+    .stock-bajo { background: #f39c12; }
+    .stock-normal { background: #3498db; }
+    .stock-alto { background: #2ecc71; }
+    
+    .region-card {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: all 0.3s;
+    }
+    
+    .region-card:hover {
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    .badge-region {
+        font-size: 0.85rem;
+        padding: 5px 10px;
+    }
+    
+    .region-andina { background: #3498db; }
+    .region-caribe { background: #e67e22; }
+    .region-pacifica { background: #27ae60; }
+    .region-orinoquia { background: #9b59b6; }
+    .region-amazonia { background: #16a085; }
+    
+    .despacho-card {
+        background: white;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-left: 4px solid #3498db;
+    }
+    
+    .despacho-card.en-transito {
+        border-left-color: #f39c12;
+    }
+    
+    .despacho-card.entregado {
+        border-left-color: #2ecc71;
+        opacity: 0.85;
+    }
+    
+    .form-despacho {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+    
+    .tabs-nav {
+        border-bottom: 2px solid #ecf0f1;
+        margin-bottom: 20px;
+    }
+    
+    .tab-button {
+        background: none;
+        border: none;
+        padding: 10px 20px;
+        color: #7f8c8d;
+        cursor: pointer;
+        transition: all 0.3s;
+        border-bottom: 3px solid transparent;
+        font-weight: 500;
+    }
+    
+    .tab-button.active {
+        color: #4facfe;
+        border-bottom-color: #4facfe;
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar">
+            <h5 class="text-white px-3 py-4">
+                <i class="fas fa-truck me-2"></i>Logística
+            </h5>
+            <a href="{{ url_for('estudiante.dashboard_logistica') }}">
+                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+            </a>
+            <a href="{{ url_for('estudiante.vista_recepcion') }}">
+                <i class="fas fa-inbox me-2"></i>Recepción
+            </a>
+            <a href="{{ url_for('estudiante.vista_despacho') }}" class="active">
+                <i class="fas fa-shipping-fast me-2"></i>Despacho
+            </a>
+            <a href="{{ url_for('estudiante.vista_movimientos') }}">
+                <i class="fas fa-exchange-alt me-2"></i>Movimientos
+            </a>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-md-10 p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1><i class="fas fa-shipping-fast me-2"></i>Despacho Regional</h1>
+                    <p class="text-muted mb-0">
+                        <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs-nav">
+                <button class="tab-button active" onclick="cambiarTab('nuevo')">
+                    <i class="fas fa-plus me-2"></i>Nuevo Despacho
+                </button>
+                <button class="tab-button" onclick="cambiarTab('activos')">
+                    <i class="fas fa-truck me-2"></i>Despachos Activos ({{ despachos_activos|length }})
+                </button>
+                <button class="tab-button" onclick="cambiarTab('historial')">
+                    <i class="fas fa-history me-2"></i>Historial
+                </button>
+            </div>
+
+            <!-- Tab: Nuevo Despacho -->
+            <div id="tab-nuevo" class="tab-content active">
+                <div class="row">
+                    <!-- Formulario de Despacho -->
+                    <div class="col-md-6">
+                        <h4 class="mb-3"><i class="fas fa-file-alt me-2"></i>Crear Despacho</h4>
+                        
+                        <form method="POST" action="{{ url_for('estudiante.crear_despacho_regional') }}" 
+                              onsubmit="return validarDespacho();">
+                            
+                            <div class="form-despacho">
+                                <div class="mb-3">
+                                    <label class="form-label"><strong>Producto</strong></label>
+                                    <select class="form-select" id="producto_id" name="producto_id" required onchange="actualizarStockDisponible()">
+                                        <option value="">Seleccione un producto</option>
+                                        {% for inv in inventarios %}
+                                        <option value="{{ inv.producto_id }}" 
+                                                data-disponible="{{ stock_disponible[inv.producto_id] }}"
+                                                data-nombre="{{ inv.producto.nombre }}">
+                                            {{ inv.producto.nombre }} (Stock: {{ "%.0f"|format(inv.cantidad_actual) }})
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label"><strong>Región Destino</strong></label>
+                                    <select class="form-select" id="region" name="region" required onchange="actualizarTiempoEntrega()">
+                                        <option value="">Seleccione región</option>
+                                        <option value="Andina" data-dias="1">Región Andina (1 día)</option>
+                                        <option value="Caribe" data-dias="2">Región Caribe (2 días)</option>
+                                        <option value="Pacífica" data-dias="2">Región Pacífica (2 días)</option>
+                                        <option value="Orinoquía" data-dias="3">Región Orinoquía (3 días)</option>
+                                        <option value="Amazonía" data-dias="4">Región Amazonía (4 días)</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label"><strong>Cantidad a Despachar</strong></label>
+                                    <input type="number" class="form-control" id="cantidad" name="cantidad" 
+                                           min="1" step="1" required>
+                                    <small class="text-muted" id="stock-info">Disponible: Seleccione un producto</small>
+                                </div>
+                                
+                                <div class="alert alert-info" id="info-entrega" style="display: none;">
+                                    <strong>Tiempo de entrega:</strong> <span id="dias-entrega">-</span> días<br>
+                                    <strong>Día estimado de entrega:</strong> Día <span id="dia-entrega">-</span>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary btn-lg w-100">
+                                    <i class="fas fa-paper-plane me-2"></i>Crear Despacho
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <!-- Análisis de Demanda Regional -->
+                    <div class="col-md-6">
+                        <h4 class="mb-3"><i class="fas fa-chart-bar me-2"></i>Demanda por Región</h4>
+                        
+                        {% for region in ['Andina', 'Caribe', 'Pacífica', 'Orinoquía', 'Amazonía'] %}
+                        <div class="region-card">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <span class="badge badge-region region-{{ region|lower }}">{{ region }}</span>
+                                    <small class="text-muted ms-2">
+                                        <i class="fas fa-clock me-1"></i>
+                                        {% if region == 'Andina' %}1 día
+                                        {% elif region in ['Caribe', 'Pacífica'] %}2 días
+                                        {% elif region == 'Orinoquía' %}3 días
+                                        {% else %}4 días
+                                        {% endif %}
+                                    </small>
+                                </div>
+                            </div>
+                            
+                            {% set ventas_region = ventas_recientes|selectattr('region', 'equalto', region)|list %}
+                            {% if ventas_region %}
+                            <div class="row">
+                                <div class="col-6">
+                                    <small class="text-muted">Ventas Recientes (últimos 5 días)</small>
+                                    <div><strong>{{ ventas_region|sum(attribute='cantidad_vendida')|int }}</strong> unidades</div>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">Promedio Diario</small>
+                                    <div><strong>{{ "%.1f"|format(ventas_region|sum(attribute='cantidad_vendida') / 5) }}</strong> unidades</div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <small class="text-muted">Sin ventas recientes en esta región</small>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <!-- Inventario Disponible -->
+                <div class="mt-4">
+                    <h4 class="mb-3"><i class="fas fa-boxes me-2"></i>Inventario Disponible para Despacho</h4>
+                    
+                    {% for inv in inventarios %}
+                    {% set disponible = stock_disponible[inv.producto_id] %}
+                    {% set porcentaje = (disponible / inv.punto_reorden * 100) if inv.punto_reorden > 0 else 100 %}
+                    
+                    <div class="card-producto">
+                        <div class="row align-items-center">
+                            <div class="col-md-4">
+                                <h5 class="mb-1"><strong>{{ inv.producto.nombre }}</strong></h5>
+                                <small class="text-muted">Código: {{ inv.producto.codigo }}</small>
+                            </div>
+                            
+                            <div class="col-md-8">
+                                <div class="row text-center mb-2">
+                                    <div class="col-3">
+                                        <small class="text-muted">Stock Total</small>
+                                        <div><strong>{{ "%.0f"|format(inv.cantidad_actual) }}</strong></div>
+                                    </div>
+                                    <div class="col-3">
+                                        <small class="text-muted">Reservado</small>
+                                        <div><strong>{{ "%.0f"|format(inv.cantidad_reservada) }}</strong></div>
+                                    </div>
+                                    <div class="col-3">
+                                        <small class="text-muted">Disponible</small>
+                                        <div class="text-primary"><strong>{{ "%.0f"|format(disponible) }}</strong></div>
+                                    </div>
+                                    <div class="col-3">
+                                        <small class="text-muted">Punto Reorden</small>
+                                        <div><strong>{{ "%.0f"|format(inv.punto_reorden) }}</strong></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="stock-progress">
+                                    <div class="stock-bar 
+                                        {% if porcentaje <= 50 %}stock-critico
+                                        {% elif porcentaje <= 80 %}stock-bajo
+                                        {% elif porcentaje <= 120 %}stock-normal
+                                        {% else %}stock-alto
+                                        {% endif %}" 
+                                         style="width: {{ [porcentaje, 100]|min }}%;">
+                                    </div>
+                                </div>
+                                <small class="text-muted">{{ "%.1f"|format(porcentaje) }}% del punto de reorden</small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Tab: Despachos Activos -->
+            <div id="tab-activos" class="tab-content">
+                {% if despachos_activos %}
+                    {% for despacho in despachos_activos %}
+                    {% set dias_restantes = despacho.dia_entrega_estimado - simulacion.dia_actual %}
+                    
+                    <div class="despacho-card en-transito">
+                        <div class="row align-items-center">
+                            <div class="col-md-7">
+                                <div class="d-flex align-items-center mb-2">
+                                    <h5 class="mb-0 me-3"><strong>{{ despacho.producto.nombre }}</strong></h5>
+                                    <span class="badge badge-region region-{{ despacho.region|lower }}">
+                                        {{ despacho.region }}
+                                    </span>
+                                </div>
+                                
+                                <div class="row mt-3">
+                                    <div class="col-3">
+                                        <small class="text-muted">Cantidad</small>
+                                        <div><strong>{{ "%.0f"|format(despacho.cantidad) }}</strong> unidades</div>
+                                    </div>
+                                    <div class="col-3">
+                                        <small class="text-muted">Día Despacho</small>
+                                        <div><strong>{{ despacho.dia_despacho }}</strong></div>
+                                    </div>
+                                    <div class="col-3">
+                                        <small class="text-muted">Día Entrega</small>
+                                        <div><strong>{{ despacho.dia_entrega_estimado }}</strong></div>
+                                    </div>
+                                    <div class="col-3">
+                                        <small class="text-muted">Estado</small>
+                                        <div>
+                                            {% if dias_restantes == 0 %}
+                                            <span class="badge bg-success">Llega HOY</span>
+                                            {% elif dias_restantes == 1 %}
+                                            <span class="badge bg-warning">Llega MAÑANA</span>
+                                            {% else %}
+                                            <span class="badge bg-info">{{ dias_restantes }} días</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-5">
+                                <div class="progress" style="height: 25px;">
+                                    {% set progreso = ((simulacion.dia_actual - despacho.dia_despacho) / (despacho.dia_entrega_estimado - despacho.dia_despacho) * 100)|int %}
+                                    <div class="progress-bar bg-warning" role="progressbar" 
+                                         style="width: {{ [progreso, 100]|min }}%">
+                                        <strong>{{ [progreso, 100]|min }}% en tránsito</strong>
+                                    </div>
+                                </div>
+                                <small class="text-muted mt-2 d-block">
+                                    Creado: {{ despacho.created_at.strftime('%d/%m/%Y %H:%M') }}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>No hay despachos en tránsito actualmente.
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Tab: Historial -->
+            <div id="tab-historial" class="tab-content">
+                {% if despachos_historial %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Despacho #</th>
+                                    <th>Producto</th>
+                                    <th>Región</th>
+                                    <th>Cantidad</th>
+                                    <th>Día Despacho</th>
+                                    <th>Día Entrega</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for despacho in despachos_historial %}
+                                <tr>
+                                    <td><strong>#{{ despacho.id }}</strong></td>
+                                    <td>{{ despacho.producto.nombre }}</td>
+                                    <td>
+                                        <span class="badge badge-region region-{{ despacho.region|lower }}">
+                                            {{ despacho.region }}
+                                        </span>
+                                    </td>
+                                    <td><strong>{{ "%.0f"|format(despacho.cantidad) }}</strong></td>
+                                    <td>{{ despacho.dia_despacho }}</td>
+                                    <td>{{ despacho.dia_entrega_estimado }}</td>
+                                    <td>
+                                        {% if despacho.estado == 'entregado' %}
+                                        <span class="badge bg-success">Entregado</span>
+                                        {% elif despacho.estado == 'en_transito' %}
+                                        <span class="badge bg-warning">En Tránsito</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Pendiente</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-secondary">
+                        <i class="fas fa-info-circle me-2"></i>No hay despachos registrados aún.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const diaActual = {{ simulacion.dia_actual }};
+    
+    function cambiarTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        document.getElementById('tab-' + tabName).classList.add('active');
+        event.target.classList.add('active');
+    }
+    
+    function actualizarStockDisponible() {
+        const select = document.getElementById('producto_id');
+        const option = select.options[select.selectedIndex];
+        const disponible = option.getAttribute('data-disponible');
+        
+        if (disponible) {
+            document.getElementById('stock-info').textContent = 
+                'Disponible: ' + parseFloat(disponible).toFixed(0) + ' unidades';
+            document.getElementById('cantidad').max = disponible;
+        }
+        
+        actualizarTiempoEntrega();
+    }
+    
+    function actualizarTiempoEntrega() {
+        const regionSelect = document.getElementById('region');
+        const option = regionSelect.options[regionSelect.selectedIndex];
+        const dias = option.getAttribute('data-dias');
+        
+        if (dias) {
+            document.getElementById('dias-entrega').textContent = dias;
+            document.getElementById('dia-entrega').textContent = diaActual + parseInt(dias);
+            document.getElementById('info-entrega').style.display = 'block';
+        }
+    }
+    
+    function validarDespacho() {
+        const productoSelect = document.getElementById('producto_id');
+        const cantidad = parseFloat(document.getElementById('cantidad').value);
+        const option = productoSelect.options[productoSelect.selectedIndex];
+        const disponible = parseFloat(option.getAttribute('data-disponible'));
+        const nombreProducto = option.getAttribute('data-nombre');
+        const region = document.getElementById('region').value;
+        
+        if (cantidad > disponible) {
+            alert('Error: La cantidad solicitada (' + cantidad + ') excede el stock disponible (' + disponible + ')');
+            return false;
+        }
+        
+        return confirm('¿Confirmar despacho de ' + cantidad + ' unidades de ' + nombreProducto + ' a la región ' + region + '?');
+    }
+</script>
+{% endblock %}

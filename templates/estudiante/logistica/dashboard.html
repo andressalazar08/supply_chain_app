@@ -1,0 +1,547 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Logística - {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sidebar {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        min-height: 100vh;
+        padding: 0;
+    }
+    
+    .sidebar a {
+        display: block;
+        padding: 15px 20px;
+        color: rgba(255,255,255,0.8);
+        text-decoration: none;
+        transition: all 0.3s;
+        border-left: 3px solid transparent;
+    }
+    
+    .sidebar a:hover,
+    .sidebar a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-left-color: #fff;
+    }
+    
+    .metric-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        transition: transform 0.3s;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    
+    .metric-card h3 {
+        font-size: 2rem;
+        margin: 10px 0;
+        color: #2c3e50;
+    }
+    
+    .metric-card p {
+        color: #7f8c8d;
+        margin: 0;
+        font-weight: 500;
+    }
+    
+    .orden-card {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 10px;
+        border-left: 4px solid #3498db;
+        transition: all 0.3s;
+    }
+    
+    .orden-card:hover {
+        box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+    }
+    
+    .orden-card.hoy {
+        border-left-color: #e74c3c;
+        background: linear-gradient(to right, rgba(231, 76, 60, 0.05), white);
+    }
+    
+    .region-card {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 2px solid #ecf0f1;
+        transition: all 0.3s;
+    }
+    
+    .region-card:hover {
+        border-color: #4facfe;
+        box-shadow: 0 2px 10px rgba(79, 172, 254, 0.2);
+    }
+    
+    .region-badge {
+        font-size: 0.75rem;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-weight: bold;
+    }
+    
+    .region-andina { background: #3498db; color: white; }
+    .region-caribe { background: #f39c12; color: white; }
+    .region-pacifica { background: #2ecc71; color: white; }
+    .region-orinoquia { background: #9b59b6; color: white; }
+    .region-amazonia { background: #1abc9c; color: white; }
+    
+    .alerta-card {
+        background: white;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 10px;
+        border-left: 4px solid;
+    }
+    
+    .alerta-card.danger {
+        border-left-color: #e74c3c;
+        background: linear-gradient(to right, rgba(231, 76, 60, 0.1), white);
+    }
+    
+    .alerta-card.warning {
+        border-left-color: #f39c12;
+        background: linear-gradient(to right, rgba(243, 156, 18, 0.1), white);
+    }
+    
+    .alerta-card.info {
+        border-left-color: #3498db;
+        background: linear-gradient(to right, rgba(52, 152, 219, 0.1), white);
+    }
+    
+    .alerta-card.success {
+        border-left-color: #2ecc71;
+        background: linear-gradient(to right, rgba(46, 204, 113, 0.1), white);
+    }
+    
+    .movimiento-row {
+        padding: 10px;
+        border-bottom: 1px solid #ecf0f1;
+        transition: background 0.2s;
+    }
+    
+    .movimiento-row:hover {
+        background: #f8f9fa;
+    }
+    
+    .badge-entrada {
+        background: #2ecc71;
+        color: white;
+    }
+    
+    .badge-salida {
+        background: #e74c3c;
+        color: white;
+    }
+    
+    .inventario-card {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 10px;
+        transition: all 0.3s;
+    }
+    
+    .inventario-card:hover {
+        box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+    }
+    
+    .stock-bar {
+        height: 25px;
+        background: #ecf0f1;
+        border-radius: 12px;
+        overflow: hidden;
+        position: relative;
+    }
+    
+    .stock-fill {
+        height: 100%;
+        transition: width 0.5s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 0.75rem;
+    }
+    
+    .stock-alto { background: linear-gradient(90deg, #2ecc71, #27ae60); }
+    .stock-normal { background: linear-gradient(90deg, #3498db, #2980b9); }
+    .stock-bajo { background: linear-gradient(90deg, #f39c12, #e67e22); }
+    .stock-critico { background: linear-gradient(90deg, #e74c3c, #c0392b); }
+    
+    .tiempo-entrega {
+        font-size: 0.85rem;
+        color: #7f8c8d;
+    }
+    
+    .btn-recibir {
+        background: linear-gradient(135deg, #2ecc71, #27ae60);
+        border: none;
+        color: white;
+    }
+    
+    .btn-recibir:hover {
+        background: linear-gradient(135deg, #27ae60, #229954);
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar">
+            <h5 class="text-white px-3 py-4">
+                <i class="fas fa-truck me-2"></i>Logística
+            </h5>
+            <a href="{{ url_for('estudiante.dashboard_logistica') }}" class="active">
+                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+            </a>
+            <a href="{{ url_for('estudiante.vista_recepcion') }}">
+                <i class="fas fa-inbox me-2"></i>Recepción
+            </a>
+            <a href="{{ url_for('estudiante.vista_despacho') }}">
+                <i class="fas fa-shipping-fast me-2"></i>Despacho
+            </a>
+            <a href="{{ url_for('estudiante.vista_movimientos') }}">
+                <i class="fas fa-exchange-alt me-2"></i>Movimientos
+            </a>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-md-10 p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1><i class="fas fa-truck me-2"></i>Dashboard de Logística</h1>
+                    <p class="text-muted mb-0">
+                        <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Métricas Principales -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <p>Productos en Stock</p>
+                                <h3>{{ inventarios|length }}</h3>
+                            </div>
+                            <i class="fas fa-boxes text-primary" style="font-size: 2.5rem; opacity: 0.3;"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <p>Órdenes en Tránsito</p>
+                                <h3>{{ ordenes_transito|length }}</h3>
+                            </div>
+                            <i class="fas fa-truck-loading text-info" style="font-size: 2.5rem; opacity: 0.3;"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <p>Despachos Pendientes</p>
+                                <h3>{{ despachos_pendientes }}</h3>
+                            </div>
+                            <i class="fas fa-dolly text-warning" style="font-size: 2.5rem; opacity: 0.3;"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <p>Alertas Activas</p>
+                                <h3 class="text-danger">{{ alertas|length }}</h3>
+                            </div>
+                            <i class="fas fa-exclamation-triangle text-danger" style="font-size: 2.5rem; opacity: 0.3;"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- Columna Izquierda -->
+                <div class="col-md-6">
+                    <!-- Órdenes para Recibir Hoy -->
+                    {% if ordenes_hoy %}
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-bell text-danger me-2"></i>Órdenes para Recibir HOY
+                            </h5>
+                            {% for orden in ordenes_hoy %}
+                            <div class="orden-card hoy">
+                                <div class="row align-items-center">
+                                    <div class="col-md-6">
+                                        <h6 class="mb-0"><strong>{{ orden.producto.nombre }}</strong></h6>
+                                        <small class="text-muted">Orden #{{ orden.id }}</small>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <small class="text-muted">Cantidad</small>
+                                        <div><strong>{{ "%.0f"|format(orden.cantidad) }}</strong> unidades</div>
+                                    </div>
+                                    <div class="col-md-3 text-end">
+                                        <a href="{{ url_for('estudiante.vista_recepcion') }}" class="btn btn-sm btn-recibir">
+                                            <i class="fas fa-check me-1"></i>Recibir
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Órdenes en Tránsito -->
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="card-title mb-0">
+                                    <i class="fas fa-shipping-fast me-2"></i>Órdenes en Tránsito
+                                </h5>
+                                <a href="{{ url_for('estudiante.vista_recepcion') }}" class="btn btn-sm btn-outline-primary">
+                                    Ver Todas <i class="fas fa-arrow-right ms-1"></i>
+                                </a>
+                            </div>
+                            
+                            {% if ordenes_transito %}
+                                {% for orden in ordenes_transito[:5] %}
+                                <div class="orden-card">
+                                    <div class="row align-items-center">
+                                        <div class="col-md-5">
+                                            <h6 class="mb-0"><strong>{{ orden.producto.nombre }}</strong></h6>
+                                            <small class="text-muted">Orden #{{ orden.id }} - Día {{ orden.dia_orden }}</small>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <small class="text-muted">Cantidad</small>
+                                            <div><strong>{{ "%.0f"|format(orden.cantidad) }}</strong></div>
+                                        </div>
+                                        <div class="col-md-4 text-end">
+                                            <small class="text-muted">Llegada</small>
+                                            <div>
+                                                {% set dias_faltantes = orden.dia_entrega - simulacion.dia_actual %}
+                                                {% if dias_faltantes == 0 %}
+                                                <span class="badge bg-danger">HOY</span>
+                                                {% elif dias_faltantes == 1 %}
+                                                <span class="badge bg-warning">MAÑANA</span>
+                                                {% else %}
+                                                <span class="badge bg-info">{{ dias_faltantes }} días</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle me-2"></i>No hay órdenes en tránsito
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Alertas -->
+                    {% if alertas %}
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-exclamation-triangle me-2"></i>Alertas Logísticas
+                            </h5>
+                            {% for alerta in alertas[:8] %}
+                            <div class="alerta-card {{ alerta.tipo }}">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-{{ alerta.icono }} me-2"></i>
+                                    <div>
+                                        {% if alerta.producto %}
+                                        <strong>{{ alerta.producto }}:</strong>
+                                        {% endif %}
+                                        {{ alerta.mensaje }}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Columna Derecha -->
+                <div class="col-md-6">
+                    <!-- Inventario por Producto -->
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-warehouse me-2"></i>Inventario Actual
+                            </h5>
+                            
+                            {% for inv in inventarios %}
+                            <div class="inventario-card">
+                                <div class="row align-items-center mb-2">
+                                    <div class="col-md-6">
+                                        <h6 class="mb-0"><strong>{{ inv.producto.nombre }}</strong></h6>
+                                        <small class="text-muted">{{ inv.producto.codigo }}</small>
+                                    </div>
+                                    <div class="col-md-3 text-center">
+                                        <small class="text-muted">Stock</small>
+                                        <div><strong>{{ inv.cantidad_actual }}</strong></div>
+                                    </div>
+                                    <div class="col-md-3 text-center">
+                                        <small class="text-muted">Reservado</small>
+                                        <div class="text-warning"><strong>{{ inv.cantidad_reservada }}</strong></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="stock-bar">
+                                    {% set porcentaje_stock = (inv.cantidad_actual / (inv.punto_reorden * 2) * 100) if inv.punto_reorden > 0 else 100 %}
+                                    {% set porcentaje_stock = [porcentaje_stock, 100]|min %}
+                                    
+                                    {% if inv.cantidad_actual <= inv.stock_seguridad %}
+                                        {% set clase_stock = 'stock-critico' %}
+                                    {% elif inv.cantidad_actual <= inv.punto_reorden %}
+                                        {% set clase_stock = 'stock-bajo' %}
+                                    {% elif inv.cantidad_actual <= inv.punto_reorden * 1.5 %}
+                                        {% set clase_stock = 'stock-normal' %}
+                                    {% else %}
+                                        {% set clase_stock = 'stock-alto' %}
+                                    {% endif %}
+                                    
+                                    <div class="stock-fill {{ clase_stock }}" style="width: {{ porcentaje_stock }}%;">
+                                        {{ "%.0f"|format(porcentaje_stock) }}%
+                                    </div>
+                                </div>
+                                
+                                <div class="row mt-2">
+                                    <div class="col-md-4">
+                                        <small class="text-muted">Stock Seguridad</small>
+                                        <div><small><strong>{{ inv.stock_seguridad }}</strong></small></div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted">Punto Reorden</small>
+                                        <div><small><strong>{{ inv.punto_reorden }}</strong></small></div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted">Costo Prom.</small>
+                                        <div><small><strong>${{ "{:,.0f}".format(inv.costo_promedio) }}</strong></small></div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- Stock por Región -->
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="card-title mb-0">
+                                    <i class="fas fa-map-marked-alt me-2"></i>Análisis por Región
+                                </h5>
+                                <a href="{{ url_for('estudiante.vista_despacho') }}" class="btn btn-sm btn-outline-primary">
+                                    Despachar <i class="fas fa-arrow-right ms-1"></i>
+                                </a>
+                            </div>
+                            
+                            {% for region, datos in stock_por_region.items() %}
+                            <div class="region-card">
+                                <div class="row align-items-center">
+                                    <div class="col-md-5">
+                                        <span class="region-badge region-{{ region|lower }}">
+                                            {{ region }}
+                                        </span>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted">Ventas Recientes</small>
+                                        <div><strong>{{ datos.ventas_recientes }}</strong> unidades</div>
+                                    </div>
+                                    <div class="col-md-3 text-end">
+                                        <div class="tiempo-entrega">
+                                            <i class="fas fa-clock me-1"></i>{{ datos.tiempo_entrega }} días
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Movimientos Recientes -->
+            {% if movimientos_recientes %}
+            <div class="card mt-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-history me-2"></i>Movimientos Recientes
+                        </h5>
+                        <a href="{{ url_for('estudiante.vista_movimientos') }}" class="btn btn-sm btn-outline-primary">
+                            Ver Todos <i class="fas fa-arrow-right ms-1"></i>
+                        </a>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Tipo</th>
+                                    <th>Producto</th>
+                                    <th>Cantidad</th>
+                                    <th>Saldo Anterior</th>
+                                    <th>Saldo Nuevo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for mov in movimientos_recientes %}
+                                <tr class="movimiento-row">
+                                    <td>
+                                        <small>{{ mov.created_at.strftime('%d/%m %H:%M') }}</small>
+                                    </td>
+                                    <td>
+                                        {% if 'entrada' in mov.tipo_movimiento %}
+                                        <span class="badge badge-entrada">
+                                            <i class="fas fa-arrow-down me-1"></i>Entrada
+                                        </span>
+                                        {% else %}
+                                        <span class="badge badge-salida">
+                                            <i class="fas fa-arrow-up me-1"></i>Salida
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ mov.producto.nombre }}</td>
+                                    <td><strong>{{ "%.0f"|format(mov.cantidad) }}</strong></td>
+                                    <td>{{ "%.0f"|format(mov.saldo_anterior) }}</td>
+                                    <td><strong>{{ "%.0f"|format(mov.saldo_nuevo) }}</strong></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+
+{% block title %}Recepción de Compras - {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sidebar {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        min-height: 100vh;
+        padding: 0;
+    }
+    
+    .sidebar a {
+        display: block;
+        padding: 15px 20px;
+        color: rgba(255,255,255,0.8);
+        text-decoration: none;
+        transition: all 0.3s;
+        border-left: 3px solid transparent;
+    }
+    
+    .sidebar a:hover,
+    .sidebar a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-left-color: #fff;
+    }
+    
+    .orden-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: all 0.3s;
+        border-left: 5px solid #3498db;
+    }
+    
+    .orden-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    
+    .orden-card.lista-recibir {
+        border-left-color: #2ecc71;
+        background: linear-gradient(to right, rgba(46, 204, 113, 0.05), white);
+    }
+    
+    .orden-card.esperando {
+        border-left-color: #f39c12;
+    }
+    
+    .orden-card.recibida {
+        border-left-color: #95a5a6;
+        opacity: 0.8;
+    }
+    
+    .info-box {
+        background: #ecf0f1;
+        border-radius: 8px;
+        padding: 10px 15px;
+        margin-bottom: 10px;
+    }
+    
+    .stat-box {
+        text-align: center;
+        padding: 20px;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .stat-box h3 {
+        font-size: 2rem;
+        margin: 10px 0;
+        color: #2c3e50;
+    }
+    
+    .stat-box p {
+        margin: 0;
+        color: #7f8c8d;
+        font-size: 0.9rem;
+    }
+    
+    .timeline-badge {
+        font-size: 0.75rem;
+        padding: 3px 8px;
+        border-radius: 4px;
+    }
+    
+    .btn-recibir {
+        background: linear-gradient(135deg, #2ecc71, #27ae60);
+        border: none;
+        color: white;
+    }
+    
+    .btn-recibir:hover {
+        background: linear-gradient(135deg, #27ae60, #229954);
+        color: white;
+    }
+    
+    .tabs-nav {
+        border-bottom: 2px solid #ecf0f1;
+        margin-bottom: 20px;
+    }
+    
+    .tab-button {
+        background: none;
+        border: none;
+        padding: 10px 20px;
+        color: #7f8c8d;
+        cursor: pointer;
+        transition: all 0.3s;
+        border-bottom: 3px solid transparent;
+        font-weight: 500;
+    }
+    
+    .tab-button.active {
+        color: #4facfe;
+        border-bottom-color: #4facfe;
+    }
+    
+    .tab-button:hover {
+        color: #4facfe;
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar">
+            <h5 class="text-white px-3 py-4">
+                <i class="fas fa-truck me-2"></i>Logística
+            </h5>
+            <a href="{{ url_for('estudiante.dashboard_logistica') }}">
+                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+            </a>
+            <a href="{{ url_for('estudiante.vista_recepcion') }}" class="active">
+                <i class="fas fa-inbox me-2"></i>Recepción
+            </a>
+            <a href="{{ url_for('estudiante.vista_despacho') }}">
+                <i class="fas fa-shipping-fast me-2"></i>Despacho
+            </a>
+            <a href="{{ url_for('estudiante.vista_movimientos') }}">
+                <i class="fas fa-exchange-alt me-2"></i>Movimientos
+            </a>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-md-10 p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1><i class="fas fa-inbox me-2"></i>Recepción de Compras</h1>
+                    <p class="text-muted mb-0">
+                        <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Estadísticas -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="stat-box">
+                        <i class="fas fa-clock text-warning" style="font-size: 2.5rem;"></i>
+                        <h3>{{ ordenes_transito|length }}</h3>
+                        <p>En Tránsito</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="stat-box">
+                        <i class="fas fa-check-circle text-success" style="font-size: 2.5rem;"></i>
+                        <h3>{{ ordenes_recibidas|length }}</h3>
+                        <p>Recibidas</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="stat-box">
+                        <i class="fas fa-box text-info" style="font-size: 2.5rem;"></i>
+                        <h3>{{ ordenes_transito|sum(attribute='cantidad') or 0 }}</h3>
+                        <p>Unidades en Camino</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs-nav">
+                <button class="tab-button active" onclick="cambiarTab('transito')">
+                    <i class="fas fa-truck me-2"></i>En Tránsito ({{ ordenes_transito|length }})
+                </button>
+                <button class="tab-button" onclick="cambiarTab('recibidas')">
+                    <i class="fas fa-check me-2"></i>Recibidas ({{ ordenes_recibidas|length }})
+                </button>
+            </div>
+
+            <!-- Tab: Órdenes en Tránsito -->
+            <div id="tab-transito" class="tab-content active">
+                {% if ordenes_transito %}
+                    {% for orden in ordenes_transito %}
+                    {% set dias_faltantes = orden.dia_entrega - simulacion.dia_actual %}
+                    {% set lista_recibir = dias_faltantes <= 0 %}
+                    
+                    <div class="orden-card {% if lista_recibir %}lista-recibir{% else %}esperando{% endif %}">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="d-flex align-items-center mb-2">
+                                    <h5 class="mb-0 me-3">
+                                        <strong>{{ orden.producto.nombre }}</strong>
+                                    </h5>
+                                    
+                                    {% if lista_recibir %}
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-check-circle me-1"></i>Lista para Recibir
+                                    </span>
+                                    {% else %}
+                                    <span class="badge bg-warning">
+                                        <i class="fas fa-clock me-1"></i>En Tránsito
+                                    </span>
+                                    {% endif %}
+                                </div>
+                                
+                                <small class="text-muted">Orden #{{ orden.id }} | Código: {{ orden.producto.codigo }}</small>
+                                
+                                <div class="row mt-3">
+                                    <div class="col-md-3">
+                                        <div class="info-box">
+                                            <small class="text-muted">Cantidad</small>
+                                            <div><strong>{{ "%.0f"|format(orden.cantidad) }}</strong> unidades</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="info-box">
+                                            <small class="text-muted">Día Orden</small>
+                                            <div><strong>{{ orden.dia_orden }}</strong></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="info-box">
+                                            <small class="text-muted">Día Entrega</small>
+                                            <div><strong>{{ orden.dia_entrega }}</strong></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="info-box">
+                                            <small class="text-muted">Lead Time</small>
+                                            <div><strong>{{ orden.producto.tiempo_entrega }}</strong> días</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mt-2">
+                                    <div class="col-md-4">
+                                        <div class="info-box">
+                                            <small class="text-muted">Costo Unitario</small>
+                                            <div><strong>${{ "{:,.0f}".format(orden.costo_unitario) }}</strong></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="info-box">
+                                            <small class="text-muted">Costo Total</small>
+                                            <div class="text-primary"><strong>${{ "{:,.0f}".format(orden.costo_total) }}</strong></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="info-box">
+                                            <small class="text-muted">Estado</small>
+                                            <div>
+                                                {% if dias_faltantes < 0 %}
+                                                <span class="text-danger"><strong>Retrasada {{ -dias_faltantes }} días</strong></span>
+                                                {% elif dias_faltantes == 0 %}
+                                                <span class="text-success"><strong>Llega HOY</strong></span>
+                                                {% elif dias_faltantes == 1 %}
+                                                <span class="text-warning"><strong>Llega MAÑANA</strong></span>
+                                                {% else %}
+                                                <span class="text-info"><strong>Faltan {{ dias_faltantes }} días</strong></span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-2">
+                                    <small class="text-muted">
+                                        <i class="fas fa-calendar me-1"></i>Ordenado: {{ orden.created_at.strftime('%d/%m/%Y %H:%M') }}
+                                    </small>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4 text-end">
+                                {% if lista_recibir %}
+                                <form method="POST" action="{{ url_for('estudiante.recibir_orden_compra', compra_id=orden.id) }}" 
+                                      onsubmit="return confirm('¿Confirmar recepción de {{ orden.cantidad|int }} unidades de {{ orden.producto.nombre }}?');">
+                                    <button type="submit" class="btn btn-recibir btn-lg mb-3">
+                                        <i class="fas fa-check-circle me-2"></i>Recibir Orden
+                                    </button>
+                                    <div class="alert alert-success mb-0">
+                                        <strong>Listo para recibir</strong><br>
+                                        <small>Esta orden llegó el día {{ orden.dia_entrega }}</small>
+                                    </div>
+                                </form>
+                                {% else %}
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <strong>En tránsito</strong><br>
+                                    <small>Disponible para recepción el día {{ orden.dia_entrega }}</small>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>No hay órdenes en tránsito</strong>
+                        <p class="mb-0 mt-2">Todas las órdenes han sido recibidas. Las nuevas órdenes de compra aparecerán aquí cuando sean generadas.</p>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Tab: Órdenes Recibidas -->
+            <div id="tab-recibidas" class="tab-content">
+                {% if ordenes_recibidas %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Orden #</th>
+                                    <th>Producto</th>
+                                    <th>Cantidad</th>
+                                    <th>Costo Unitario</th>
+                                    <th>Costo Total</th>
+                                    <th>Día Orden</th>
+                                    <th>Día Entrega</th>
+                                    <th>Recibido</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for orden in ordenes_recibidas %}
+                                <tr>
+                                    <td><strong>#{{ orden.id }}</strong></td>
+                                    <td>{{ orden.producto.nombre }}</td>
+                                    <td><strong>{{ "%.0f"|format(orden.cantidad) }}</strong> unidades</td>
+                                    <td>${{ "{:,.0f}".format(orden.costo_unitario) }}</td>
+                                    <td><strong>${{ "{:,.0f}".format(orden.costo_total) }}</strong></td>
+                                    <td>{{ orden.dia_orden }}</td>
+                                    <td>{{ orden.dia_entrega }}</td>
+                                    <td>
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-check me-1"></i>Recibida
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-secondary">
+                        <i class="fas fa-info-circle me-2"></i>
+                        No hay órdenes recibidas aún.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function cambiarTab(tabName) {
+        // Ocultar todos los tabs
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        
+        // Desactivar todos los botones
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Activar tab seleccionado
+        document.getElementById('tab-' + tabName).classList.add('active');
+        event.target.classList.add('active');
+    }
+</script>
+{% endblock %}

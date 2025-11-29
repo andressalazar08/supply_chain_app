@@ -1,0 +1,636 @@
+{% extends "base.html" %}
+
+{% block title %}Requerimientos de Compra - {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sidebar {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        min-height: 100vh;
+        padding: 0;
+    }
+    
+    .sidebar a {
+        display: block;
+        padding: 15px 20px;
+        color: rgba(255,255,255,0.8);
+        text-decoration: none;
+        transition: all 0.3s;
+        border-left: 3px solid transparent;
+    }
+    
+    .sidebar a:hover,
+    .sidebar a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-left-color: #fff;
+    }
+    
+    .requerimiento-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: all 0.3s;
+        border-left: 5px solid #3498db;
+    }
+    
+    .requerimiento-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    
+    .requerimiento-card.pendiente {
+        border-left-color: #e74c3c;
+        background: linear-gradient(to right, rgba(231, 76, 60, 0.05), white);
+    }
+    
+    .requerimiento-card.convertido_orden {
+        border-left-color: #2ecc71;
+        background: linear-gradient(to right, rgba(46, 204, 113, 0.05), white);
+    }
+    
+    .requerimiento-card.revisado {
+        border-left-color: #95a5a6;
+        background: linear-gradient(to right, rgba(149, 165, 166, 0.05), white);
+    }
+    
+    .urgencia-badge {
+        font-size: 0.75rem;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-weight: bold;
+    }
+    
+    .urgencia-alta {
+        background: #e74c3c;
+        color: white;
+    }
+    
+    .urgencia-media {
+        background: #f39c12;
+        color: white;
+    }
+    
+    .urgencia-baja {
+        background: #3498db;
+        color: white;
+    }
+    
+    .metodo-badge {
+        background: #9b59b6;
+        color: white;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 0.7rem;
+    }
+    
+    .info-box {
+        background: #ecf0f1;
+        border-radius: 8px;
+        padding: 10px 15px;
+        margin-bottom: 10px;
+    }
+    
+    .info-box strong {
+        color: #2c3e50;
+    }
+    
+    .tabs-nav {
+        border-bottom: 2px solid #ecf0f1;
+        margin-bottom: 20px;
+    }
+    
+    .tab-button {
+        background: none;
+        border: none;
+        padding: 10px 20px;
+        color: #7f8c8d;
+        cursor: pointer;
+        transition: all 0.3s;
+        border-bottom: 3px solid transparent;
+        font-weight: 500;
+    }
+    
+    .tab-button.active {
+        color: #f5576c;
+        border-bottom-color: #f5576c;
+    }
+    
+    .tab-button:hover {
+        color: #f5576c;
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+    
+    .timeline-badge {
+        font-size: 0.75rem;
+        padding: 2px 6px;
+        border-radius: 3px;
+    }
+    
+    .accion-rapida {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .stat-box {
+        text-align: center;
+        padding: 15px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    
+    .stat-box h4 {
+        font-size: 1.8rem;
+        margin: 5px 0;
+        color: #2c3e50;
+    }
+    
+    .stat-box p {
+        margin: 0;
+        color: #7f8c8d;
+        font-size: 0.85rem;
+    }
+    
+    .notas-compras {
+        background: #fff9e6;
+        border-left: 3px solid #f39c12;
+        padding: 10px;
+        margin-top: 10px;
+        border-radius: 4px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar">
+            <h5 class="text-white px-3 py-4">
+                <i class="fas fa-shopping-cart me-2"></i>Compras
+            </h5>
+            <a href="{{ url_for('estudiante.dashboard_compras') }}">
+                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+            </a>
+            <a href="{{ url_for('estudiante.ver_requerimientos') }}" class="active">
+                <i class="fas fa-clipboard-list me-2"></i>Requerimientos
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_compras') }}#inventario">
+                <i class="fas fa-boxes me-2"></i>Inventario
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_compras') }}#ordenes">
+                <i class="fas fa-file-invoice me-2"></i>Órdenes
+            </a>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-md-10 p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1><i class="fas fa-clipboard-list me-2"></i>Requerimientos de Compra</h1>
+                    <p class="text-muted mb-0">
+                        <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Resumen Estadístico -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <i class="fas fa-exclamation-circle text-danger" style="font-size: 2rem;"></i>
+                        <h4>{{ requerimientos_pendientes|length }}</h4>
+                        <p>Pendientes de Procesar</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <i class="fas fa-check-circle text-success" style="font-size: 2rem;"></i>
+                        <h4>{{ requerimientos_procesados|length }}</h4>
+                        <p>Procesados</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <i class="fas fa-dollar-sign text-warning" style="font-size: 2rem;"></i>
+                        <h4>${{ "{:,.0f}".format(requerimientos_pendientes|map(attribute='cantidad_sugerida')|sum * 1000 if requerimientos_pendientes else 0) }}</h4>
+                        <p>Capital Requerido Est.</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <i class="fas fa-chart-line text-info" style="font-size: 2rem;"></i>
+                        <h4>{{ (requerimientos_pendientes|length + requerimientos_procesados|length) }}</h4>
+                        <p>Total Requerimientos</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs de Navegación -->
+            <div class="tabs-nav">
+                <button class="tab-button active" onclick="cambiarTab('pendientes')">
+                    <i class="fas fa-clock me-2"></i>Pendientes ({{ requerimientos_pendientes|length }})
+                </button>
+                <button class="tab-button" onclick="cambiarTab('procesados')">
+                    <i class="fas fa-check me-2"></i>Procesados ({{ requerimientos_procesados|length }})
+                </button>
+            </div>
+
+            <!-- Tab: Requerimientos Pendientes -->
+            <div id="tab-pendientes" class="tab-content active">
+                {% if requerimientos_pendientes %}
+                    {% for req in requerimientos_pendientes %}
+                    <div class="requerimiento-card pendiente">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="d-flex align-items-center mb-2">
+                                    <h5 class="mb-0 me-3">
+                                        <strong>{{ req.producto.nombre }}</strong>
+                                    </h5>
+                                    <span class="badge bg-danger">
+                                        <i class="fas fa-exclamation-circle me-1"></i>Pendiente
+                                    </span>
+                                    
+                                    {% if req.pronostico_id %}
+                                    <span class="metodo-badge ms-2">
+                                        <i class="fas fa-chart-line me-1"></i>Con Pronóstico
+                                    </span>
+                                    {% endif %}
+                                    
+                                    <!-- Urgencia basada en días hasta necesidad -->
+                                    {% set dias_faltantes = req.dia_necesidad - simulacion.dia_actual %}
+                                    {% if dias_faltantes <= 3 %}
+                                    <span class="urgencia-badge urgencia-alta ms-2">
+                                        <i class="fas fa-fire me-1"></i>URGENTE
+                                    </span>
+                                    {% elif dias_faltantes <= 7 %}
+                                    <span class="urgencia-badge urgencia-media ms-2">
+                                        <i class="fas fa-bolt me-1"></i>PRONTO
+                                    </span>
+                                    {% else %}
+                                    <span class="urgencia-badge urgencia-baja ms-2">
+                                        <i class="fas fa-calendar me-1"></i>NORMAL
+                                    </span>
+                                    {% endif %}
+                                </div>
+                                
+                                <small class="text-muted">Código: {{ req.producto.codigo }}</small>
+                                
+                                <div class="row mt-3">
+                                    <div class="col-md-4">
+                                        <div class="info-box">
+                                            <small class="text-muted">Cantidad Sugerida</small>
+                                            <div><strong>{{ "%.0f"|format(req.cantidad_sugerida) }}</strong> unidades</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="info-box">
+                                            <small class="text-muted">Para el Día</small>
+                                            <div><strong>{{ req.dia_necesidad }}</strong></div>
+                                            <small class="text-muted">(Faltan {{ dias_faltantes }} días)</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="info-box">
+                                            <small class="text-muted">Lead Time</small>
+                                            <div><strong>{{ req.producto.tiempo_entrega }}</strong> días</div>
+                                            <small class="text-muted">Ordenar antes día {{ req.dia_necesidad - req.producto.tiempo_entrega }}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mt-2">
+                                    <div class="col-md-6">
+                                        <div class="info-box">
+                                            <small class="text-muted">Costo Unitario</small>
+                                            <div><strong>${{ "{:,.0f}".format(req.producto.costo_unitario) }}</strong></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="info-box">
+                                            <small class="text-muted">Costo Total Estimado</small>
+                                            <div class="text-primary"><strong>${{ "{:,.0f}".format(req.cantidad_sugerida * req.producto.costo_unitario) }}</strong></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {% if req.notas_planeacion %}
+                                <div class="mt-2">
+                                    <small class="text-muted"><i class="fas fa-info-circle me-1"></i>Notas de Planeación:</small>
+                                    <div class="ms-3"><em>{{ req.notas_planeacion }}</em></div>
+                                </div>
+                                {% endif %}
+                                
+                                <div class="mt-2">
+                                    <small class="text-muted">
+                                        <i class="fas fa-clock me-1"></i>Creado: {{ req.created_at.strftime('%d/%m/%Y %H:%M') }}
+                                    </small>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4 text-end">
+                                <div class="accion-rapida justify-content-end">
+                                    <button class="btn btn-success btn-lg" 
+                                            onclick="procesarRequerimiento({{ req.id }}, '{{ req.producto.nombre }}', {{ req.cantidad_sugerida }}, {{ req.producto.costo_unitario }})">
+                                        <i class="fas fa-shopping-cart me-2"></i>Crear Orden
+                                    </button>
+                                    
+                                    <button class="btn btn-outline-secondary" 
+                                            onclick="marcarRevisado({{ req.id }}, '{{ req.producto.nombre }}')">
+                                        <i class="fas fa-eye me-2"></i>Marcar Revisado
+                                    </button>
+                                </div>
+                                
+                                <div class="mt-3">
+                                    <small class="text-muted d-block">Stock Actual</small>
+                                    <h4 class="mb-0">{{ req.producto.inventarios[0].cantidad_actual if req.producto.inventarios else 0 }}</h4>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>¡Excelente!</strong> No hay requerimientos pendientes de procesar.
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Tab: Requerimientos Procesados -->
+            <div id="tab-procesados" class="tab-content">
+                {% if requerimientos_procesados %}
+                    {% for req in requerimientos_procesados %}
+                    <div class="requerimiento-card {{ req.estado }}">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="d-flex align-items-center mb-2">
+                                    <h5 class="mb-0 me-3">
+                                        <strong>{{ req.producto.nombre }}</strong>
+                                    </h5>
+                                    
+                                    {% if req.estado == 'convertido_orden' %}
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-check-circle me-1"></i>Convertido a Orden
+                                    </span>
+                                    {% elif req.estado == 'revisado' %}
+                                    <span class="badge bg-secondary">
+                                        <i class="fas fa-eye me-1"></i>Revisado
+                                    </span>
+                                    {% endif %}
+                                    
+                                    {% if req.pronostico_id %}
+                                    <span class="metodo-badge ms-2">
+                                        <i class="fas fa-chart-line me-1"></i>Con Pronóstico
+                                    </span>
+                                    {% endif %}
+                                </div>
+                                
+                                <small class="text-muted">Código: {{ req.producto.codigo }}</small>
+                                
+                                <div class="row mt-3">
+                                    <div class="col-md-3">
+                                        <div class="info-box">
+                                            <small class="text-muted">Cantidad Sugerida</small>
+                                            <div><strong>{{ "%.0f"|format(req.cantidad_sugerida) }}</strong> unidades</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="info-box">
+                                            <small class="text-muted">Día Necesidad</small>
+                                            <div><strong>{{ req.dia_necesidad }}</strong></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="info-box">
+                                            <small class="text-muted">Costo Estimado</small>
+                                            <div><strong>${{ "{:,.0f}".format(req.cantidad_sugerida * req.producto.costo_unitario) }}</strong></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="info-box">
+                                            <small class="text-muted">Estado</small>
+                                            <div>
+                                                {% if req.estado == 'convertido_orden' %}
+                                                <span class="text-success"><i class="fas fa-check"></i> Ordenado</span>
+                                                {% else %}
+                                                <span class="text-secondary"><i class="fas fa-eye"></i> Revisado</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {% if req.notas_compras %}
+                                <div class="notas-compras mt-2">
+                                    <small><strong><i class="fas fa-sticky-note me-1"></i>Notas de Compras:</strong></small>
+                                    <div>{{ req.notas_compras }}</div>
+                                </div>
+                                {% endif %}
+                                
+                                {% if req.notas_planeacion %}
+                                <div class="mt-2">
+                                    <small class="text-muted"><i class="fas fa-info-circle me-1"></i>Notas de Planeación:</small>
+                                    <div class="ms-3"><em>{{ req.notas_planeacion }}</em></div>
+                                </div>
+                                {% endif %}
+                                
+                                <div class="mt-2">
+                                    <small class="text-muted">
+                                        <i class="fas fa-clock me-1"></i>Creado: {{ req.created_at.strftime('%d/%m/%Y %H:%M') }} | 
+                                        Procesado: {{ req.updated_at.strftime('%d/%m/%Y %H:%M') }}
+                                    </small>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4 text-end">
+                                {% if req.orden_compra_id %}
+                                <div class="alert alert-success mb-2">
+                                    <i class="fas fa-link me-2"></i>
+                                    <strong>Orden #{{ req.orden_compra_id }}</strong>
+                                    <div class="small">Vinculada exitosamente</div>
+                                </div>
+                                {% endif %}
+                                
+                                <small class="text-muted d-block mb-1">Procesado por:</small>
+                                <div><i class="fas fa-user me-1"></i>Compras</div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="alert alert-secondary">
+                        <i class="fas fa-info-circle me-2"></i>
+                        No hay requerimientos procesados aún.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Procesar Requerimiento -->
+<div class="modal fade" id="modalProcesarRequerimiento" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-shopping-cart me-2"></i>Procesar Requerimiento de Planeación
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="formProcesarRequerimiento">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-box me-2"></i>Información del Requerimiento</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>Producto:</strong> <span id="reqProducto"></span>
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Cantidad Sugerida:</strong> <span id="reqCantidad"></span> unidades
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Cantidad a Ordenar</strong></label>
+                        <input type="number" name="cantidad" id="reqCantidadInput" class="form-control form-control-lg" 
+                               min="1" step="1" required>
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Puede ajustar la cantidad sugerida por Planeación según disponibilidad de capital
+                        </small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Notas Adicionales</strong> <small class="text-muted">(Opcional)</small></label>
+                        <textarea name="notas_compras" class="form-control" rows="3" 
+                                  placeholder="Ej: Ajustada por restricción de capital, pedido urgente, etc."></textarea>
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong><i class="fas fa-dollar-sign me-2"></i>Costo Total:</strong>
+                                <h4 class="mb-0">$<span id="reqCostoTotal">0</span></h4>
+                            </div>
+                            <div class="col-md-6">
+                                <strong><i class="fas fa-wallet me-2"></i>Capital Disponible:</strong>
+                                <h4 class="mb-0">${{ "{:,.0f}".format(empresa.capital_actual) }}</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-success btn-lg">
+                        <i class="fas fa-check me-2"></i>Confirmar y Crear Orden
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Marcar Revisado -->
+<div class="modal fade" id="modalMarcarRevisado" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-eye me-2"></i>Marcar Requerimiento como Revisado
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="formMarcarRevisado">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong>Producto:</strong> <span id="revProducto"></span>
+                    </div>
+                    
+                    <p>Al marcar este requerimiento como "revisado", indicará que ya lo analizó pero decidió no crear una orden en este momento.</p>
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Razón</strong> <small class="text-muted">(Opcional)</small></label>
+                        <textarea name="notas_compras" class="form-control" rows="2" 
+                                  placeholder="Ej: Capital insuficiente, stock suficiente, etc."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-outline-secondary">
+                        <i class="fas fa-eye me-2"></i>Marcar como Revisado
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function cambiarTab(tabName) {
+        // Ocultar todos los tabs
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        
+        // Desactivar todos los botones
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Activar tab seleccionado
+        document.getElementById('tab-' + tabName).classList.add('active');
+        event.target.classList.add('active');
+    }
+    
+    function procesarRequerimiento(id, producto, cantidad, costoUnitario) {
+        document.getElementById('reqProducto').textContent = producto;
+        document.getElementById('reqCantidad').textContent = cantidad.toFixed(0);
+        document.getElementById('reqCantidadInput').value = cantidad.toFixed(0);
+        
+        const costoTotal = cantidad * costoUnitario;
+        document.getElementById('reqCostoTotal').textContent = costoTotal.toLocaleString('es-CO', {maximumFractionDigits: 0});
+        
+        const form = document.getElementById('formProcesarRequerimiento');
+        form.action = "{{ url_for('estudiante.crear_orden_desde_requerimiento', requerimiento_id=0) }}".replace('/0', '/' + id);
+        
+        // Actualizar costo al cambiar cantidad
+        document.getElementById('reqCantidadInput').addEventListener('input', function() {
+            const nuevaCantidad = parseFloat(this.value) || 0;
+            const nuevoCosto = nuevaCantidad * costoUnitario;
+            document.getElementById('reqCostoTotal').textContent = nuevoCosto.toLocaleString('es-CO', {maximumFractionDigits: 0});
+        });
+        
+        const modal = new bootstrap.Modal(document.getElementById('modalProcesarRequerimiento'));
+        modal.show();
+    }
+    
+    function marcarRevisado(id, producto) {
+        document.getElementById('revProducto').textContent = producto;
+        
+        const form = document.getElementById('formMarcarRevisado');
+        form.action = "{{ url_for('estudiante.marcar_requerimiento_revisado', requerimiento_id=0) }}".replace('/0', '/' + id);
+        
+        const modal = new bootstrap.Modal(document.getElementById('modalMarcarRevisado'));
+        modal.show();
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,585 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Compras - {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sidebar {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        min-height: 100vh;
+        padding: 0;
+    }
+    
+    .sidebar a {
+        display: block;
+        padding: 15px 20px;
+        color: rgba(255,255,255,0.8);
+        text-decoration: none;
+        transition: all 0.3s;
+        border-left: 3px solid transparent;
+    }
+    
+    .sidebar a:hover,
+    .sidebar a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-left-color: #fff;
+    }
+    
+    .metric-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        transition: transform 0.3s;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    
+    .metric-card h3 {
+        font-size: 2rem;
+        margin: 10px 0;
+        color: #2c3e50;
+    }
+    
+    .metric-card p {
+        color: #7f8c8d;
+        margin: 0;
+        font-weight: 500;
+    }
+    
+    /* Estados de inventario */
+    .estado-critico {
+        border-left: 5px solid #e74c3c;
+        background: linear-gradient(to right, rgba(231, 76, 60, 0.1), white);
+    }
+    
+    .estado-bajo {
+        border-left: 5px solid #f39c12;
+        background: linear-gradient(to right, rgba(243, 156, 18, 0.1), white);
+    }
+    
+    .estado-normal {
+        border-left: 5px solid #2ecc71;
+        background: linear-gradient(to right, rgba(46, 204, 113, 0.1), white);
+    }
+    
+    .estado-alto {
+        border-left: 5px solid #3498db;
+        background: linear-gradient(to right, rgba(52, 152, 219, 0.1), white);
+    }
+    
+    .producto-card {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        transition: all 0.3s;
+    }
+    
+    .producto-card:hover {
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    
+    .dias-cobertura {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    
+    .dias-cobertura.critico {
+        color: #e74c3c;
+    }
+    
+    .dias-cobertura.bajo {
+        color: #f39c12;
+    }
+    
+    .dias-cobertura.normal {
+        color: #2ecc71;
+    }
+    
+    .dias-cobertura.alto {
+        color: #3498db;
+    }
+    
+    .badge-prioridad {
+        font-size: 0.7rem;
+        padding: 4px 8px;
+    }
+    
+    .requerimiento-card {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 10px;
+        border: 1px solid #ecf0f1;
+    }
+    
+    .requerimiento-card:hover {
+        border-color: #f5576c;
+        box-shadow: 0 2px 10px rgba(245, 87, 108, 0.2);
+    }
+    
+    .capital-bar {
+        height: 30px;
+        background: #ecf0f1;
+        border-radius: 15px;
+        overflow: hidden;
+        position: relative;
+    }
+    
+    .capital-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #2ecc71 0%, #27ae60 100%);
+        transition: width 0.5s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 0.85rem;
+    }
+    
+    .capital-comprometido {
+        background: linear-gradient(90deg, #f39c12 0%, #e67e22 100%);
+    }
+    
+    .alert-icon {
+        font-size: 1.2rem;
+        margin-right: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar">
+            <h5 class="text-white px-3 py-4">
+                <i class="fas fa-shopping-cart me-2"></i>Compras
+            </h5>
+            <a href="{{ url_for('estudiante.dashboard_compras') }}" class="active">
+                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+            </a>
+            <a href="{{ url_for('estudiante.ver_requerimientos') }}">
+                <i class="fas fa-clipboard-list me-2"></i>Requerimientos
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_compras') }}#inventario">
+                <i class="fas fa-boxes me-2"></i>Inventario
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_compras') }}#ordenes">
+                <i class="fas fa-file-invoice me-2"></i>Órdenes
+            </a>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-md-10 p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1><i class="fas fa-shopping-cart me-2"></i>Dashboard de Compras</h1>
+                    <p class="text-muted mb-0">
+                        <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }}
+                    </p>
+                </div>
+                <div>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalOrdenManual">
+                        <i class="fas fa-plus me-2"></i>Orden Manual
+                    </button>
+                </div>
+            </div>
+
+            <!-- Métricas Principales -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <p>Capital Disponible</p>
+                                <h3>${{ "{:,.0f}".format(capital_libre) }}</h3>
+                            </div>
+                            <i class="fas fa-wallet text-success"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <p>Capital Comprometido</p>
+                                <h3>${{ "{:,.0f}".format(capital_comprometido) }}</h3>
+                            </div>
+                            <i class="fas fa-lock text-warning"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <p>Órdenes en Tránsito</p>
+                                <h3>{{ ordenes_transito|length }}</h3>
+                            </div>
+                            <i class="fas fa-truck text-info"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <p>Requerimientos</p>
+                                <h3>{{ requerimientos|length }}</h3>
+                            </div>
+                            <i class="fas fa-clipboard-list text-danger"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Indicador de Capital -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-chart-pie me-2"></i>Gestión de Capital</h5>
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <div class="capital-bar">
+                                {% set porcentaje_libre = (capital_libre / empresa.capital_actual * 100) if empresa.capital_actual > 0 else 0 %}
+                                {% set porcentaje_comprometido = (capital_comprometido / empresa.capital_actual * 100) if empresa.capital_actual > 0 else 0 %}
+                                
+                                <div class="capital-fill" style="width: {{ porcentaje_libre }}%;">
+                                    {{ "%.1f"|format(porcentaje_libre) }}% Libre
+                                </div>
+                                <div class="capital-fill capital-comprometido" style="width: {{ porcentaje_comprometido }}%;">
+                                    {{ "%.1f"|format(porcentaje_comprometido) }}% Comprometido
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <div><strong>Capital Total:</strong> ${{ "{:,.0f}".format(empresa.capital_actual) }}</div>
+                            <div class="text-muted small">
+                                Libre: ${{ "{:,.0f}".format(capital_libre) }} | 
+                                Comprometido: ${{ "{:,.0f}".format(capital_comprometido) }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Requerimientos de Planeación -->
+            {% if requerimientos %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-bell me-2 text-warning"></i>Requerimientos de Planeación
+                        </h5>
+                        <a href="{{ url_for('estudiante.ver_requerimientos') }}" class="btn btn-sm btn-outline-primary">
+                            Ver Todos <i class="fas fa-arrow-right ms-1"></i>
+                        </a>
+                    </div>
+                    
+                    {% for req in requerimientos[:5] %}
+                    <div class="requerimiento-card">
+                        <div class="row align-items-center">
+                            <div class="col-md-3">
+                                <h6 class="mb-0"><strong>{{ req.producto.nombre }}</strong></h6>
+                                <small class="text-muted">{{ req.producto.codigo }}</small>
+                            </div>
+                            <div class="col-md-2">
+                                <small class="text-muted">Cantidad Sugerida</small>
+                                <div><strong>{{ "%.0f"|format(req.cantidad_sugerida) }}</strong> unidades</div>
+                            </div>
+                            <div class="col-md-2">
+                                <small class="text-muted">Para el Día</small>
+                                <div><strong>{{ req.dia_necesidad }}</strong></div>
+                                <small class="text-muted">(Lead time: {{ req.lead_time }} días)</small>
+                            </div>
+                            <div class="col-md-2">
+                                <small class="text-muted">Costo Estimado</small>
+                                <div class="text-primary"><strong>${{ "{:,.0f}".format(req.cantidad_sugerida * req.producto.costo_unitario) }}</strong></div>
+                            </div>
+                            <div class="col-md-3 text-end">
+                                <button class="btn btn-sm btn-success" 
+                                        onclick="procesarRequerimiento({{ req.id }}, '{{ req.producto.nombre }}', {{ req.cantidad_sugerida }}, {{ req.producto.costo_unitario }})">
+                                    <i class="fas fa-check me-1"></i>Crear Orden
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Productos Priorizados por Cobertura -->
+            <div class="card mb-4" id="inventario">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Productos Priorizados por Urgencia
+                    </h5>
+                    <p class="text-muted small">Ordenados por días de cobertura (menor a mayor)</p>
+                    
+                    {% for item in productos_priorizados[:10] %}
+                    <div class="producto-card estado-{{ item.estado }}">
+                        <div class="row align-items-center">
+                            <div class="col-md-1 text-center">
+                                {% if item.estado == 'critico' %}
+                                <span class="badge bg-danger badge-prioridad">URGENTE</span>
+                                {% elif item.estado == 'bajo' %}
+                                <span class="badge bg-warning badge-prioridad">BAJO</span>
+                                {% elif item.estado == 'normal' %}
+                                <span class="badge bg-success badge-prioridad">NORMAL</span>
+                                {% else %}
+                                <span class="badge bg-info badge-prioridad">ALTO</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-2">
+                                <h6 class="mb-0"><strong>{{ item.producto.nombre }}</strong></h6>
+                                <small class="text-muted">{{ item.producto.codigo }}</small>
+                            </div>
+                            <div class="col-md-2 text-center">
+                                <small class="text-muted d-block">Días de Cobertura</small>
+                                <div class="dias-cobertura {{ item.estado }}">
+                                    {{ "%.1f"|format(item.dias_cobertura) }}
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <small class="text-muted">Stock Actual</small>
+                                <div><strong>{{ item.inventario.cantidad_actual }}</strong> unidades</div>
+                            </div>
+                            <div class="col-md-2">
+                                <small class="text-muted">Consumo Diario</small>
+                                <div><strong>{{ "%.1f"|format(item.consumo_diario) }}</strong> unid/día</div>
+                            </div>
+                            <div class="col-md-2">
+                                <small class="text-muted">Punto Reorden</small>
+                                <div><strong>{{ item.inventario.punto_reorden }}</strong></div>
+                            </div>
+                            <div class="col-md-1 text-end">
+                                {% if item.alertas %}
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-danger" data-bs-toggle="dropdown">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        {% for alerta in item.alertas %}
+                                        <li class="px-3 py-2">
+                                            <small><i class="alert-icon fas fa-{{ alerta.icono }} text-{{ alerta.tipo }}"></i>{{ alerta.mensaje }}</small>
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Órdenes Recientes -->
+            <div class="card" id="ordenes">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-history me-2"></i>Órdenes de Compra Recientes
+                    </h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Día Orden</th>
+                                    <th>Producto</th>
+                                    <th>Cantidad</th>
+                                    <th>Costo Total</th>
+                                    <th>Llegada</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for orden in ordenes_compra %}
+                                <tr>
+                                    <td>{{ orden.dia_orden }}</td>
+                                    <td>{{ orden.producto.nombre }}</td>
+                                    <td>{{ "%.0f"|format(orden.cantidad) }} unidades</td>
+                                    <td>${{ "{:,.0f}".format(orden.costo_total) }}</td>
+                                    <td>Día {{ orden.dia_entrega }}</td>
+                                    <td>
+                                        {% if orden.estado == 'entregado' %}
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-check-circle me-1"></i>Entregado
+                                        </span>
+                                        {% elif orden.estado == 'en_transito' %}
+                                        <span class="badge bg-info">
+                                            <i class="fas fa-truck me-1"></i>En Tránsito
+                                        </span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">
+                                            <i class="fas fa-clock me-1"></i>Pendiente
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Orden Manual -->
+<div class="modal fade" id="modalOrdenManual" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-plus me-2"></i>Crear Orden Manual
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('estudiante.crear_orden_manual') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Producto</label>
+                        <select name="producto_id" class="form-select" required onchange="actualizarCostoEstimado()">
+                            <option value="">Seleccione un producto...</option>
+                            {% for item in productos_priorizados %}
+                            <option value="{{ item.producto.id }}" 
+                                    data-costo="{{ item.producto.costo_unitario }}"
+                                    data-lead-time="{{ item.producto.tiempo_entrega }}">
+                                {{ item.producto.nombre }} - Stock: {{ item.inventario.cantidad_actual }} ({{ "%.1f"|format(item.dias_cobertura) }} días)
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Cantidad</label>
+                        <input type="number" name="cantidad" class="form-control" 
+                               min="1" step="1" required onchange="actualizarCostoEstimado()">
+                    </div>
+                    
+                    <div class="alert alert-info" id="infoOrden" style="display: none;">
+                        <div><strong>Costo Estimado:</strong> <span id="costoEstimado">$0</span></div>
+                        <div><strong>Tiempo de Entrega:</strong> <span id="tiempoEntrega">0</span> días</div>
+                        <div><strong>Llegará el Día:</strong> <span id="diaLlegada">0</span></div>
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Capital Disponible:</strong> ${{ "{:,.0f}".format(capital_libre) }}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-check me-2"></i>Crear Orden
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Procesar Requerimiento -->
+<div class="modal fade" id="modalProcesarRequerimiento" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-check-circle me-2"></i>Procesar Requerimiento
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="formProcesarRequerimiento">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong>Producto:</strong> <span id="reqProducto"></span><br>
+                        <strong>Cantidad Sugerida:</strong> <span id="reqCantidad"></span> unidades
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Cantidad a Ordenar</label>
+                        <input type="number" name="cantidad" id="reqCantidadInput" class="form-control" 
+                               min="1" step="1" required>
+                        <small class="text-muted">Puede ajustar la cantidad sugerida por Planeación</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Notas (Opcional)</label>
+                        <textarea name="notas_compras" class="form-control" rows="2"></textarea>
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <strong>Costo Total:</strong> $<span id="reqCostoTotal">0</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-shopping-cart me-2"></i>Crear Orden
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function actualizarCostoEstimado() {
+        const selectProducto = document.querySelector('select[name="producto_id"]');
+        const inputCantidad = document.querySelector('input[name="cantidad"]');
+        const infoOrden = document.getElementById('infoOrden');
+        
+        if (selectProducto.value && inputCantidad.value) {
+            const option = selectProducto.options[selectProducto.selectedIndex];
+            const costoUnitario = parseFloat(option.dataset.costo);
+            const leadTime = parseInt(option.dataset.leadTime);
+            const cantidad = parseFloat(inputCantidad.value);
+            
+            const costoTotal = costoUnitario * cantidad;
+            const diaLlegada = {{ simulacion.dia_actual }} + leadTime;
+            
+            document.getElementById('costoEstimado').textContent = '$' + costoTotal.toLocaleString('es-CO', {maximumFractionDigits: 0});
+            document.getElementById('tiempoEntrega').textContent = leadTime;
+            document.getElementById('diaLlegada').textContent = diaLlegada;
+            
+            infoOrden.style.display = 'block';
+        } else {
+            infoOrden.style.display = 'none';
+        }
+    }
+    
+    function procesarRequerimiento(id, producto, cantidad, costoUnitario) {
+        document.getElementById('reqProducto').textContent = producto;
+        document.getElementById('reqCantidad').textContent = cantidad.toFixed(0);
+        document.getElementById('reqCantidadInput').value = cantidad.toFixed(0);
+        
+        const costoTotal = cantidad * costoUnitario;
+        document.getElementById('reqCostoTotal').textContent = costoTotal.toLocaleString('es-CO', {maximumFractionDigits: 0});
+        
+        const form = document.getElementById('formProcesarRequerimiento');
+        form.action = "{{ url_for('estudiante.crear_orden_desde_requerimiento', requerimiento_id=0) }}".replace('/0', '/' + id);
+        
+        // Actualizar costo al cambiar cantidad
+        document.getElementById('reqCantidadInput').addEventListener('input', function() {
+            const nuevaCantidad = parseFloat(this.value) || 0;
+            const nuevoCosto = nuevaCantidad * costoUnitario;
+            document.getElementById('reqCostoTotal').textContent = nuevoCosto.toLocaleString('es-CO', {maximumFractionDigits: 0});
+        });
+        
+        const modal = new bootstrap.Modal(document.getElementById('modalProcesarRequerimiento'));
+        modal.show();
+    }
+</script>
+{% endblock %}

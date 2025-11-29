@@ -1,0 +1,622 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Ventas - {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sidebar {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 0;
+    }
+    
+    .sidebar a {
+        display: block;
+        padding: 15px 20px;
+        color: rgba(255,255,255,0.8);
+        text-decoration: none;
+        transition: all 0.3s;
+        border-left: 3px solid transparent;
+    }
+    
+    .sidebar a:hover,
+    .sidebar a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-left-color: #fff;
+    }
+    
+    .metric-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        transition: transform 0.3s;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    
+    .metric-card h3 {
+        font-size: 2rem;
+        margin: 10px 0;
+        color: #2c3e50;
+    }
+    
+    .metric-card p {
+        color: #7f8c8d;
+        margin: 0;
+        font-weight: 500;
+    }
+    
+    .metric-card i {
+        font-size: 2.5rem;
+        opacity: 0.3;
+    }
+    
+    .precio-card {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 2px solid #ecf0f1;
+        transition: all 0.3s;
+    }
+    
+    .precio-card:hover {
+        border-color: #667eea;
+        box-shadow: 0 2px 15px rgba(102,126,234,0.2);
+    }
+    
+    .precio-actual {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #2ecc71;
+    }
+    
+    .precio-sugerido {
+        color: #3498db;
+        font-weight: 600;
+    }
+    
+    .btn-aplicar {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        color: white;
+        padding: 8px 20px;
+        border-radius: 5px;
+        transition: all 0.3s;
+    }
+    
+    .btn-aplicar:hover {
+        transform: scale(1.05);
+        box-shadow: 0 4px 15px rgba(102,126,234,0.4);
+    }
+    
+    .region-badge {
+        display: inline-block;
+        padding: 5px 12px;
+        border-radius: 15px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin: 2px;
+    }
+    
+    .region-caribe { background: #3498db; color: white; }
+    .region-pacifica { background: #2ecc71; color: white; }
+    .region-orinoquia { background: #f39c12; color: white; }
+    .region-amazonia { background: #27ae60; color: white; }
+    .region-andina { background: #9b59b6; color: white; }
+    
+    .chart-container {
+        position: relative;
+        height: 300px;
+        margin-bottom: 30px;
+    }
+    
+    .table-ventas {
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .table-ventas thead {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    .alert-ventas-perdidas {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar">
+            <h5 class="text-white px-3 py-4">
+                <i class="fas fa-chart-line me-2"></i>Módulo Ventas
+            </h5>
+            <a href="{{ url_for('estudiante.dashboard_ventas') }}" class="active">
+                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+            </a>
+            <a href="{{ url_for('estudiante.analisis_regional') }}">
+                <i class="fas fa-map-marked-alt me-2"></i>Análisis Regional
+            </a>
+            <a href="#ajuste-precios">
+                <i class="fas fa-tag me-2"></i>Ajuste de Precios
+            </a>
+            <a href="#historico">
+                <i class="fas fa-history me-2"></i>Historial
+            </a>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-md-10 p-4">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1><i class="fas fa-chart-line me-2"></i>Dashboard de Ventas</h1>
+                    <p class="text-muted mb-0">
+                        <strong>{{ empresa.nombre }}</strong> | 
+                        Día {{ simulacion.dia_actual }} | 
+                        <span class="badge bg-{{ 'success' if simulacion.estado == 'en_curso' else 'warning' }}">
+                            {{ simulacion.estado.upper() }}
+                        </span>
+                    </p>
+                </div>
+                <div>
+                    <span class="badge bg-primary" style="font-size: 1rem; padding: 10px 15px;">
+                        <i class="fas fa-user me-2"></i>{{ current_user.username }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Métricas Principales -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <p>Ingresos Hoy</p>
+                                <h3>${{ "{:,.0f}".format(total_ingresos_hoy) }}</h3>
+                            </div>
+                            <i class="fas fa-dollar-sign text-success"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <p>Unidades Vendidas</p>
+                                <h3>{{ "{:,.0f}".format(total_unidades_hoy) }}</h3>
+                            </div>
+                            <i class="fas fa-box text-info"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <p>Nivel de Servicio</p>
+                                <h3>{{ "%.1f"|format(nivel_servicio) }}%</h3>
+                            </div>
+                            <i class="fas fa-chart-pie text-primary"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <p>Ventas Perdidas</p>
+                                <h3 class="text-danger">{{ "{:,.0f}".format(ventas_perdidas_hoy) }}</h3>
+                            </div>
+                            <i class="fas fa-exclamation-triangle text-warning"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerta de Ventas Perdidas -->
+            {% if ventas_perdidas_hoy > 0 %}
+            <div class="alert-ventas-perdidas">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                <strong>Atención:</strong> Se han perdido {{ "{:,.0f}".format(ventas_perdidas_hoy) }} unidades en ventas hoy por falta de inventario.
+                Coordina con el equipo de <strong>Logística</strong> para optimizar el stock.
+            </div>
+            {% endif %}
+
+            <!-- Gráficos de Análisis -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-map-marked-alt me-2"></i>Ventas por Región (Últimos 7 días)
+                            </h5>
+                            <div class="chart-container">
+                                <canvas id="chartRegiones"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-boxes me-2"></i>Ingresos por Producto (Últimos 7 días)
+                            </h5>
+                            <div class="chart-container">
+                                <canvas id="chartProductos"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Desempeño Regional -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-globe-americas me-2"></i>Desempeño por Región de Colombia
+                    </h5>
+                    <div class="table-responsive">
+                        <table class="table table-ventas table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Región</th>
+                                    <th>Ingresos (7 días)</th>
+                                    <th>Unidades</th>
+                                    <th>Ventas Perdidas</th>
+                                    <th>Participación</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set total_general = ventas_por_region.values()|sum(attribute='total_ingresos') %}
+                                {% for region in regiones %}
+                                <tr>
+                                    <td>
+                                        <span class="region-badge region-{{ region.lower() }}">
+                                            {{ region }}
+                                        </span>
+                                    </td>
+                                    <td><strong>${{ "{:,.2f}".format(ventas_por_region[region]['total_ingresos']) }}</strong></td>
+                                    <td>{{ "{:,.0f}".format(ventas_por_region[region]['total_unidades']) }}</td>
+                                    <td class="text-danger">{{ "{:,.0f}".format(ventas_por_region[region]['ventas_perdidas']) }}</td>
+                                    <td>
+                                        {% set participacion = (ventas_por_region[region]['total_ingresos'] / total_general * 100) if total_general > 0 else 0 %}
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar bg-success" style="width: {{ participacion }}%">
+                                                {{ "%.1f"|format(participacion) }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ajuste de Precios -->
+            <div class="card mb-4" id="ajuste-precios">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-tag me-2"></i>Ajuste de Precios de Productos
+                    </h5>
+                    <p class="text-muted">
+                        Modifica los precios para influir en la demanda. Ten en cuenta la elasticidad y la competencia.
+                    </p>
+                    
+                    <div class="row">
+                        {% for producto in productos %}
+                        <div class="col-md-6 col-lg-4">
+                            <div class="precio-card">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0"><strong>{{ producto.nombre }}</strong></h6>
+                                    <span class="badge bg-secondary">{{ producto.codigo }}</span>
+                                </div>
+                                
+                                <div class="mb-2">
+                                    <small class="text-muted">Costo Unitario:</small>
+                                    <span class="text-danger">${{ "{:,.2f}".format(producto.costo_unitario) }}</span>
+                                </div>
+                                
+                                <div class="d-flex justify-content-between mb-2">
+                                    <div>
+                                        <small class="text-muted d-block">Precio Actual</small>
+                                        <span class="precio-actual">${{ "{:,.2f}".format(producto.precio_actual) }}</span>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted d-block">Sugerido</small>
+                                        <span class="precio-sugerido">${{ "{:,.2f}".format(producto.precio_sugerido) }}</span>
+                                    </div>
+                                </div>
+                                
+                                <form method="POST" action="{{ url_for('estudiante.ajustar_precio') }}" class="mt-3">
+                                    <input type="hidden" name="producto_id" value="{{ producto.id }}">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" 
+                                               name="nuevo_precio" 
+                                               class="form-control" 
+                                               step="0.01" 
+                                               min="{{ producto.costo_unitario }}"
+                                               value="{{ producto.precio_actual }}"
+                                               required>
+                                        <button type="submit" class="btn btn-aplicar btn-sm">
+                                            <i class="fas fa-check me-1"></i>Aplicar
+                                        </button>
+                                    </div>
+                                    <small class="text-muted">
+                                        Margen actual: 
+                                        {% set margen = ((producto.precio_actual - producto.costo_unitario) / producto.precio_actual * 100) if producto.precio_actual > 0 else 0 %}
+                                        <strong class="{{ 'text-success' if margen > 30 else 'text-warning' if margen > 15 else 'text-danger' }}">
+                                            {{ "%.1f"|format(margen) }}%
+                                        </strong>
+                                    </small>
+                                </form>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tendencias Precio vs Demanda -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-chart-area me-2"></i>Tendencias: Precio vs Demanda
+                    </h5>
+                    <div class="mb-3">
+                        <select id="selectProductoTendencia" class="form-select" style="max-width: 300px;">
+                            {% for producto in productos %}
+                            <option value="{{ producto.id }}">{{ producto.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="chart-container" style="height: 350px;">
+                        <canvas id="chartPrecioDemanda"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Historial de Ventas Recientes -->
+            <div class="card" id="historico">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-history me-2"></i>Historial de Ventas Recientes
+                    </h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Día</th>
+                                    <th>Producto</th>
+                                    <th>Región</th>
+                                    <th>Solicitado</th>
+                                    <th>Vendido</th>
+                                    <th>Perdido</th>
+                                    <th>Precio</th>
+                                    <th>Ingreso</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for venta in historial_ventas[:20] %}
+                                <tr>
+                                    <td><span class="badge bg-secondary">Día {{ venta.dia_simulacion }}</span></td>
+                                    <td>{{ venta.producto.nombre }}</td>
+                                    <td>
+                                        <span class="region-badge region-{{ venta.region.lower() if venta.region else 'andina' }}">
+                                            {{ venta.region or 'N/A' }}
+                                        </span>
+                                    </td>
+                                    <td>{{ "{:,.0f}".format(venta.cantidad_solicitada) }}</td>
+                                    <td class="text-success"><strong>{{ "{:,.0f}".format(venta.cantidad_vendida) }}</strong></td>
+                                    <td class="text-danger">{{ "{:,.0f}".format(venta.cantidad_perdida) }}</td>
+                                    <td>${{ "{:,.2f}".format(venta.precio_unitario) }}</td>
+                                    <td><strong>${{ "{:,.2f}".format(venta.ingreso_total) }}</strong></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    // Configuración global de Chart.js
+    Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+    
+    // Gráfico de Ventas por Región
+    const ctxRegiones = document.getElementById('chartRegiones').getContext('2d');
+    
+    fetch('{{ url_for("estudiante.api_ventas_historico_region") }}?dias=14')
+        .then(response => response.json())
+        .then(data => {
+            new Chart(ctxRegiones, {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Ingresos por Región (Últimos 14 días)'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Día de Simulación'
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    
+    // Gráfico de Ventas por Producto
+    const ctxProductos = document.getElementById('chartProductos').getContext('2d');
+    
+    fetch('{{ url_for("estudiante.api_ventas_por_producto") }}?dias=7')
+        .then(response => response.json())
+        .then(data => {
+            new Chart(ctxProductos, {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: 'Ingresos ($)',
+                        data: data.data,
+                        backgroundColor: data.backgroundColor
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    
+    // Gráfico Precio vs Demanda
+    const ctxPrecioDemanda = document.getElementById('chartPrecioDemanda').getContext('2d');
+    let chartPrecioDemanda = null;
+    
+    function cargarGraficoPrecioDemanda(productoId) {
+        fetch(`/estudiante/api/ventas/precio-demanda/${productoId}?dias=14`)
+            .then(response => response.json())
+            .then(data => {
+                if (chartPrecioDemanda) {
+                    chartPrecioDemanda.destroy();
+                }
+                
+                chartPrecioDemanda = new Chart(ctxPrecioDemanda, {
+                    type: 'line',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            label: 'Precio ($)',
+                            data: data.precios,
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            yAxisID: 'y',
+                            tension: 0.4
+                        }, {
+                            label: 'Demanda (unidades)',
+                            data: data.demanda,
+                            borderColor: '#e74c3c',
+                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                            yAxisID: 'y1',
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Relación Precio vs Demanda'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'Precio ($)'
+                                }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Demanda (unidades)'
+                                },
+                                grid: {
+                                    drawOnChartArea: false,
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Día de Simulación'
+                                }
+                            }
+                        }
+                    }
+                });
+            });
+    }
+    
+    // Cargar gráfico inicial
+    document.addEventListener('DOMContentLoaded', function() {
+        const selectProducto = document.getElementById('selectProductoTendencia');
+        cargarGraficoPrecioDemanda(selectProducto.value);
+        
+        selectProducto.addEventListener('change', function() {
+            cargarGraficoPrecioDemanda(this.value);
+        });
+    });
+</script>
+{% endblock %}

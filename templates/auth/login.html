@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Iniciar Sesión - ERP Educativo{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center align-items-center" style="min-height: 90vh;">
+        <div class="col-md-5">
+            <div class="card shadow-lg">
+                <div class="card-body p-5">
+                    <div class="text-center mb-4">
+                        <i class="fas fa-industry fa-4x text-primary mb-3"></i>
+                        <h2 class="fw-bold">Simulación de Cadena de Abastecimiento</h2>
+                        <p class="text-muted">Sistema ERP Educativo</p>
+                    </div>
+
+                    <form method="POST" action="{{ url_for('auth.login') }}">
+                        <div class="mb-4">
+                            <label for="username" class="form-label">Usuario</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                <input type="text" class="form-control" id="username" name="username" 
+                                       placeholder="admin o estudiante_#_#" required autofocus>
+                            </div>
+                            <small class="form-text text-muted">
+                                Formato estudiante: estudiante_[1-4]_[empresa]<br>
+                                1=Ventas, 2=Planeación, 3=Compras, 4=Logística
+                            </small>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="password" class="form-label">Contraseña</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                                <input type="password" class="form-control" id="password" name="password" 
+                                       placeholder="Ingrese su contraseña">
+                            </div>
+                            <small class="form-text text-muted">
+                                Solo requerido para administradores
+                            </small>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-custom w-100 mb-3">
+                            <i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión
+                        </button>
+                    </form>
+
+                    <hr>
+
+                    <div class="alert alert-info">
+                        <strong><i class="fas fa-info-circle me-2"></i>Ejemplos de acceso:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li><strong>Profesor:</strong> admin / admin123</li>
+                            <li><strong>Ventas Empresa 1:</strong> estudiante_1_1</li>
+                            <li><strong>Planeación Empresa 2:</strong> estudiante_2_2</li>
+                            <li><strong>Compras Empresa 1:</strong> estudiante_3_1</li>
+                            <li><strong>Logística Empresa 3:</strong> estudiante_4_3</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center mt-3 text-muted">
+                <small>
+                    <i class="fas fa-graduation-cap me-1"></i>
+                    Herramienta educativa para gestión de cadena de abastecimiento
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    body {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .card {
+        border-radius: 15px;
+    }
+    
+    .input-group-text {
+        background-color: #f8f9fa;
+    }
+</style>
+{% endblock %}
