@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard General - {{ current_user.nombre }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar">
+            <h5 class="text-white px-3 mb-4">
+                <i class="fas fa-user-graduate me-2"></i>{{ current_user.empresa.nombre }}
+            </h5>
+            <a href="{{ url_for('estudiante.dashboard_general') }}" class="active">
+                <i class="fas fa-home me-2"></i>Dashboard General
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_ventas') }}">
+                <i class="fas fa-chart-line me-2"></i>Ventas
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_planeacion') }}">
+                <i class="fas fa-calendar-alt me-2"></i>Planeación
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_compras') }}">
+                <i class="fas fa-shopping-cart me-2"></i>Compras
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_logistica') }}">
+                <i class="fas fa-warehouse me-2"></i>Logística
+            </a>
+            <hr class="bg-light">
+            <a href="{{ url_for('auth.logout') }}">
+                <i class="fas fa-sign-out-alt me-2"></i>Cerrar Sesión
+            </a>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-md-10 p-4">
+            <!-- Header con info de usuario y simulación -->
+            <div class="row mb-4">
+                <div class="col-md-8">
+                    <h1 class="mb-2">
+                        <i class="fas fa-building me-2"></i>{{ current_user.empresa.nombre }}
+                    </h1>
+                    <p class="text-muted mb-0">
+                        <i class="fas fa-user me-2"></i>{{ current_user.nombre }} - 
+                        <span class="badge {{ 'badge-ventas' if current_user.rol == 'ventas' 
+                                              else 'badge-planeacion' if current_user.rol == 'planeacion'
+                                              else 'badge-compras' if current_user.rol == 'compras'
+                                              else 'badge-logistica' }} badge-rol">
+                            {{ current_user.rol.upper() }}
+                        </span>
+                    </p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="p-3 bg-primary bg-opacity-10 rounded">
+                        <p class="mb-1 small text-muted">Día de Simulación</p>
+                        <h2 class="mb-0 text-primary">
+                            <i class="fas fa-calendar-day me-2"></i>{{ simulacion.dia_actual }}
+                        </h2>
+                        <small class="text-muted">
+                            Estado: 
+                            <span class="badge {{ 'bg-success' if simulacion.estado == 'en_curso' else 'bg-warning' }}">
+                                {{ simulacion.estado.upper() }}
+                            </span>
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Indicadores Financieros -->
+            <div class="card mb-4 border-primary">
+                <div class="card-header bg-gradient-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar me-2"></i>Indicadores Clave de Desempeño
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light">
+                                <i class="fas fa-dollar-sign fa-2x text-success mb-2"></i>
+                                <p class="text-muted mb-1 small">Capital Actual</p>
+                                <h4 class="mb-0 text-success">${{ "{:,.2f}".format(empresa.capital_actual) }}</h4>
+                                {% if metrica_hoy %}
+                                <small class="text-muted">
+                                    {% set cambio = metrica_hoy.utilidad %}
+                                    <i class="fas fa-{{ 'arrow-up text-success' if cambio > 0 else 'arrow-down text-danger' if cambio < 0 else 'minus text-secondary' }}"></i>
+                                    ${{ "{:,.0f}".format(abs(cambio)) }} hoy
+                                </small>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light">
+                                <i class="fas fa-chart-line fa-2x text-info mb-2"></i>
+                                <p class="text-muted mb-1 small">Ingresos Día Actual</p>
+                                <h4 class="mb-0 text-info">
+                                    ${{ "{:,.2f}".format(metrica_hoy.ingresos if metrica_hoy else 0) }}
+                                </h4>
+                                <small class="text-muted">Día {{ simulacion.dia_actual }}</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light">
+                                <i class="fas fa-coins fa-2x text-warning mb-2"></i>
+                                <p class="text-muted mb-1 small">Utilidad del Día</p>
+                                <h4 class="mb-0 {{ 'text-success' if metrica_hoy and metrica_hoy.utilidad > 0 else 'text-danger' }}">
+                                    ${{ "{:,.2f}".format(metrica_hoy.utilidad if metrica_hoy else 0) }}
+                                </h4>
+                                <small class="text-muted">Margen: {{ "{:.1f}".format((metrica_hoy.utilidad / metrica_hoy.ingresos * 100) if metrica_hoy and metrica_hoy.ingresos > 0 else 0) }}%</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light">
+                                <i class="fas fa-check-circle fa-2x text-primary mb-2"></i>
+                                <p class="text-muted mb-1 small">Nivel de Servicio</p>
+                                <h4 class="mb-0 {{ 'text-success' if metrica_hoy and metrica_hoy.nivel_servicio >= 95 else 'text-warning' if metrica_hoy and metrica_hoy.nivel_servicio >= 80 else 'text-danger' }}">
+                                    {{ "{:.1f}".format(metrica_hoy.nivel_servicio if metrica_hoy else 0) }}%
+                                </h4>
+                                <small class="text-muted">Meta: ≥95%</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Módulos de Trabajo -->
+            <h4 class="mb-3">
+                <i class="fas fa-th-large me-2"></i>Módulos de Trabajo
+            </h4>
+            
+            <div class="row g-4">
+                <!-- Módulo de Ventas -->
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 border-0 shadow-sm card-hover">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <i class="fas fa-chart-line fa-4x text-primary"></i>
+                            </div>
+                            <h5 class="card-title">Ventas</h5>
+                            <p class="card-text text-muted small">
+                                Análisis de ventas por región, histórico de demanda y estrategias comerciales
+                            </p>
+                            <div class="mb-3">
+                                {% set ventas_hoy = ventas_dia|length %}
+                                <div class="row text-center small">
+                                    <div class="col-6 border-end">
+                                        <div class="text-muted">Ventas Hoy</div>
+                                        <strong class="text-primary">{{ ventas_hoy }}</strong>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted">Unidades</div>
+                                        <strong class="text-success">{{ "{:.0f}".format(ventas_dia|sum(attribute='cantidad_vendida')) }}</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <a href="{{ url_for('estudiante.dashboard_ventas') }}" class="btn btn-primary w-100">
+                                <i class="fas fa-arrow-right me-2"></i>Ir a Ventas
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Módulo de Planeación -->
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 border-0 shadow-sm card-hover">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <i class="fas fa-calendar-alt fa-4x text-success"></i>
+                            </div>
+                            <h5 class="card-title">Planeación</h5>
+                            <p class="card-text text-muted small">
+                                Pronósticos de demanda con métodos estadísticos y planificación de inventarios
+                            </p>
+                            <div class="mb-3">
+                                <div class="row text-center small">
+                                    <div class="col-6 border-end">
+                                        <div class="text-muted">Pronósticos</div>
+                                        <strong class="text-success">{{ pronosticos_activos }}</strong>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted">Productos</div>
+                                        <strong class="text-success">{{ productos|length }}</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <a href="{{ url_for('estudiante.dashboard_planeacion') }}" class="btn btn-success w-100">
+                                <i class="fas fa-arrow-right me-2"></i>Ir a Planeación
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Módulo de Compras -->
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 border-0 shadow-sm card-hover">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <i class="fas fa-shopping-cart fa-4x text-warning"></i>
+                            </div>
+                            <h5 class="card-title">Compras</h5>
+                            <p class="card-text text-muted small">
+                                Gestión de órdenes de compra, proveedores y control de presupuesto
+                            </p>
+                            <div class="mb-3">
+                                <div class="row text-center small">
+                                    <div class="col-6 border-end">
+                                        <div class="text-muted">En Tránsito</div>
+                                        <strong class="text-warning">{{ ordenes_transito }}</strong>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted">Pendientes</div>
+                                        <strong class="text-warning">{{ requerimientos_pendientes }}</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <a href="{{ url_for('estudiante.dashboard_compras') }}" class="btn btn-warning w-100">
+                                <i class="fas fa-arrow-right me-2"></i>Ir a Compras
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Módulo de Logística -->
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 border-0 shadow-sm card-hover">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <i class="fas fa-warehouse fa-4x text-info"></i>
+                            </div>
+                            <h5 class="card-title">Logística</h5>
+                            <p class="card-text text-muted small">
+                                Control de inventarios, recepción de mercancía y despachos regionales
+                            </p>
+                            <div class="mb-3">
+                                <div class="row text-center small">
+                                    <div class="col-6 border-end">
+                                        <div class="text-muted">Stock Total</div>
+                                        <strong class="text-info">{{ "{:.0f}".format(inventarios|sum(attribute='cantidad_actual')) }}</strong>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted">Alertas</div>
+                                        <strong class="text-danger">{{ alertas_inventario }}</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <a href="{{ url_for('estudiante.dashboard_logistica') }}" class="btn btn-info w-100">
+                                <i class="fas fa-arrow-right me-2"></i>Ir a Logística
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actividad Reciente y Alertas -->
+            <div class="row mt-4">
+                <!-- Actividad Reciente -->
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">
+                                <i class="fas fa-history me-2"></i>Actividad Reciente
+                            </h5>
+                        </div>
+                        <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                            {% if movimientos_recientes %}
+                            <div class="list-group list-group-flush">
+                                {% for mov in movimientos_recientes[:10] %}
+                                <div class="list-group-item px-0">
+                                    <div class="d-flex align-items-center">
+                                        <div class="me-3">
+                                            {% if mov.tipo_movimiento == 'entrada_compra' %}
+                                            <i class="fas fa-arrow-down text-success fa-2x"></i>
+                                            {% elif mov.tipo_movimiento == 'salida_venta' %}
+                                            <i class="fas fa-arrow-up text-primary fa-2x"></i>
+                                            {% else %}
+                                            <i class="fas fa-exchange-alt text-info fa-2x"></i>
+                                            {% endif %}
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-1">
+                                                {{ mov.producto.nombre }}
+                                                <span class="badge bg-secondary">{{ mov.tipo_movimiento.replace('_', ' ').title() }}</span>
+                                            </h6>
+                                            <small class="text-muted">
+                                                <i class="fas fa-calendar me-1"></i>Día {{ mov.dia_simulacion }}
+                                                • {{ "{:.0f}".format(mov.cantidad) }} unidades
+                                                • Saldo: {{ "{:.0f}".format(mov.saldo_nuevo) }}
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <p class="text-muted text-center py-4">
+                                <i class="fas fa-inbox fa-3x mb-3 d-block"></i>
+                                No hay actividad reciente
+                            </p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alertas y Notificaciones -->
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">
+                                <i class="fas fa-bell me-2"></i>Alertas y Notificaciones
+                            </h5>
+                        </div>
+                        <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                            <!-- Alertas de Inventario -->
+                            {% for inv in inventarios %}
+                            {% if inv.cantidad_actual <= inv.stock_seguridad %}
+                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <strong>Stock Crítico:</strong> {{ inv.producto.nombre }}
+                                <br><small>Actual: {{ "{:.0f}".format(inv.cantidad_actual) }} | Seguridad: {{ "{:.0f}".format(inv.stock_seguridad) }}</small>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                            {% elif inv.cantidad_actual <= inv.punto_reorden %}
+                            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                                <i class="fas fa-exclamation-circle me-2"></i>
+                                <strong>Punto de Reorden:</strong> {{ inv.producto.nombre }}
+                                <br><small>Actual: {{ "{:.0f}".format(inv.cantidad_actual) }} | Reorden: {{ "{:.0f}".format(inv.punto_reorden) }}</small>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+
+                            <!-- Compras por Llegar -->
+                            {% for compra in ordenes_proximas %}
+                            <div class="alert alert-info alert-dismissible fade show" role="alert">
+                                <i class="fas fa-truck me-2"></i>
+                                <strong>Compra en Camino:</strong> {{ compra.producto.nombre }}
+                                <br><small>{{ "{:.0f}".format(compra.cantidad) }} unidades • Llega día {{ compra.dia_entrega }}</small>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                            {% endfor %}
+
+                            <!-- Disrupciones Activas -->
+                            {% for disrupcion in disrupciones_activas %}
+                            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                                <i class="{{ disrupcion.icono }} me-2"></i>
+                                <strong>{{ disrupcion.nombre }}</strong>
+                                <br><small>{{ disrupcion.descripcion }}</small>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                            {% endfor %}
+
+                            {% if not (inventarios|selectattr('cantidad_actual', 'le', inventarios[0].punto_reorden if inventarios else 0)|list) and not ordenes_proximas and not disrupciones_activas %}
+                            <p class="text-muted text-center py-4">
+                                <i class="fas fa-check-circle fa-3x mb-3 d-block text-success"></i>
+                                Todo en orden. No hay alertas activas.
+                            </p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

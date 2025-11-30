@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Planeación - {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sidebar {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 0;
+    }
+    
+    .sidebar a {
+        display: block;
+        padding: 15px 20px;
+        color: rgba(255,255,255,0.8);
+        text-decoration: none;
+        transition: all 0.3s;
+        border-left: 3px solid transparent;
+    }
+    
+    .sidebar a:hover,
+    .sidebar a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-left-color: #fff;
+    }
+    
+    .metric-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        transition: transform 0.3s;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    
+    .producto-stats {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-left: 4px solid #3498db;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar">
+            <h5 class="text-white px-3 py-4">
+                <i class="fas fa-chart-area me-2"></i>Planeación
+            </h5>
+            <a href="{{ url_for('estudiante.dashboard_planeacion') }}" class="active">
+                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+            </a>
+            <a href="{{ url_for('estudiante.generar_pronostico') }}">
+                <i class="fas fa-crystal-ball me-2"></i>Generar Pronósticos
+            </a>
+            <a href="{{ url_for('estudiante.requerimientos_compra') }}">
+                <i class="fas fa-shopping-cart me-2"></i>Requerimientos
+            </a>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-md-10 p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1><i class="fas fa-chart-area me-2"></i>Dashboard de Planeación</h1>
+                    <p class="text-muted mb-0">
+                        <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Métricas -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="metric-card">
+                        <p>Pronósticos Generados</p>
+                        <h3>{{ pronosticos_recientes|length }}</h3>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="metric-card">
+                        <p>Requerimientos Pendientes</p>
+                        <h3>{{ requerimientos_pendientes }}</h3>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="metric-card">
+                        <p>Productos Activos</p>
+                        <h3>{{ productos|length }}</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resumen por Producto -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-boxes me-2"></i>Análisis por Producto
+                    </h5>
+                    
+                    {% for stat in stats_productos %}
+                    <div class="producto-stats">
+                        <div class="row align-items-center">
+                            <div class="col-md-3">
+                                <h6 class="mb-0"><strong>{{ stat.producto.nombre }}</strong></h6>
+                                <small class="text-muted">{{ stat.producto.codigo }}</small>
+                            </div>
+                            <div class="col-md-2">
+                                <small class="text-muted">Demanda Promedio</small>
+                                <div><strong>{{ "%.1f"|format(stat.demanda_promedio) }}</strong> unid/día</div>
+                            </div>
+                            <div class="col-md-2">
+                                <small class="text-muted">Stock Actual</small>
+                                <div><strong>{{ stat.stock_actual }}</strong></div>
+                            </div>
+                            <div class="col-md-2">
+                                <small class="text-muted">Ventas Perdidas</small>
+                                <div class="text-danger"><strong>{{ stat.total_perdido }}</strong></div>
+                            </div>
+                            <div class="col-md-3 text-end">
+                                <a href="{{ url_for('estudiante.generar_pronostico', producto_id=stat.producto.id) }}" 
+                                   class="btn btn-primary btn-sm">
+                                    <i class="fas fa-chart-line me-1"></i>Pronosticar
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Pronósticos Recientes -->
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-history me-2"></i>Pronósticos Recientes
+                    </h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Método</th>
+                                    <th>Pronóstico</th>
+                                    <th>Día Objetivo</th>
+                                    <th>MAPE</th>
+                                    <th>MAD</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for pron in pronosticos_recientes %}
+                                <tr>
+                                    <td>{{ pron.producto.nombre }}</td>
+                                    <td>
+                                        <span class="badge bg-info">{{ pron.metodo_usado }}</span>
+                                    </td>
+                                    <td><strong>{{ "%.1f"|format(pron.demanda_pronosticada) }}</strong></td>
+                                    <td>Día {{ pron.dia_pronostico }}</td>
+                                    <td>{{ "%.2f"|format(pron.error_mape) }}%</td>
+                                    <td>{{ "%.2f"|format(pron.error_mad) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,468 @@
+{% extends "base.html" %}
+
+{% block title %}Simulador de Escenarios - Profesor{% endblock %}
+
+{% block extra_css %}
+<style>
+    .header-escenarios {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+    }
+    
+    .disrupcion-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        border-left: 5px solid #667eea;
+        transition: all 0.3s;
+    }
+    
+    .disrupcion-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    
+    .disrupcion-card.severidad-baja { border-left-color: #3498db; }
+    .disrupcion-card.severidad-media { border-left-color: #f39c12; }
+    .disrupcion-card.severidad-alta { border-left-color: #e74c3c; }
+    .disrupcion-card.severidad-critica { 
+        border-left-color: #c0392b;
+        background: linear-gradient(to right, rgba(192, 57, 43, 0.05), white);
+    }
+    
+    .catalogo-item {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 15px;
+        cursor: pointer;
+        transition: all 0.3s;
+        border: 2px solid transparent;
+    }
+    
+    .catalogo-item:hover {
+        border-color: #667eea;
+        transform: scale(1.02);
+    }
+    
+    .severidad-badge {
+        font-size: 0.85rem;
+        padding: 5px 12px;
+        border-radius: 20px;
+    }
+    
+    .badge-baja { background: #3498db; color: white; }
+    .badge-media { background: #f39c12; color: white; }
+    .badge-alta { background: #e74c3c; color: white; }
+    .badge-critica { background: #c0392b; color: white; }
+    
+    .tipo-icon {
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+    }
+    
+    .icon-retraso_proveedor { color: #e67e22; }
+    .icon-aumento_demanda { color: #27ae60; }
+    .icon-reduccion_capacidad { color: #e74c3c; }
+    .icon-aumento_costos { color: #f39c12; }
+    .icon-region_bloqueada { color: #9b59b6; }
+    
+    .form-activar {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 25px;
+        margin-bottom: 20px;
+    }
+    
+    .parametro-box {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        border-left: 4px solid #667eea;
+    }
+    
+    .tabs-nav {
+        border-bottom: 2px solid #ecf0f1;
+        margin-bottom: 20px;
+    }
+    
+    .tab-button {
+        background: none;
+        border: none;
+        padding: 12px 25px;
+        color: #7f8c8d;
+        cursor: pointer;
+        transition: all 0.3s;
+        border-bottom: 3px solid transparent;
+        font-weight: 500;
+        font-size: 1.1rem;
+    }
+    
+    .tab-button.active {
+        color: #667eea;
+        border-bottom-color: #667eea;
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+    
+    .timeline-item {
+        padding-left: 30px;
+        border-left: 3px solid #ecf0f1;
+        padding-bottom: 20px;
+        position: relative;
+    }
+    
+    .timeline-item::before {
+        content: '';
+        position: absolute;
+        left: -8px;
+        top: 0;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #95a5a6;
+    }
+    
+    .timeline-item.activo::before { background: #e74c3c; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Header -->
+    <div class="header-escenarios">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1><i class="fas fa-bolt me-2"></i>Simulador de Escenarios</h1>
+                <p class="mb-0">Activa disrupciones basadas en eventos reales del entorno colombiano</p>
+            </div>
+            <div class="text-end">
+                <h3 class="mb-0">Día {{ simulacion.dia_actual }}</h3>
+                <small>{{ disrupciones_activas|length }} disrupciones activas</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs-nav">
+        <button class="tab-button active" onclick="cambiarTab('activar')">
+            <i class="fas fa-plus-circle me-2"></i>Activar Disrupción
+        </button>
+        <button class="tab-button" onclick="cambiarTab('activas')">
+            <i class="fas fa-exclamation-triangle me-2"></i>Disrupciones Activas ({{ disrupciones_activas|length }})
+        </button>
+        <button class="tab-button" onclick="cambiarTab('historico')">
+            <i class="fas fa-history me-2"></i>Historial
+        </button>
+    </div>
+
+    <!-- Tab: Activar Disrupción -->
+    <div id="tab-activar" class="tab-content active">
+        <div class="row">
+            <!-- Catálogo de Disrupciones -->
+            <div class="col-md-5">
+                <h4 class="mb-3"><i class="fas fa-book me-2"></i>Catálogo de Disrupciones</h4>
+                
+                {% for tipo_key, tipo_data in catalogo.items() %}
+                <div class="catalogo-item" onclick="seleccionarTipo('{{ tipo_key }}')">
+                    <div class="row align-items-center">
+                        <div class="col-2 text-center">
+                            <i class="fas {{ tipo_data.icono }} tipo-icon icon-{{ tipo_key }}"></i>
+                        </div>
+                        <div class="col-10">
+                            <h5 class="mb-1"><strong>{{ tipo_data.nombre }}</strong></h5>
+                            <div class="mt-2">
+                                {% for sev_key, sev_data in tipo_data.severidades.items() %}
+                                <span class="severidad-badge badge-{{ sev_key }} me-1">{{ sev_key|title }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <!-- Formulario de Activación -->
+            <div class="col-md-7">
+                <h4 class="mb-3"><i class="fas fa-cog me-2"></i>Configurar y Activar</h4>
+                
+                <form method="POST" action="{{ url_for('profesor.activar_disrupcion') }}" class="form-activar">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><strong>Tipo de Disrupción</strong></label>
+                            <select class="form-select" name="tipo_disrupcion" id="tipo_disrupcion" required onchange="actualizarSeveridades()">
+                                <option value="">Seleccione un tipo</option>
+                                <option value="retraso_proveedor">Retraso en Proveedores</option>
+                                <option value="aumento_demanda">Aumento en Demanda</option>
+                                <option value="reduccion_capacidad">Reducción de Capacidad</option>
+                                <option value="aumento_costos">Aumento en Costos</option>
+                                <option value="region_bloqueada">Región sin Cobertura</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><strong>Severidad</strong></label>
+                            <select class="form-select" name="severidad" id="severidad" required onchange="cargarPlantilla()">
+                                <option value="">Seleccione severidad</option>
+                                <option value="baja">Baja</option>
+                                <option value="media">Media</option>
+                                <option value="alta">Alta</option>
+                                <option value="critica">Crítica</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="parametro-box" id="info-plantilla" style="display: none;">
+                        <h6><strong>Vista Previa de la Disrupción</strong></h6>
+                        <div id="preview-nombre" class="mb-2"></div>
+                        <div id="preview-descripcion" class="text-muted"></div>
+                        <div id="preview-parametros" class="mt-2"></div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Nombre Personalizado (Opcional)</strong></label>
+                        <input type="text" class="form-control" name="nombre_custom" placeholder="Dejar vacío para usar nombre por defecto">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Razón/Contexto Personalizado (Opcional)</strong></label>
+                        <textarea class="form-control" name="razon_custom" rows="2" placeholder="Dejar vacío para usar descripción por defecto"></textarea>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><strong>Duración (días)</strong></label>
+                            <input type="number" class="form-control" name="duracion_dias" value="7" min="1" max="30" required>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><strong>Empresas Afectadas</strong></label>
+                            <select class="form-select" name="empresas[]" multiple size="3">
+                                <option value="" selected>Todas las empresas</option>
+                                {% for empresa in empresas %}
+                                <option value="{{ empresa.id }}">{{ empresa.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">Ctrl+Click para múltiples</small>
+                        </div>
+                    </div>
+                    
+                    <!-- Filtros específicos según tipo -->
+                    <div id="filtro-productos" style="display: none;">
+                        <label class="form-label"><strong>Productos Afectados (Opcional)</strong></label>
+                        <select class="form-select" name="productos[]" multiple size="3">
+                            {% for producto in productos %}
+                            <option value="{{ producto.id }}">{{ producto.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Vacío = todos los productos</small>
+                    </div>
+                    
+                    <div id="filtro-regiones" style="display: none;" class="mt-3">
+                        <label class="form-label"><strong>Regiones Afectadas (Opcional)</strong></label>
+                        <select class="form-select" name="regiones[]" multiple size="5">
+                            {% for region in regiones %}
+                            <option value="{{ region }}">{{ region }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Vacío = todas las regiones</small>
+                    </div>
+                    
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" name="visible_estudiantes" id="visible" checked>
+                        <label class="form-check-label" for="visible">
+                            <strong>Visible para estudiantes</strong>
+                            <small class="d-block text-muted">Los estudiantes verán una alerta de esta disrupción</small>
+                        </label>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-danger btn-lg w-100 mt-4">
+                        <i class="fas fa-bolt me-2"></i>Activar Disrupción
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Disrupciones Activas -->
+    <div id="tab-activas" class="tab-content">
+        {% if disrupciones_activas %}
+            {% for disrupcion in disrupciones_activas %}
+            <div class="disrupcion-card severidad-{{ disrupcion.severidad }}">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <div class="d-flex align-items-center mb-2">
+                            <i class="fas {{ disrupcion.icono }} me-3" style="font-size: 2rem;"></i>
+                            <div>
+                                <h5 class="mb-0"><strong>{{ disrupcion.nombre }}</strong></h5>
+                                <span class="severidad-badge badge-{{ disrupcion.severidad }}">{{ disrupcion.severidad|title }}</span>
+                                <span class="badge bg-secondary ms-2">{{ disrupcion.tipo_disrupcion.replace('_', ' ')|title }}</span>
+                            </div>
+                        </div>
+                        
+                        <p class="mb-2">{{ disrupcion.descripcion }}</p>
+                        
+                        <div class="row mt-3">
+                            <div class="col-md-4">
+                                <small class="text-muted">Día Inicio</small>
+                                <div><strong>{{ disrupcion.dia_inicio }}</strong></div>
+                            </div>
+                            <div class="col-md-4">
+                                <small class="text-muted">Día Fin</small>
+                                <div><strong>{{ disrupcion.dia_fin }}</strong></div>
+                            </div>
+                            <div class="col-md-4">
+                                <small class="text-muted">Días Restantes</small>
+                                <div class="text-danger"><strong>{{ disrupcion.dia_fin - simulacion.dia_actual + 1 }}</strong> días</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                <strong>Parámetros:</strong>
+                                {% for key, value in disrupcion.parametros.items() %}
+                                    {{ key }}: <strong>{{ value }}</strong>{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4 text-end">
+                        <form method="POST" action="{{ url_for('profesor.desactivar_disrupcion', disrupcion_id=disrupcion.id) }}" 
+                              onsubmit="return confirm('¿Desactivar esta disrupción?');">
+                            <button type="submit" class="btn btn-warning mb-2">
+                                <i class="fas fa-pause me-2"></i>Desactivar
+                            </button>
+                        </form>
+                        <div class="alert alert-{{ 'success' if disrupcion.visible_estudiantes else 'secondary' }} mb-0 p-2">
+                            <small>
+                                <i class="fas fa-{{ 'eye' if disrupcion.visible_estudiantes else 'eye-slash' }} me-1"></i>
+                                {{ 'Visible' if disrupcion.visible_estudiantes else 'Oculta' }} para estudiantes
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>No hay disrupciones activas actualmente.
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Tab: Historial -->
+    <div id="tab-historico" class="tab-content">
+        {% if disrupciones_historico %}
+            <div class="timeline">
+                {% for disrupcion in disrupciones_historico %}
+                <div class="timeline-item">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6><strong>{{ disrupcion.nombre }}</strong></h6>
+                            <p class="mb-1">{{ disrupcion.descripcion }}</p>
+                            <small class="text-muted">
+                                Días {{ disrupcion.dia_inicio }} - {{ disrupcion.dia_fin }} |
+                                Creado: {{ disrupcion.created_at.strftime('%d/%m/%Y %H:%M') }}
+                            </small>
+                        </div>
+                        <div>
+                            <span class="severidad-badge badge-{{ disrupcion.severidad }}">{{ disrupcion.severidad|title }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-secondary">
+                <i class="fas fa-info-circle me-2"></i>No hay disrupciones en el histórico.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const catalogoData = {{ catalogo|tojson }};
+    
+    function cambiarTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        document.getElementById('tab-' + tabName).classList.add('active');
+        event.target.classList.add('active');
+    }
+    
+    function seleccionarTipo(tipo) {
+        document.getElementById('tipo_disrupcion').value = tipo;
+        actualizarSeveridades();
+    }
+    
+    function actualizarSeveridades() {
+        const tipo = document.getElementById('tipo_disrupcion').value;
+        document.getElementById('severidad').value = '';
+        document.getElementById('info-plantilla').style.display = 'none';
+        
+        // Mostrar/ocultar filtros según tipo
+        const filtroProductos = document.getElementById('filtro-productos');
+        const filtroRegiones = document.getElementById('filtro-regiones');
+        
+        if (['retraso_proveedor', 'aumento_demanda', 'aumento_costos'].includes(tipo)) {
+            filtroProductos.style.display = 'block';
+        } else {
+            filtroProductos.style.display = 'none';
+        }
+        
+        if (['aumento_demanda', 'reduccion_capacidad', 'region_bloqueada'].includes(tipo)) {
+            filtroRegiones.style.display = 'block';
+        } else {
+            filtroRegiones.style.display = 'none';
+        }
+    }
+    
+    function cargarPlantilla() {
+        const tipo = document.getElementById('tipo_disrupcion').value;
+        const severidad = document.getElementById('severidad').value;
+        
+        if (!tipo || !severidad) return;
+        
+        fetch(`/profesor/escenarios/plantilla/${tipo}/${severidad}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const config = data.config;
+                    
+                    document.getElementById('preview-nombre').innerHTML = `<strong>${config.nombre}</strong>`;
+                    document.getElementById('preview-descripcion').textContent = config.descripcion;
+                    
+                    let parametrosHTML = '<small><strong>Efectos:</strong><br>';
+                    for (let [key, value] of Object.entries(config.parametros)) {
+                        parametrosHTML += `${key}: ${JSON.stringify(value)}<br>`;
+                    }
+                    parametrosHTML += '</small>';
+                    
+                    document.getElementById('preview-parametros').innerHTML = parametrosHTML;
+                    document.getElementById('info-plantilla').style.display = 'block';
+                }
+            });
+    }
+</script>
+{% endblock %}
