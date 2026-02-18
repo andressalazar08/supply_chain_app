@@ -5,7 +5,7 @@
 {% block extra_css %}
 <style>
     .header-escenarios {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
         color: white;
         padding: 30px;
         border-radius: 15px;
@@ -18,7 +18,7 @@
         padding: 20px;
         margin-bottom: 20px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        border-left: 5px solid #667eea;
+        border-left: 5px solid #c41e3a;
         transition: all 0.3s;
     }
     
@@ -27,7 +27,7 @@
         box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     }
     
-    .disrupcion-card.severidad-baja { border-left-color: #3498db; }
+    .disrupcion-card.severidad-baja { border-left-color: #c41e3a; }
     .disrupcion-card.severidad-media { border-left-color: #f39c12; }
     .disrupcion-card.severidad-alta { border-left-color: #e74c3c; }
     .disrupcion-card.severidad-critica { 
@@ -46,7 +46,7 @@
     }
     
     .catalogo-item:hover {
-        border-color: #667eea;
+        border-color: #c41e3a;
         transform: scale(1.02);
     }
     
@@ -56,7 +56,7 @@
         border-radius: 20px;
     }
     
-    .badge-baja { background: #3498db; color: white; }
+    .badge-baja { background: #c41e3a; color: white; }
     .badge-media { background: #f39c12; color: white; }
     .badge-alta { background: #e74c3c; color: white; }
     .badge-critica { background: #c0392b; color: white; }
@@ -70,7 +70,7 @@
     .icon-aumento_demanda { color: #27ae60; }
     .icon-reduccion_capacidad { color: #e74c3c; }
     .icon-aumento_costos { color: #f39c12; }
-    .icon-region_bloqueada { color: #9b59b6; }
+    .icon-region_bloqueada { color: #c41e3a; }
     
     .form-activar {
         background: #f8f9fa;
@@ -84,7 +84,7 @@
         padding: 15px;
         border-radius: 8px;
         margin-bottom: 15px;
-        border-left: 4px solid #667eea;
+        border-left: 4px solid #c41e3a;
     }
     
     .tabs-nav {
@@ -105,8 +105,8 @@
     }
     
     .tab-button.active {
-        color: #667eea;
-        border-bottom-color: #667eea;
+        color: #c41e3a;
+        border-bottom-color: #c41e3a;
     }
     
     .tab-content {
@@ -141,6 +141,13 @@
 
 {% block content %}
 <div class="container-fluid p-4">
+    <!-- Botón de regreso -->
+    <div class="mb-3">
+        <a href="{{ url_for('profesor.home') }}" class="btn btn-outline-primary">
+            <i class="fas fa-arrow-left me-2"></i>Volver al Inicio
+        </a>
+    </div>
+    
     <!-- Header -->
     <div class="header-escenarios">
         <div class="d-flex justify-content-between align-items-center">

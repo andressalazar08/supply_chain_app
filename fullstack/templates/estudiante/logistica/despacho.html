@@ -5,7 +5,7 @@
 {% block extra_css %}
 <style>
     .sidebar {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
         min-height: 100vh;
         padding: 0;
     }
@@ -33,7 +33,7 @@
         margin-bottom: 20px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         transition: all 0.3s;
-        border-left: 5px solid #3498db;
+        border-left: 5px solid #c41e3a;
     }
     
     .card-producto:hover {
@@ -56,7 +56,7 @@
     
     .stock-critico { background: #e74c3c; }
     .stock-bajo { background: #f39c12; }
-    .stock-normal { background: #3498db; }
+    .stock-normal { background: #c41e3a; }
     .stock-alto { background: #2ecc71; }
     
     .region-card {
@@ -77,10 +77,10 @@
         padding: 5px 10px;
     }
     
-    .region-andina { background: #3498db; }
+    .region-andina { background: #c41e3a; }
     .region-caribe { background: #e67e22; }
     .region-pacifica { background: #27ae60; }
-    .region-orinoquia { background: #9b59b6; }
+    .region-orinoquia { background: #c41e3a; }
     .region-amazonia { background: #16a085; }
     
     .despacho-card {
@@ -89,7 +89,7 @@
         padding: 15px;
         margin-bottom: 15px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        border-left: 4px solid #3498db;
+        border-left: 4px solid #c41e3a;
     }
     
     .despacho-card.en-transito {
@@ -143,23 +143,7 @@
 <div class="container-fluid">
     <div class="row">
         <!-- Sidebar -->
-        <div class="col-md-2 sidebar">
-            <h5 class="text-white px-3 py-4">
-                <i class="fas fa-truck me-2"></i>Logística
-            </h5>
-            <a href="{{ url_for('estudiante.dashboard_logistica') }}">
-                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
-            </a>
-            <a href="{{ url_for('estudiante.vista_recepcion') }}">
-                <i class="fas fa-inbox me-2"></i>Recepción
-            </a>
-            <a href="{{ url_for('estudiante.vista_despacho') }}" class="active">
-                <i class="fas fa-shipping-fast me-2"></i>Despacho
-            </a>
-            <a href="{{ url_for('estudiante.vista_movimientos') }}">
-                <i class="fas fa-exchange-alt me-2"></i>Movimientos
-            </a>
-        </div>
+        {% include 'estudiante/_sidebar.html' %}
 
         <!-- Main Content -->
         <div class="col-md-10 p-4">

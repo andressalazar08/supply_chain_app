@@ -4,6 +4,10 @@
         <i class="fas fa-user-graduate me-2"></i>{{ current_user.empresa.nombre }}
     </h5>
     
+    <a href="{{ url_for('estudiante.home') }}" class="btn btn-light mb-3 mx-3">
+        <i class="fas fa-arrow-left me-2"></i>Volver al Inicio
+    </a>
+    
     <a href="{{ url_for('estudiante.dashboard_general') }}" class="{{ 'active' if request.endpoint == 'estudiante.dashboard_general' else '' }}">
         <i class="fas fa-home me-2"></i>Dashboard General
     </a>

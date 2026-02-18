@@ -1,0 +1,270 @@
+{% extends 'base.html' %}
+
+{% block title %}Gestionar Profesores - ERP Educativo{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="fas fa-chalkboard-teacher"></i> Gestión de Profesores</h2>
+            <p class="text-muted">Administrar profesores y sus recursos en la plataforma</p>
+        </div>
+    </div>
+
+    <!-- Barra de acciones -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <button class="btn btn-success" onclick="mostrarModalCrear()">
+                                <i class="fas fa-user-plus"></i> Nuevo Profesor
+                            </button>
+                            <a href="{{ url_for('profesor.home') }}" class="btn btn-outline-secondary">
+                                <i class="fas fa-arrow-left"></i> Volver al Inicio
+                            </a>
+                        </div>
+                        <div class="col-md-8">
+                            <form method="GET" class="row g-2">
+                                <div class="col-md-5">
+                                    <input type="text" class="form-control" name="buscar" 
+                                           placeholder="Buscar por nombre, email o código..." 
+                                           value="{{ filtro_buscar }}">
+                                </div>
+                                <div class="col-md-4">
+                                    <select class="form-select" name="universidad">
+                                        <option value="">Todas las universidades</option>
+                                        {% for uni in universidades %}
+                                        <option value="{{ uni }}" {% if filtro_universidad == uni %}selected{% endif %}>
+                                            {{ uni }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <button type="submit" class="btn btn-primary w-100">
+                                        <i class="fas fa-search"></i> Buscar
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de profesores -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Email</th>
+                                    <th>Código</th>
+                                    <th>Universidad</th>
+                                    <th>Estudiantes</th>
+                                    <th>Empresas</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for profesor in profesores %}
+                                <tr>
+                                    <td><strong>{{ profesor.nombre_completo or profesor.username }}</strong></td>
+                                    <td><small>{{ profesor.email }}</small></td>
+                                    <td><small>{{ profesor.codigo_profesor or '-' }}</small></td>
+                                    <td><small>{{ profesor.universidad or '-' }}</small></td>
+                                    <td>
+                                        <span class="badge bg-info">
+                                            <i class="fas fa-users"></i> {{ profesor.total_estudiantes }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary">
+                                            <i class="fas fa-building"></i> {{ profesor.total_empresas }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if profesor.activo %}
+                                            <span class="badge bg-success">Activo</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Inactivo</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-warning" 
+                                                onclick="toggleEstado({{ profesor.id }}, {{ profesor.activo|lower }})">
+                                            <i class="fas fa-power-off"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" 
+                                                onclick="eliminarProfesor({{ profesor.id }}, '{{ profesor.nombre_completo or profesor.username }}')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="8" class="text-center text-muted py-4">
+                                        <i class="fas fa-inbox fa-3x mb-3"></i>
+                                        <p>No hay profesores registrados</p>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para crear profesor -->
+<div class="modal fade" id="modalCrearProfesor" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-user-plus"></i> Nuevo Profesor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formCrearProfesor">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre Completo <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="nombre_completo" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Email <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control" name="email" required>
+                        <small class="text-muted">Se usará para iniciar sesión</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Contraseña <span class="text-danger">*</span></label>
+                        <input type="password" class="form-control" name="password" required minlength="6">
+                        <small class="text-muted">Mínimo 6 caracteres</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Universidad</label>
+                        <input type="text" class="form-control" name="universidad" 
+                               placeholder="Ej: Universidad del Valle">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Código de Profesor</label>
+                        <input type="text" class="form-control" name="codigo_profesor" 
+                               placeholder="Ej: PROF123">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check"></i> Crear Profesor
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+let modalCrear;
+
+document.addEventListener('DOMContentLoaded', function() {
+    modalCrear = new bootstrap.Modal(document.getElementById('modalCrearProfesor'));
+    
+    document.getElementById('formCrearProfesor').addEventListener('submit', function(e) {
+        e.preventDefault();
+        crearProfesor();
+    });
+});
+
+function mostrarModalCrear() {
+    document.getElementById('formCrearProfesor').reset();
+    modalCrear.show();
+}
+
+function crearProfesor() {
+    const formData = new FormData(document.getElementById('formCrearProfesor'));
+    
+    fetch('/profesor/profesores/crear', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            modalCrear.hide();
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al crear profesor');
+    });
+}
+
+function toggleEstado(id, activo) {
+    const accion = activo ? 'desactivar' : 'activar';
+    if (!confirm(`¿Está seguro de ${accion} este profesor?`)) {
+        return;
+    }
+    
+    fetch(`/profesor/profesores/${id}/toggle-estado`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+
+function eliminarProfesor(id, nombre) {
+    if (!confirm(`¿Está seguro de eliminar al profesor "${nombre}"?\n\nSus estudiantes y empresas serán reasignados a usted.`)) {
+        return;
+    }
+    
+    fetch(`/profesor/profesores/${id}/eliminar`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+</script>
+
+<style>
+.table th {
+    background-color: #f8f9fa;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+.badge {
+    font-size: 0.85rem;
+    padding: 0.35em 0.65em;
+}
+</style>
+{% endblock %}

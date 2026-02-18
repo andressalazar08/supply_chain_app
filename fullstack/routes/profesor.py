@@ -5,7 +5,9 @@ Rutas para el rol Profesor (Administrador)
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
-from models import Usuario, Empresa, Simulacion, Inventario, Venta, Compra, Decision, Escenario, Metrica, Producto, DisrupcionActiva
+from models import (Usuario, Empresa, Simulacion, Inventario, Venta, Compra, Decision, Escenario, 
+                    Metrica, Producto, DisrupcionActiva, MovimientoInventario, DespachoRegional, 
+                    RequerimientoCompra, Pronostico)
 from extensions import db
 from datetime import datetime
 import random
@@ -19,16 +21,33 @@ from utils.procesamiento_dias import (
     avanzar_simulacion,
     obtener_resumen_simulacion
 )
+from utils.reinicio_simulacion import reiniciar_simulacion
 
 bp = Blueprint('profesor', __name__, url_prefix='/profesor')
 
 def admin_required(f):
-    """Decorador para verificar que el usuario sea admin"""
+    """Decorador para verificar que el usuario sea admin o profesor"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.rol != 'admin':
+        if not current_user.is_authenticated:
+            flash('Acceso denegado. Debe iniciar sesión.', 'error')
+            return redirect(url_for('auth.login'))
+        
+        # Permitir acceso a profesores/admin y super_admin
+        if current_user.tipo_usuario != 'profesor' and not current_user.es_super_admin:
             flash('Acceso denegado. Solo para administradores.', 'error')
             return redirect(url_for('auth.login'))
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+def super_admin_required(f):
+    """Decorador para verificar que el usuario sea super_admin"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.es_super_admin:
+            flash('Acceso denegado. Solo para super administradores.', 'error')
+            return redirect(url_for('profesor.home'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -38,14 +57,23 @@ def admin_required(f):
 @admin_required
 def dashboard():
     """Dashboard principal del profesor"""
-    simulacion = Simulacion.query.first()
+    # Obtener la simulación activa
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    
     if not simulacion:
-        # Crear simulación por defecto
-        simulacion = Simulacion(dia_actual=1, estado='pausado')
+        # Crear simulación por defecto si no existe ninguna activa
+        simulacion = Simulacion(
+            nombre='Simulación 1',
+            dia_actual=1, 
+            estado='pausado',
+            activa=True,
+            capital_inicial_empresas=50000000.0
+        )
         db.session.add(simulacion)
         db.session.commit()
     
-    empresas = Empresa.query.filter_by(activa=True).all()
+    # Obtener empresas de la simulación activa
+    empresas = Empresa.query.filter_by(simulacion_id=simulacion.id, activa=True).all()
     total_estudiantes = Usuario.query.filter(Usuario.rol != 'admin').count()
     
     # Obtener métricas del día actual
@@ -64,7 +92,8 @@ def dashboard():
 def control_simulacion():
     """Controlar el avance de la simulación"""
     accion = request.form.get('accion')
-    simulacion = Simulacion.query.first()
+    # Obtener la simulación activa
+    simulacion = Simulacion.query.filter_by(activa=True).first()
     
     if not simulacion:
         flash('No existe una simulación activa', 'error')
@@ -117,20 +146,73 @@ def control_simulacion():
         db.session.commit()
         flash('🏁 Simulación finalizada. Puedes revisar los reportes finales.', 'info')
     
-    elif accion == 'reiniciar':
-        # Confirmación adicional requerida
-        confirmacion = request.form.get('confirmacion')
-        if confirmacion == 'REINICIAR':
-            simulacion.dia_actual = 1
-            simulacion.estado = 'pausado'
-            simulacion.fecha_inicio = None
-            simulacion.fecha_fin = None
-            db.session.commit()
-            flash('🔄 Simulación reiniciada al día 1. Todos los datos históricos se mantienen.', 'warning')
+    return redirect(url_for('profesor.dashboard'))
+
+
+@bp.route('/reiniciar-simulacion', methods=['POST'])
+@login_required
+@admin_required
+def reiniciar_simulacion_endpoint():
+    """Reinicia la simulación creando una nueva y manteniendo histórico"""
+    try:
+        # Obtener parámetros
+        capital_inicial = float(request.form.get('capital_inicial', 50000000))
+        nombre_simulacion = request.form.get('nombre_simulacion', None)
+        
+        # Validar capital
+        if capital_inicial < 1000000:
+            flash('⚠️ El capital inicial debe ser al menos $1,000,000', 'warning')
+            return redirect(url_for('profesor.dashboard'))
+        
+        # Ejecutar reinicio
+        nueva_sim, mensaje = reiniciar_simulacion(capital_inicial, nombre_simulacion)
+        
+        if nueva_sim:
+            flash(f'✅ {mensaje}', 'success')
         else:
-            flash('⚠️ Para reiniciar, debes confirmar escribiendo "REINICIAR"', 'warning')
+            flash(f'❌ {mensaje}', 'error')
+    
+    except Exception as e:
+        flash(f'❌ Error al reiniciar: {str(e)}', 'error')
     
     return redirect(url_for('profesor.dashboard'))
+
+
+@bp.route('/api/historial-simulaciones')
+@login_required
+@admin_required
+def api_historial_simulaciones():
+    """API para obtener el historial de todas las simulaciones"""
+    try:
+        simulaciones = Simulacion.query.order_by(Simulacion.created_at.desc()).all()
+        
+        simulaciones_data = []
+        for sim in simulaciones:
+            # Contar empresas de esta simulación
+            total_empresas = Empresa.query.filter_by(simulacion_id=sim.id).count()
+            
+            simulaciones_data.append({
+                'id': sim.id,
+                'nombre': sim.nombre,
+                'dia_actual': sim.dia_actual,
+                'estado': sim.estado,
+                'activa': sim.activa,
+                'fecha_inicio': sim.fecha_inicio.strftime('%Y-%m-%d %H:%M') if sim.fecha_inicio else None,
+                'fecha_fin': sim.fecha_fin.strftime('%Y-%m-%d %H:%M') if sim.fecha_fin else None,
+                'capital_inicial_empresas': sim.capital_inicial_empresas,
+                'total_empresas': total_empresas
+            })
+        
+        return jsonify({
+            'success': True,
+            'simulaciones': simulaciones_data
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
 
 
 @bp.route('/empresas')
@@ -138,8 +220,26 @@ def control_simulacion():
 @admin_required
 def gestionar_empresas():
     """Gestionar empresas participantes"""
-    empresas = Empresa.query.all()
-    return render_template('profesor/empresas.html', empresas=empresas)
+    # Filtrar empresas según el tipo de usuario
+    if current_user.es_super_admin:
+        empresas = Empresa.query.all()
+    else:
+        empresas = Empresa.query.filter_by(profesor_id=current_user.id).all()
+    
+    # Calcular estadísticas
+    estudiantes_total = sum(len(e.estudiantes) for e in empresas)
+    capital_total = sum(e.capital_actual for e in empresas)
+    
+    # Obtener lista de profesores (solo para super admin)
+    profesores = []
+    if current_user.es_super_admin:
+        profesores = Usuario.query.filter_by(tipo_usuario='profesor', activo=True).all()
+    
+    return render_template('profesor/empresas.html', 
+                         empresas=empresas,
+                         estudiantes_total=estudiantes_total,
+                         capital_total=capital_total,
+                         profesores=profesores)
 
 
 @bp.route('/empresas/crear', methods=['POST'])
@@ -147,76 +247,231 @@ def gestionar_empresas():
 @admin_required
 def crear_empresa():
     """Crear nueva empresa"""
-    nombre = request.form.get('nombre')
-    capital_inicial = float(request.form.get('capital_inicial', 1000000))
-    
-    empresa = Empresa(
-        nombre=nombre,
-        capital_inicial=capital_inicial,
-        capital_actual=capital_inicial
-    )
-    db.session.add(empresa)
-    db.session.commit()
-    
-    flash(f'Empresa {nombre} creada exitosamente', 'success')
-    return redirect(url_for('profesor.gestionar_empresas'))
+    try:
+        nombre = request.form.get('nombre')
+        capital_inicial = float(request.form.get('capital_inicial', 1000000))
+        capital_actual = float(request.form.get('capital_actual', capital_inicial))
+        activa = request.form.get('activa', '1') == '1'
+        
+        # Determinar el profesor responsable
+        if current_user.es_super_admin and request.form.get('profesor_id'):
+            profesor_id = int(request.form.get('profesor_id'))
+        else:
+            profesor_id = current_user.id
+        
+        empresa = Empresa(
+            nombre=nombre,
+            capital_inicial=capital_inicial,
+            capital_actual=capital_actual,
+            activa=activa,
+            profesor_id=profesor_id
+        )
+        db.session.add(empresa)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': f'Empresa {nombre} creada exitosamente'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 400
 
 
-@bp.route('/estudiantes')
+@bp.route('/empresas/<int:id>')
 @login_required
 @admin_required
-def gestionar_estudiantes():
-    """Gestionar estudiantes"""
-    estudiantes = Usuario.query.filter(Usuario.rol != 'admin').all()
-    empresas = Empresa.query.all()
-    return render_template('profesor/estudiantes.html', 
+def obtener_empresa(id):
+    """Obtener datos de una empresa específica"""
+    empresa = Empresa.query.get_or_404(id)
+    
+    # Verificar permisos
+    if not current_user.es_super_admin and empresa.profesor_id != current_user.id:
+        return jsonify({'success': False, 'message': 'No tienes permiso para acceder a esta empresa'}), 403
+    
+    return jsonify({
+        'success': True,
+        'empresa': {
+            'id': empresa.id,
+            'nombre': empresa.nombre,
+            'capital_inicial': empresa.capital_inicial,
+            'capital_actual': empresa.capital_actual,
+            'activa': empresa.activa,
+            'profesor_id': empresa.profesor_id
+        }
+    })
+
+
+@bp.route('/empresas/<int:id>/editar', methods=['POST'])
+@login_required
+@admin_required
+def editar_empresa(id):
+    """Editar una empresa existente"""
+    try:
+        empresa = Empresa.query.get_or_404(id)
+        
+        # Verificar permisos
+        if not current_user.es_super_admin and empresa.profesor_id != current_user.id:
+            return jsonify({'success': False, 'message': 'No tienes permiso para editar esta empresa'}), 403
+        
+        empresa.nombre = request.form.get('nombre', empresa.nombre)
+        empresa.capital_inicial = float(request.form.get('capital_inicial', empresa.capital_inicial))
+        empresa.capital_actual = float(request.form.get('capital_actual', empresa.capital_actual))
+        empresa.activa = request.form.get('activa', '1') == '1'
+        
+        # Solo super admin puede cambiar el profesor responsable
+        if current_user.es_super_admin and request.form.get('profesor_id'):
+            empresa.profesor_id = int(request.form.get('profesor_id'))
+        
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': f'Empresa {empresa.nombre} actualizada exitosamente'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 400
+
+
+@bp.route('/empresas/<int:id>/toggle-estado', methods=['POST'])
+@login_required
+@admin_required
+def toggle_estado_empresa(id):
+    """Activar/Desactivar una empresa"""
+    try:
+        empresa = Empresa.query.get_or_404(id)
+        
+        # Verificar permisos
+        if not current_user.es_super_admin and empresa.profesor_id != current_user.id:
+            return jsonify({'success': False, 'message': 'No tienes permiso para modificar esta empresa'}), 403
+        
+        empresa.activa = not empresa.activa
+        db.session.commit()
+        
+        estado = 'activada' if empresa.activa else 'desactivada'
+        return jsonify({'success': True, 'message': f'Empresa {empresa.nombre} {estado} exitosamente'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 400
+
+
+@bp.route('/empresas/<int:id>/eliminar', methods=['POST'])
+@login_required
+@super_admin_required
+def eliminar_empresa(id):
+    """Eliminar una empresa (solo super admin)"""
+    try:
+        empresa = Empresa.query.get_or_404(id)
+        nombre = empresa.nombre
+        
+        # Desvincular estudiantes (permitir reasignación)
+        for estudiante in empresa.estudiantes:
+            estudiante.empresa_id = None
+            estudiante.rol = None
+        
+        # Eliminar datos relacionados en orden para evitar errores de integridad
+        # 1. Movimientos de inventario
+        MovimientoInventario.query.filter_by(empresa_id=id).delete()
+        
+        # 2. Despachos regionales
+        DespachoRegional.query.filter_by(empresa_id=id).delete()
+        
+        # 3. Requerimientos de compra
+        RequerimientoCompra.query.filter_by(empresa_id=id).delete()
+        
+        # 4. Pronósticos
+        Pronostico.query.filter_by(empresa_id=id).delete()
+        
+        # 5. Métricas
+        Metrica.query.filter_by(empresa_id=id).delete()
+        
+        # 6. Decisiones
+        Decision.query.filter_by(empresa_id=id).delete()
+        
+        # 7. Compras
+        Compra.query.filter_by(empresa_id=id).delete()
+        
+        # 8. Ventas
+        Venta.query.filter_by(empresa_id=id).delete()
+        
+        # 9. Inventarios
+        Inventario.query.filter_by(empresa_id=id).delete()
+        
+        # 10. Finalmente eliminar la empresa
+        db.session.delete(empresa)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': f'Empresa {nombre} eliminada exitosamente'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 400
+
+
+@bp.route('/empresas/<int:id>/reportes')
+@login_required
+@admin_required
+def reportes_empresa(id):
+    """Ver reportes y análisis de una empresa específica"""
+    empresa = Empresa.query.get_or_404(id)
+    
+    # Verificar permisos
+    if not current_user.es_super_admin and empresa.profesor_id != current_user.id:
+        flash('No tienes permiso para ver los reportes de esta empresa', 'danger')
+        return redirect(url_for('profesor.gestionar_empresas'))
+    
+    # Obtener estudiantes de la empresa
+    estudiantes = empresa.estudiantes
+    
+    # Obtener todas las decisiones de la empresa
+    decisiones = Decision.query.filter_by(empresa_id=id).order_by(Decision.dia_simulacion.desc(), Decision.created_at.desc()).all()
+    
+    # Obtener métricas por día
+    metricas_dias = Metrica.query.filter_by(empresa_id=id).order_by(Metrica.dia_simulacion.asc()).all()
+    
+    # Calcular estadísticas generales
+    total_decisiones = len(decisiones)
+    dias_activos = len(set(d.dia_simulacion for d in decisiones)) if decisiones else 0
+    
+    # Agrupar decisiones por rol
+    decisiones_por_rol = {}
+    for estudiante in estudiantes:
+        if estudiante.rol:
+            if estudiante.rol not in decisiones_por_rol:
+                decisiones_por_rol[estudiante.rol] = {
+                    'estudiantes': [],
+                    'total_decisiones': 0,
+                    'promedio_dia': 0,
+                    'ultimo_dia': 0
+                }
+            
+            decisiones_por_rol[estudiante.rol]['estudiantes'].append(estudiante)
+            
+            # Contar decisiones de este estudiante
+            decisiones_est = [d for d in decisiones if d.usuario_id == estudiante.id]
+            decisiones_por_rol[estudiante.rol]['total_decisiones'] += len(decisiones_est)
+            
+            if decisiones_est:
+                ultimo_dia = max(d.dia_simulacion for d in decisiones_est)
+                if ultimo_dia > decisiones_por_rol[estudiante.rol]['ultimo_dia']:
+                    decisiones_por_rol[estudiante.rol]['ultimo_dia'] = ultimo_dia
+    
+    # Calcular promedios por día
+    for rol_data in decisiones_por_rol.values():
+        if rol_data['ultimo_dia'] > 0:
+            rol_data['promedio_dia'] = rol_data['total_decisiones'] / rol_data['ultimo_dia']
+    
+    # Agrupar decisiones por estudiante
+    decisiones_estudiantes = {}
+    for estudiante in estudiantes:
+        decisiones_estudiantes[estudiante.id] = [d for d in decisiones if d.usuario_id == estudiante.id]
+    
+    # Decisiones para timeline (ordenadas por fecha)
+    decisiones_timeline = sorted(decisiones, key=lambda x: (x.dia_simulacion, x.created_at), reverse=True)[:100]  # Últimas 100
+    
+    return render_template('profesor/reportes_empresa.html',
+                         empresa=empresa,
                          estudiantes=estudiantes,
-                         empresas=empresas)
-
-
-@bp.route('/estudiantes/crear', methods=['POST'])
-@login_required
-@admin_required
-def crear_estudiante():
-    """Crear nuevo estudiante"""
-    from werkzeug.security import generate_password_hash
-    
-    rol = request.form.get('rol')
-    empresa_id = int(request.form.get('empresa_id'))
-    nombre_completo = request.form.get('nombre_completo')
-    email = request.form.get('email')
-    
-    # Generar username automático: estudiante_rol_empresa
-    roles_num = {
-        'ventas': '1',
-        'planeacion': '2',
-        'compras': '3',
-        'logistica': '4'
-    }
-    username = f"estudiante_{roles_num[rol]}_{empresa_id}"
-    
-    # Verificar si ya existe
-    if Usuario.query.filter_by(username=username).first():
-        flash(f'Ya existe un estudiante con rol {rol} en la empresa {empresa_id}', 'error')
-        return redirect(url_for('profesor.gestionar_estudiantes'))
-    
-    # Contraseña por defecto (puede cambiarse después)
-    password = generate_password_hash('estudiante123')
-    
-    estudiante = Usuario(
-        username=username,
-        password=password,
-        rol=rol,
-        empresa_id=empresa_id,
-        nombre_completo=nombre_completo,
-        email=email
-    )
-    
-    db.session.add(estudiante)
-    db.session.commit()
-    
-    flash(f'Estudiante {username} creado exitosamente', 'success')
-    return redirect(url_for('profesor.gestionar_estudiantes'))
+                         total_decisiones=total_decisiones,
+                         dias_activos=dias_activos,
+                         decisiones_por_rol=decisiones_por_rol,
+                         decisiones_estudiantes=decisiones_estudiantes,
+                         decisiones_timeline=decisiones_timeline,
+                         metricas_dias=metricas_dias)
 
 
 @bp.route('/escenarios/activar/<int:escenario_id>', methods=['POST'])
@@ -232,7 +487,7 @@ def activar_escenario(escenario_id):
 @admin_required
 def ver_reportes():
     """Ver reportes y análisis de desempeño"""
-    simulacion = Simulacion.query.first()
+    simulacion = Simulacion.query.filter_by(activa=True).first()
     empresas = Empresa.query.all()
     
     # Obtener métricas de todas las empresas
@@ -427,7 +682,7 @@ def calcular_metricas(dia_actual):
 @admin_required
 def gestion_escenarios():
     """Panel de gestión de disrupciones y escenarios"""
-    simulacion = Simulacion.query.first()
+    simulacion = Simulacion.query.filter_by(activa=True).first()
     
     # Obtener disrupciones activas
     disrupciones_activas = DisrupcionActiva.query.filter_by(
@@ -466,7 +721,7 @@ def gestion_escenarios():
 @admin_required
 def activar_disrupcion():
     """Activa una nueva disrupción en la simulación"""
-    simulacion = Simulacion.query.first()
+    simulacion = Simulacion.query.filter_by(activa=True).first()
     
     tipo_disrupcion = request.form.get('tipo_disrupcion')
     severidad = request.form.get('severidad')
@@ -578,7 +833,7 @@ def obtener_plantilla_disrupcion(tipo, severidad):
 @admin_required
 def resumen_simulacion():
     """Obtiene el resumen actual de la simulación"""
-    simulacion = Simulacion.query.first()
+    simulacion = Simulacion.query.filter_by(activa=True).first()
     
     if not simulacion:
         return jsonify({
@@ -592,3 +847,391 @@ def resumen_simulacion():
         'success': True,
         'resumen': resumen
     })
+
+
+@bp.route('/estudiantes')
+@login_required
+@admin_required
+def gestionar_estudiantes():
+    """Página para gestionar estudiantes"""
+    # Obtener filtros
+    filtro_estado = request.args.get('estado', 'pendiente')  # pendiente, asignado, todos
+    filtro_universidad = request.args.get('universidad', '')
+    filtro_sede = request.args.get('sede', '')
+    filtro_buscar = request.args.get('buscar', '')
+    
+    # Query base - solo estudiantes
+    query = Usuario.query.filter_by(tipo_usuario='estudiante')
+    
+    # Filtrar por profesor si no es super admin
+    if not current_user.es_super_admin:
+        query = query.filter(
+            db.or_(
+                Usuario.profesor_id == current_user.id,
+                Usuario.profesor_id == None  # Estudiantes sin asignar pueden ser asignados por cualquier profesor
+            )
+        )
+    
+    # Aplicar filtro de búsqueda (email o nombre)
+    if filtro_buscar:
+        buscar_term = f'%{filtro_buscar}%'
+        query = query.filter(
+            db.or_(
+                Usuario.email.ilike(buscar_term),
+                Usuario.nombre_completo.ilike(buscar_term),
+                Usuario.codigo_estudiante.ilike(buscar_term)
+            )
+        )
+    
+    # Aplicar filtros de estado
+    if filtro_estado == 'pendiente':
+        query = query.filter(Usuario.rol == None)
+    elif filtro_estado == 'asignado':
+        query = query.filter(Usuario.rol != None)
+    
+    if filtro_universidad:
+        query = query.filter_by(universidad=filtro_universidad)
+    
+    if filtro_sede:
+        query = query.filter_by(sede=filtro_sede)
+    
+    estudiantes = query.order_by(Usuario.created_at.desc()).all()
+    
+    # Obtener empresas disponibles según privilegios
+    if current_user.es_super_admin:
+        empresas = Empresa.query.filter_by(activa=True).all()
+    else:
+        empresas = Empresa.query.filter_by(activa=True, profesor_id=current_user.id).all()
+    
+    # Roles disponibles para asignar
+    roles_disponibles = ['ventas', 'planeacion', 'compras', 'logistica']
+    
+    # Listas para filtros
+    universidades = db.session.query(Usuario.universidad).filter(
+        Usuario.tipo_usuario=='estudiante',
+        Usuario.universidad != None
+    ).distinct().all()
+    universidades = [u[0] for u in universidades if u[0]]
+    
+    sedes = db.session.query(Usuario.sede).filter(
+        Usuario.tipo_usuario=='estudiante',
+        Usuario.sede != None
+    ).distinct().all()
+    sedes = [s[0] for s in sedes if s[0]]
+    
+    return render_template('profesor/gestionar_estudiantes.html',
+                         estudiantes=estudiantes,
+                         empresas=empresas,
+                         roles_disponibles=roles_disponibles,
+                         universidades=universidades,
+                         sedes=sedes,
+                         filtro_estado=filtro_estado,
+                         filtro_universidad=filtro_universidad,
+                         filtro_sede=filtro_sede,
+                         filtro_buscar=filtro_buscar)
+
+
+@bp.route('/estudiantes/<int:id>/asignar', methods=['POST'])
+@login_required
+@admin_required
+def asignar_estudiante(id):
+    """Asignar rol y empresa a un estudiante"""
+    estudiante = Usuario.query.get_or_404(id)
+    
+    # Verificar que sea un estudiante
+    if estudiante.tipo_usuario != 'estudiante':
+        return jsonify({
+            'success': False,
+            'error': 'Solo se pueden asignar roles a estudiantes'
+        }), 400
+    
+    rol = request.form.get('rol')
+    empresa_id = request.form.get('empresa_id')
+    
+    if not rol or not empresa_id:
+        return jsonify({
+            'success': False,
+            'error': 'Debe especificar rol y empresa'
+        }), 400
+    
+    # Validar rol
+    roles_validos = ['ventas', 'planeacion', 'compras', 'logistica']
+    if rol not in roles_validos:
+        return jsonify({
+            'success': False,
+            'error': 'Rol no válido'
+        }), 400
+    
+    # Validar empresa
+    empresa = Empresa.query.get(empresa_id)
+    if not empresa or not empresa.activa:
+        return jsonify({
+            'success': False,
+            'error': 'Empresa no válida'
+        }), 400
+    
+    # Verificar que el profesor tenga permisos sobre esta empresa
+    if not current_user.es_super_admin and empresa.profesor_id != current_user.id:
+        return jsonify({
+            'success': False,
+            'error': 'No tienes permisos sobre esta empresa'
+        }), 403
+    
+    # Asignar
+    estudiante.rol = rol
+    estudiante.empresa_id = empresa_id
+    estudiante.profesor_id = empresa.profesor_id  # Vincular con el profesor de la empresa
+    
+    # Generar username si no lo tiene
+    if not estudiante.username or estudiante.username.startswith('temp_'):
+        estudiante.username = f'estudiante_{empresa.nombre}_{rol}'
+    
+    db.session.commit()
+    
+    flash(f'✅ Estudiante {estudiante.nombre_completo or estudiante.username} asignado a {empresa.nombre} como {rol.upper()}', 'success')
+    
+    return jsonify({
+        'success': True,
+        'message': f'Estudiante asignado correctamente'
+    })
+
+
+@bp.route('/estudiantes/<int:id>/desasignar', methods=['POST'])
+@login_required
+@admin_required
+def desasignar_estudiante(id):
+    """Remover asignación de rol y empresa a un estudiante"""
+    estudiante = Usuario.query.get_or_404(id)
+    
+    if estudiante.tipo_usuario != 'estudiante':
+        return jsonify({
+            'success': False,
+            'error': 'Solo se pueden desasignar estudiantes'
+        }), 400
+    
+    estudiante.rol = None
+    estudiante.empresa_id = None
+    
+    db.session.commit()
+    
+    flash(f'✅ Estudiante {estudiante.nombre_completo or estudiante.username} desasignado correctamente', 'success')
+    
+    return jsonify({
+        'success': True,
+        'message': 'Estudiante desasignado correctamente'
+    })
+
+
+@bp.route('/')
+@bp.route('/home')
+@login_required
+@admin_required
+def home():
+    """Página de inicio del docente con resumen de empresas"""
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    
+    # Filtrar empresas según si es super admin o profesor regular
+    if current_user.es_super_admin:
+        # Super admin ve todas las empresas
+        empresas = Empresa.query.filter_by(activa=True).all()
+    else:
+        # Profesor regular solo ve sus empresas
+        empresas = Empresa.query.filter_by(activa=True, profesor_id=current_user.id).all()
+    
+    # Contar estudiantes según privilegios
+    if current_user.es_super_admin:
+        total_estudiantes = Usuario.query.filter(
+            Usuario.tipo_usuario == 'estudiante',
+            Usuario.rol != None
+        ).count()
+        
+        estudiantes_pendientes = Usuario.query.filter(
+            Usuario.tipo_usuario == 'estudiante',
+            Usuario.rol == None
+        ).count()
+    else:
+        # Profesor regular solo ve sus estudiantes
+        total_estudiantes = Usuario.query.filter(
+            Usuario.profesor_id == current_user.id,
+            Usuario.rol != None
+        ).count()
+        
+        estudiantes_pendientes = Usuario.query.filter(
+            Usuario.profesor_id == current_user.id,
+            Usuario.rol == None
+        ).count()
+    
+    return render_template('profesor/home.html',
+                         simulacion=simulacion,
+                         empresas=empresas,
+                         total_estudiantes=total_estudiantes,
+                         estudiantes_pendientes=estudiantes_pendientes)
+
+
+@bp.route('/api/empresa/<int:empresa_id>/estudiantes')
+@login_required
+@admin_required
+def api_empresa_estudiantes(empresa_id):
+    """API para obtener estudiantes de una empresa"""
+    empresa = Empresa.query.get_or_404(empresa_id)
+    estudiantes = Usuario.query.filter_by(empresa_id=empresa_id).all()
+    
+    return jsonify({
+        'success': True,
+        'estudiantes': [{
+            'id': est.id,
+            'nombre_completo': est.nombre_completo or est.username,
+            'email': est.email,
+            'rol': est.rol,
+            'codigo_estudiante': est.codigo_estudiante
+        } for est in estudiantes]
+    })
+
+
+# ============================================================================
+# RUTAS PARA GESTIÓN DE PROFESORES (SOLO SUPER ADMIN)
+# ============================================================================
+
+@bp.route('/profesores')
+@login_required
+@super_admin_required
+def gestionar_profesores():
+    """Página para gestionar profesores - Solo super admin"""
+    filtro_buscar = request.args.get('buscar', '')
+    filtro_universidad = request.args.get('universidad', '')
+    
+    # Query base - solo profesores
+    query = Usuario.query.filter_by(tipo_usuario='profesor')
+    
+    # Aplicar filtro de búsqueda
+    if filtro_buscar:
+        buscar_term = f'%{filtro_buscar}%'
+        query = query.filter(
+            db.or_(
+                Usuario.email.ilike(buscar_term),
+                Usuario.nombre_completo.ilike(buscar_term),
+                Usuario.codigo_profesor.ilike(buscar_term)
+            )
+        )
+    
+    if filtro_universidad:
+        query = query.filter_by(universidad=filtro_universidad)
+    
+    profesores = query.order_by(Usuario.created_at.desc()).all()
+    
+    # Listas para filtros
+    universidades = db.session.query(Usuario.universidad).filter(
+        Usuario.tipo_usuario=='profesor',
+        Usuario.universidad != None
+    ).distinct().all()
+    universidades = [u[0] for u in universidades if u[0]]
+    
+    # Estadísticas
+    for profesor in profesores:
+        profesor.total_estudiantes = Usuario.query.filter_by(profesor_id=profesor.id).count()
+        profesor.total_empresas = Empresa.query.filter_by(profesor_id=profesor.id).count()
+    
+    return render_template('profesor/gestionar_profesores.html',
+                         profesores=profesores,
+                         universidades=universidades,
+                         filtro_buscar=filtro_buscar,
+                         filtro_universidad=filtro_universidad)
+
+
+@bp.route('/profesores/crear', methods=['POST'])
+@login_required
+@super_admin_required
+def crear_profesor():
+    """Crear un nuevo profesor"""
+    from werkzeug.security import generate_password_hash
+    
+    nombre_completo = request.form.get('nombre_completo')
+    email = request.form.get('email')
+    password = request.form.get('password')
+    universidad = request.form.get('universidad')
+    codigo_profesor = request.form.get('codigo_profesor')
+    
+    if not all([nombre_completo, email, password]):
+        return jsonify({'success': False, 'error': 'Campos obligatorios incompletos'}), 400
+    
+    # Verificar si el email ya existe
+    if Usuario.query.filter_by(email=email).first():
+        return jsonify({'success': False, 'error': 'El email ya está registrado'}), 400
+    
+    # Generar username desde email
+    username = email.split('@')[0]
+    base_username = username
+    counter = 1
+    while Usuario.query.filter_by(username=username).first():
+        username = f"{base_username}{counter}"
+        counter += 1
+    
+    # Crear nuevo profesor
+    nuevo_profesor = Usuario(
+        username=username,
+        password=generate_password_hash(password),
+        nombre_completo=nombre_completo,
+        email=email,
+        tipo_usuario='profesor',
+        rol='admin',  # Los profesores tienen rol admin
+        universidad=universidad or 'No especificada',
+        codigo_profesor=codigo_profesor,
+        es_super_admin=False,
+        activo=True
+    )
+    
+    try:
+        db.session.add(nuevo_profesor)
+        db.session.commit()
+        flash(f'✅ Profesor {nombre_completo} creado exitosamente', 'success')
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/profesores/<int:id>/toggle-estado', methods=['POST'])
+@login_required
+@super_admin_required
+def toggle_estado_profesor(id):
+    """Activar/Desactivar profesor"""
+    profesor = Usuario.query.get_or_404(id)
+    
+    if profesor.tipo_usuario != 'profesor':
+        return jsonify({'success': False, 'error': 'Solo se puede modificar el estado de profesores'}), 400
+    
+    profesor.activo = not profesor.activo
+    db.session.commit()
+    
+    estado = 'activado' if profesor.activo else 'desactivado'
+    flash(f'Profesor {profesor.nombre_completo} {estado}', 'success')
+    
+    return jsonify({'success': True, 'activo': profesor.activo})
+
+
+@bp.route('/profesores/<int:id>/eliminar', methods=['POST'])
+@login_required
+@super_admin_required
+def eliminar_profesor(id):
+    """Eliminar profesor y reasignar sus recursos"""
+    profesor = Usuario.query.get_or_404(id)
+    
+    if profesor.tipo_usuario != 'profesor':
+        return jsonify({'success': False, 'error': 'Solo se pueden eliminar profesores'}), 400
+    
+    # Reasignar estudiantes al super admin
+    estudiantes = Usuario.query.filter_by(profesor_id=profesor.id).all()
+    for est in estudiantes:
+        est.profesor_id = current_user.id
+    
+    # Reasignar empresas al super admin
+    empresas = Empresa.query.filter_by(profesor_id=profesor.id).all()
+    for emp in empresas:
+        emp.profesor_id = current_user.id
+    
+    db.session.delete(profesor)
+    db.session.commit()
+    
+    flash(f'Profesor eliminado. {len(estudiantes)} estudiantes y {len(empresas)} empresas reasignados', 'info')
+    return jsonify({'success': True})
+

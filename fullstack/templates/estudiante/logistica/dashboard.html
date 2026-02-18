@@ -5,7 +5,7 @@
 {% block extra_css %}
 <style>
     .sidebar {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
         min-height: 100vh;
         padding: 0;
     }
@@ -43,7 +43,7 @@
     .metric-card h3 {
         font-size: 2rem;
         margin: 10px 0;
-        color: #2c3e50;
+        color: #34495e;
     }
     
     .metric-card p {
@@ -57,7 +57,7 @@
         border-radius: 8px;
         padding: 15px;
         margin-bottom: 10px;
-        border-left: 4px solid #3498db;
+        border-left: 4px solid #c41e3a;
         transition: all 0.3s;
     }
     
@@ -91,10 +91,10 @@
         font-weight: bold;
     }
     
-    .region-andina { background: #3498db; color: white; }
+    .region-andina { background: #c41e3a; color: white; }
     .region-caribe { background: #f39c12; color: white; }
     .region-pacifica { background: #2ecc71; color: white; }
-    .region-orinoquia { background: #9b59b6; color: white; }
+    .region-orinoquia { background: #c41e3a; color: white; }
     .region-amazonia { background: #1abc9c; color: white; }
     
     .alerta-card {
@@ -116,7 +116,7 @@
     }
     
     .alerta-card.info {
-        border-left-color: #3498db;
+        border-left-color: #c41e3a;
         background: linear-gradient(to right, rgba(52, 152, 219, 0.1), white);
     }
     
@@ -177,7 +177,7 @@
     }
     
     .stock-alto { background: linear-gradient(90deg, #2ecc71, #27ae60); }
-    .stock-normal { background: linear-gradient(90deg, #3498db, #2980b9); }
+    .stock-normal { background: linear-gradient(90deg, #c41e3a, #2980b9); }
     .stock-bajo { background: linear-gradient(90deg, #f39c12, #e67e22); }
     .stock-critico { background: linear-gradient(90deg, #e74c3c, #c0392b); }
     
@@ -203,23 +203,7 @@
 <div class="container-fluid">
     <div class="row">
         <!-- Sidebar -->
-        <div class="col-md-2 sidebar">
-            <h5 class="text-white px-3 py-4">
-                <i class="fas fa-truck me-2"></i>Logística
-            </h5>
-            <a href="{{ url_for('estudiante.dashboard_logistica') }}" class="active">
-                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
-            </a>
-            <a href="{{ url_for('estudiante.vista_recepcion') }}">
-                <i class="fas fa-inbox me-2"></i>Recepción
-            </a>
-            <a href="{{ url_for('estudiante.vista_despacho') }}">
-                <i class="fas fa-shipping-fast me-2"></i>Despacho
-            </a>
-            <a href="{{ url_for('estudiante.vista_movimientos') }}">
-                <i class="fas fa-exchange-alt me-2"></i>Movimientos
-            </a>
-        </div>
+        {% include 'estudiante/_sidebar.html' %}
 
         <!-- Main Content -->
         <div class="col-md-10 p-4">

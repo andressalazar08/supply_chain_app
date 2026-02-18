@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard Ventas - {{ empresa.nombre }}{% endblock %}
+{% block title %}Ventas - {{ empresa.nombre }}{% endblock %}
 
 {% block extra_css %}
 <style>
     .sidebar {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
         min-height: 100vh;
         padding: 0;
     }
@@ -26,114 +26,98 @@
         border-left-color: #fff;
     }
     
-    .metric-card {
-        background: white;
-        border-radius: 10px;
+    .content-area {
+        background-color: #f8f9fa;
         padding: 20px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
-        transition: transform 0.3s;
+        min-height: 100vh;
+    }
+    
+    .nav-tabs .nav-link {
+        color: #666;
+        font-weight: 600;
+        border: none;
+        border-bottom: 3px solid transparent;
+        padding: 15px 25px;
+        transition: all 0.3s;
+    }
+    
+    .nav-tabs .nav-link:hover {
+        color: #c41e3a;
+    }
+    
+    .nav-tabs .nav-link.active {
+        color: #c41e3a;
+        border-bottom-color: #c41e3a;
+        background: transparent;
+    }
+    
+    .metric-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        border-left: 5px solid #c41e3a;
+        height: 100%;
     }
     
     .metric-card:hover {
         transform: translateY(-5px);
-        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
     }
     
-    .metric-card h3 {
+    .metric-value {
         font-size: 2rem;
-        margin: 10px 0;
-        color: #2c3e50;
-    }
-    
-    .metric-card p {
-        color: #7f8c8d;
-        margin: 0;
-        font-weight: 500;
-    }
-    
-    .metric-card i {
-        font-size: 2.5rem;
-        opacity: 0.3;
-    }
-    
-    .precio-card {
-        background: white;
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 15px;
-        border: 2px solid #ecf0f1;
-        transition: all 0.3s;
-    }
-    
-    .precio-card:hover {
-        border-color: #667eea;
-        box-shadow: 0 2px 15px rgba(102,126,234,0.2);
-    }
-    
-    .precio-actual {
-        font-size: 1.5rem;
         font-weight: bold;
-        color: #2ecc71;
+        color: #c41e3a;
     }
     
-    .precio-sugerido {
-        color: #3498db;
+    #matrizPrecios input[type="number"] {
+        width: 100px;
+        text-align: center;
+        padding: 8px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
         font-weight: 600;
     }
     
-    .btn-aplicar {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border: none;
-        color: white;
-        padding: 8px 20px;
-        border-radius: 5px;
-        transition: all 0.3s;
+    #matrizPrecios input[type="number"]:focus {
+        border-color: #c41e3a;
+        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        outline: none;
     }
     
-    .btn-aplicar:hover {
-        transform: scale(1.05);
-        box-shadow: 0 4px 15px rgba(102,126,234,0.4);
+    #matrizPrecios .producto-row:hover {
+        background-color: #f8f9fa;
     }
     
-    .region-badge {
-        display: inline-block;
-        padding: 5px 12px;
-        border-radius: 15px;
+    #matrizPrecios .precio-bajo {
+        background-color: #fff3cd;
+        border-color: #ffc107 !important;
+    }
+    
+    #matrizPrecios .precio-negativo {
+        background-color: #f8d7da;
+        border-color: #dc3545 !important;
+    }
+    
+    .margen-badge {
         font-size: 0.85rem;
-        font-weight: 600;
-        margin: 2px;
+        padding: 4px 8px;
     }
     
-    .region-caribe { background: #3498db; color: white; }
-    .region-pacifica { background: #2ecc71; color: white; }
-    .region-orinoquia { background: #f39c12; color: white; }
-    .region-amazonia { background: #27ae60; color: white; }
-    .region-andina { background: #9b59b6; color: white; }
-    
-    .chart-container {
-        position: relative;
-        height: 300px;
-        margin-bottom: 30px;
-    }
-    
-    .table-ventas {
+    .region-card {
         background: white;
-        border-radius: 8px;
-        overflow: hidden;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        transition: all 0.3s ease;
+        border-left: 4px solid #c41e3a;
     }
     
-    .table-ventas thead {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-    }
-    
-    .alert-ventas-perdidas {
-        background: #fff3cd;
-        border-left: 4px solid #ffc107;
-        padding: 15px;
-        border-radius: 5px;
-        margin-bottom: 20px;
+    .region-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.12);
     }
 </style>
 {% endblock %}
@@ -142,300 +126,192 @@
 <div class="container-fluid">
     <div class="row">
         <!-- Sidebar -->
-        <div class="col-md-2 sidebar">
-            <h5 class="text-white px-3 py-4">
-                <i class="fas fa-chart-line me-2"></i>Módulo Ventas
-            </h5>
-            <a href="{{ url_for('estudiante.dashboard_ventas') }}" class="active">
-                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
-            </a>
-            <a href="{{ url_for('estudiante.analisis_regional') }}">
-                <i class="fas fa-map-marked-alt me-2"></i>Análisis Regional
-            </a>
-            <a href="#ajuste-precios">
-                <i class="fas fa-tag me-2"></i>Ajuste de Precios
-            </a>
-            <a href="#historico">
-                <i class="fas fa-history me-2"></i>Historial
-            </a>
-        </div>
-
+        {% include 'estudiante/_sidebar.html' %}
+        
         <!-- Main Content -->
-        <div class="col-md-10 p-4">
+        <div class="col-md-10 content-area">
             <!-- Header -->
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h1><i class="fas fa-chart-line me-2"></i>Dashboard de Ventas</h1>
-                    <p class="text-muted mb-0">
-                        <strong>{{ empresa.nombre }}</strong> | 
-                        Día {{ simulacion.dia_actual }} | 
-                        <span class="badge bg-{{ 'success' if simulacion.estado == 'en_curso' else 'warning' }}">
-                            {{ simulacion.estado.upper() }}
-                        </span>
-                    </p>
+                    <h2><i class="fas fa-chart-line"></i> Gestión de Ventas</h2>
+                    <p class="text-muted">Estrategia de precios y análisis de mercado</p>
                 </div>
-                <div>
-                    <span class="badge bg-primary" style="font-size: 1rem; padding: 10px 15px;">
-                        <i class="fas fa-user me-2"></i>{{ current_user.username }}
-                    </span>
-                </div>
-            </div>
-
-            <!-- Métricas Principales -->
-            <div class="row mb-4">
-                <div class="col-md-3">
-                    <div class="metric-card">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <p>Ingresos Hoy</p>
-                                <h3>${{ "{:,.0f}".format(total_ingresos_hoy) }}</h3>
-                            </div>
-                            <i class="fas fa-dollar-sign text-success"></i>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="metric-card">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <p>Unidades Vendidas</p>
-                                <h3>{{ "{:,.0f}".format(total_unidades_hoy) }}</h3>
-                            </div>
-                            <i class="fas fa-box text-info"></i>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="metric-card">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <p>Nivel de Servicio</p>
-                                <h3>{{ "%.1f"|format(nivel_servicio) }}%</h3>
-                            </div>
-                            <i class="fas fa-chart-pie text-primary"></i>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="metric-card">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <p>Ventas Perdidas</p>
-                                <h3 class="text-danger">{{ "{:,.0f}".format(ventas_perdidas_hoy) }}</h3>
-                            </div>
-                            <i class="fas fa-exclamation-triangle text-warning"></i>
-                        </div>
+                <div class="text-end">
+                    <div class="badge bg-primary fs-6 px-3 py-2">
+                        <i class="fas fa-calendar"></i> Día {{ simulacion.dia_actual }}
                     </div>
                 </div>
             </div>
 
-            <!-- Alerta de Ventas Perdidas -->
-            {% if ventas_perdidas_hoy > 0 %}
-            <div class="alert-ventas-perdidas">
-                <i class="fas fa-exclamation-circle me-2"></i>
-                <strong>Atención:</strong> Se han perdido {{ "{:,.0f}".format(ventas_perdidas_hoy) }} unidades en ventas hoy por falta de inventario.
-                Coordina con el equipo de <strong>Logística</strong> para optimizar el stock.
-            </div>
-            {% endif %}
+            <!-- Navigation Tabs -->
+            <ul class="nav nav-tabs mb-4" id="ventasTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab">
+                        <i class="fas fa-chart-pie"></i> Dashboard
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="precios-tab" data-bs-toggle="tab" data-bs-target="#precios" type="button" role="tab">
+                        <i class="fas fa-tags"></i> Configurar Precios
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="regiones-tab" data-bs-toggle="tab" data-bs-target="#regiones" type="button" role="tab">
+                        <i class="fas fa-map-marked-alt"></i> Análisis por Región
+                    </button>
+                </li>
+            </ul>
 
-            <!-- Gráficos de Análisis -->
-            <div class="row mb-4">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">
-                                <i class="fas fa-map-marked-alt me-2"></i>Ventas por Región (Últimos 7 días)
-                            </h5>
-                            <div class="chart-container">
-                                <canvas id="chartRegiones"></canvas>
+            <!-- Tabs Content -->
+            <div class="tab-content" id="ventasTabsContent">
+                
+                <!-- TAB 1: Dashboard de Métricas -->
+                <div class="tab-pane fade show active" id="dashboard" role="tabpanel">
+                    <!-- Métricas principales -->
+                    <div class="row mb-4">
+                        <div class="col-md-3 mb-3">
+                            <div class="metric-card">
+                                <h6 class="text-muted mb-2"><i class="fas fa-shopping-cart"></i> Ventas Hoy</h6>
+                                <div class="metric-value" id="ventasHoy">0</div>
+                                <small class="text-muted">unidades</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="metric-card">
+                                <h6 class="text-muted mb-2"><i class="fas fa-dollar-sign"></i> Ingresos Hoy</h6>
+                                <div class="metric-value text-success" id="ingresosHoy">$0</div>
+                                <small class="text-muted">pesos</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="metric-card">
+                                <h6 class="text-muted mb-2"><i class="fas fa-exclamation-triangle"></i> Ventas Perdidas</h6>
+                                <div class="metric-value text-danger" id="ventasPerdidas">0</div>
+                                <small class="text-muted">unidades</small>
                             </div>
                         </div>
                     </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">
-                                <i class="fas fa-boxes me-2"></i>Ingresos por Producto (Últimos 7 días)
-                            </h5>
-                            <div class="chart-container">
-                                <canvas id="chartProductos"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Desempeño Regional -->
-            <div class="card mb-4">
-                <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="fas fa-globe-americas me-2"></i>Desempeño por Región de Colombia
-                    </h5>
-                    <div class="table-responsive">
-                        <table class="table table-ventas table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Región</th>
-                                    <th>Ingresos (7 días)</th>
-                                    <th>Unidades</th>
-                                    <th>Ventas Perdidas</th>
-                                    <th>Participación</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% set total_general = ventas_por_region.values()|sum(attribute='total_ingresos') %}
-                                {% for region in regiones %}
-                                <tr>
-                                    <td>
-                                        <span class="region-badge region-{{ region.lower() }}">
-                                            {{ region }}
-                                        </span>
-                                    </td>
-                                    <td><strong>${{ "{:,.2f}".format(ventas_por_region[region]['total_ingresos']) }}</strong></td>
-                                    <td>{{ "{:,.0f}".format(ventas_por_region[region]['total_unidades']) }}</td>
-                                    <td class="text-danger">{{ "{:,.0f}".format(ventas_por_region[region]['ventas_perdidas']) }}</td>
-                                    <td>
-                                        {% set participacion = (ventas_por_region[region]['total_ingresos'] / total_general * 100) if total_general > 0 else 0 %}
-                                        <div class="progress" style="height: 20px;">
-                                            <div class="progress-bar bg-success" style="width: {{ participacion }}%">
-                                                {{ "%.1f"|format(participacion) }}%
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Ajuste de Precios -->
-            <div class="card mb-4" id="ajuste-precios">
-                <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="fas fa-tag me-2"></i>Ajuste de Precios de Productos
-                    </h5>
-                    <p class="text-muted">
-                        Modifica los precios para influir en la demanda. Ten en cuenta la elasticidad y la competencia.
-                    </p>
-                    
+                    <!-- Top productos -->
                     <div class="row">
-                        {% for producto in productos %}
-                        <div class="col-md-6 col-lg-4">
-                            <div class="precio-card">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h6 class="mb-0"><strong>{{ producto.nombre }}</strong></h6>
-                                    <span class="badge bg-secondary">{{ producto.codigo }}</span>
+                        <div class="col-md-6 mb-3">
+                            <div class="card">
+                                <div class="card-header bg-white">
+                                    <h5><i class="fas fa-trophy"></i> Productos Más Vendidos</h5>
                                 </div>
-                                
-                                <div class="mb-2">
-                                    <small class="text-muted">Costo Unitario:</small>
-                                    <span class="text-danger">${{ "{:,.2f}".format(producto.costo_unitario) }}</span>
-                                </div>
-                                
-                                <div class="d-flex justify-content-between mb-2">
-                                    <div>
-                                        <small class="text-muted d-block">Precio Actual</small>
-                                        <span class="precio-actual">${{ "{:,.2f}".format(producto.precio_actual) }}</span>
-                                    </div>
-                                    <div>
-                                        <small class="text-muted d-block">Sugerido</small>
-                                        <span class="precio-sugerido">${{ "{:,.2f}".format(producto.precio_sugerido) }}</span>
+                                <div class="card-body">
+                                    <div id="topProductos">
+                                        <div class="text-center py-4">
+                                            <div class="spinner-border text-primary"></div>
+                                        </div>
                                     </div>
                                 </div>
-                                
-                                <form method="POST" action="{{ url_for('estudiante.ajustar_precio') }}" class="mt-3">
-                                    <input type="hidden" name="producto_id" value="{{ producto.id }}">
-                                    <div class="input-group input-group-sm">
-                                        <span class="input-group-text">$</span>
-                                        <input type="number" 
-                                               name="nuevo_precio" 
-                                               class="form-control" 
-                                               step="0.01" 
-                                               min="{{ producto.costo_unitario }}"
-                                               value="{{ producto.precio_actual }}"
-                                               required>
-                                        <button type="submit" class="btn btn-aplicar btn-sm">
-                                            <i class="fas fa-check me-1"></i>Aplicar
-                                        </button>
-                                    </div>
-                                    <small class="text-muted">
-                                        Margen actual: 
-                                        {% set margen = ((producto.precio_actual - producto.costo_unitario) / producto.precio_actual * 100) if producto.precio_actual > 0 else 0 %}
-                                        <strong class="{{ 'text-success' if margen > 30 else 'text-warning' if margen > 15 else 'text-danger' }}">
-                                            {{ "%.1f"|format(margen) }}%
-                                        </strong>
-                                    </small>
-                                </form>
                             </div>
                         </div>
-                        {% endfor %}
+                        <div class="col-md-6 mb-3">
+                            <div class="card">
+                                <div class="card-header bg-white">
+                                    <h5><i class="fas fa-map-marker-alt"></i> Ventas por Región</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="ventasPorRegion">
+                                        <div class="text-center py-4">
+                                            <div class="spinner-border text-primary"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Análisis de Competitividad -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-white">
+                                    <h5><i class="fas fa-balance-scale"></i> Análisis de Competitividad de Precios</h5>
+                                    <small class="text-muted">Compara tus precios con el promedio del mercado</small>
+                                </div>
+                                <div class="card-body">
+                                    <div id="competitividadContainer">
+                                        <div class="text-center py-4">
+                                            <div class="spinner-border text-primary"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Tendencias Precio vs Demanda -->
-            <div class="card mb-4">
-                <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="fas fa-chart-area me-2"></i>Tendencias: Precio vs Demanda
-                    </h5>
-                    <div class="mb-3">
-                        <select id="selectProductoTendencia" class="form-select" style="max-width: 300px;">
-                            {% for producto in productos %}
-                            <option value="{{ producto.id }}">{{ producto.nombre }}</option>
-                            {% endfor %}
-                        </select>
+                <!-- TAB 2: Configuración de Precios -->
+                <div class="tab-pane fade" id="precios" role="tabpanel">
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <h4><i class="fas fa-tags"></i> Matriz de Precios por Región</h4>
+                            <p class="text-muted">Ajusta los precios de venta para cada producto en cada región</p>
+                        </div>
                     </div>
-                    <div class="chart-container" style="height: 350px;">
-                        <canvas id="chartPrecioDemanda"></canvas>
-                    </div>
-                </div>
-            </div>
+                    
+                    <form id="preciosForm">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover align-middle" id="matrizPrecios">
+                                <thead class="table-primary">
+                                    <tr>
+                                        <th width="200"><i class="fas fa-box"></i> Producto</th>
+                                        <th class="text-center" width="150">
+                                            <i class="fas fa-map-marker-alt text-primary"></i> Andina
+                                        </th>
+                                        <th class="text-center" width="150">
+                                            <i class="fas fa-map-marker-alt text-info"></i> Caribe
+                                        </th>
+                                        <th class="text-center" width="150">
+                                            <i class="fas fa-map-marker-alt text-success"></i> Pacífica
+                                        </th>
+                                        <th class="text-center" width="150">
+                                            <i class="fas fa-map-marker-alt text-warning"></i> Orinoquía
+                                        </th>
+                                        <th class="text-center" width="150">
+                                            <i class="fas fa-map-marker-alt text-danger"></i> Amazonía
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody id="matrizPreciosBody">
+                                    <tr>
+                                        <td colspan="7" class="text-center py-4">
+                                            <div class="spinner-border text-primary"></div>
+                                            <p class="text-muted mt-2">Cargando productos...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
 
-            <!-- Historial de Ventas Recientes -->
-            <div class="card" id="historico">
-                <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="fas fa-history me-2"></i>Historial de Ventas Recientes
-                    </h5>
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Día</th>
-                                    <th>Producto</th>
-                                    <th>Región</th>
-                                    <th>Solicitado</th>
-                                    <th>Vendido</th>
-                                    <th>Perdido</th>
-                                    <th>Precio</th>
-                                    <th>Ingreso</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for venta in historial_ventas[:20] %}
-                                <tr>
-                                    <td><span class="badge bg-secondary">Día {{ venta.dia_simulacion }}</span></td>
-                                    <td>{{ venta.producto.nombre }}</td>
-                                    <td>
-                                        <span class="region-badge region-{{ venta.region.lower() if venta.region else 'andina' }}">
-                                            {{ venta.region or 'N/A' }}
-                                        </span>
-                                    </td>
-                                    <td>{{ "{:,.0f}".format(venta.cantidad_solicitada) }}</td>
-                                    <td class="text-success"><strong>{{ "{:,.0f}".format(venta.cantidad_vendida) }}</strong></td>
-                                    <td class="text-danger">{{ "{:,.0f}".format(venta.cantidad_perdida) }}</td>
-                                    <td>${{ "{:,.2f}".format(venta.precio_unitario) }}</td>
-                                    <td><strong>${{ "{:,.2f}".format(venta.ingreso_total) }}</strong></td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                        <div class="d-grid gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary btn-lg" id="btnAplicarPrecios">
+                                <i class="fas fa-save"></i> Aplicar Cambios de Precios
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- TAB 3: Análisis por Región -->
+                <div class="tab-pane fade" id="regiones" role="tabpanel">
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <h4><i class="fas fa-map-marked-alt"></i> Desempeño Regional</h4>
+                            <p class="text-muted">Análisis de ventas y oportunidades por región</p>
+                        </div>
+                    </div>
+                    
+                    <div class="row" id="regionesContainer">
+                        <div class="col-12 text-center py-5">
+                            <div class="spinner-border text-primary"></div>
+                            <p class="text-muted mt-3">Cargando datos...</p>
+                        </div>
                     </div>
                 </div>
+
             </div>
         </div>
     </div>
@@ -443,180 +319,329 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-    // Configuración global de Chart.js
-    Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+document.addEventListener('DOMContentLoaded', function() {
+    cargarDashboard();
+    cargarMatrizPrecios();
+    cargarAnalisisRegional();
+    cargarCompetitividad();
     
-    // Gráfico de Ventas por Región
-    const ctxRegiones = document.getElementById('chartRegiones').getContext('2d');
-    
-    fetch('{{ url_for("estudiante.api_ventas_historico_region") }}?dias=14')
-        .then(response => response.json())
-        .then(data => {
-            new Chart(ctxRegiones, {
-                type: 'line',
-                data: data,
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom'
-                        },
-                        title: {
-                            display: true,
-                            text: 'Ingresos por Región (Últimos 14 días)'
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return '$' + value.toLocaleString();
-                                }
-                            }
-                        },
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Día de Simulación'
-                            }
-                        }
-                    }
-                }
-            });
-        });
-    
-    // Gráfico de Ventas por Producto
-    const ctxProductos = document.getElementById('chartProductos').getContext('2d');
-    
-    fetch('{{ url_for("estudiante.api_ventas_por_producto") }}?dias=7')
-        .then(response => response.json())
-        .then(data => {
-            new Chart(ctxProductos, {
-                type: 'bar',
-                data: {
-                    labels: data.labels,
-                    datasets: [{
-                        label: 'Ingresos ($)',
-                        data: data.data,
-                        backgroundColor: data.backgroundColor
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return '$' + value.toLocaleString();
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        });
-    
-    // Gráfico Precio vs Demanda
-    const ctxPrecioDemanda = document.getElementById('chartPrecioDemanda').getContext('2d');
-    let chartPrecioDemanda = null;
-    
-    function cargarGraficoPrecioDemanda(productoId) {
-        fetch(`/estudiante/api/ventas/precio-demanda/${productoId}?dias=14`)
-            .then(response => response.json())
-            .then(data => {
-                if (chartPrecioDemanda) {
-                    chartPrecioDemanda.destroy();
-                }
-                
-                chartPrecioDemanda = new Chart(ctxPrecioDemanda, {
-                    type: 'line',
-                    data: {
-                        labels: data.labels,
-                        datasets: [{
-                            label: 'Precio ($)',
-                            data: data.precios,
-                            borderColor: '#3498db',
-                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                            yAxisID: 'y',
-                            tension: 0.4
-                        }, {
-                            label: 'Demanda (unidades)',
-                            data: data.demanda,
-                            borderColor: '#e74c3c',
-                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
-                            yAxisID: 'y1',
-                            tension: 0.4
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: {
-                            mode: 'index',
-                            intersect: false,
-                        },
-                        plugins: {
-                            legend: {
-                                position: 'bottom'
-                            },
-                            title: {
-                                display: true,
-                                text: 'Relación Precio vs Demanda'
-                            }
-                        },
-                        scales: {
-                            y: {
-                                type: 'linear',
-                                display: true,
-                                position: 'left',
-                                title: {
-                                    display: true,
-                                    text: 'Precio ($)'
-                                }
-                            },
-                            y1: {
-                                type: 'linear',
-                                display: true,
-                                position: 'right',
-                                title: {
-                                    display: true,
-                                    text: 'Demanda (unidades)'
-                                },
-                                grid: {
-                                    drawOnChartArea: false,
-                                }
-                            },
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Día de Simulación'
-                                }
-                            }
-                        }
-                    }
-                });
-            });
+    // Submit form de precios
+    document.getElementById('preciosForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        aplicarCambiosPrecios();
+    });
+});
+
+// ========== TAB 1: DASHBOARD ==========
+async function cargarDashboard() {
+    try {
+        const response = await fetch('/estudiante/api/ventas/dashboard');
+        const data = await response.json();
+        
+        if (data.success) {
+            // Actualizar métricas
+            document.getElementById('ventasHoy').textContent = data.metricas.ventas_hoy;
+            document.getElementById('ingresosHoy').textContent = `$${data.metricas.ingresos_hoy.toLocaleString()}`;
+            document.getElementById('ventasPerdidas').textContent = data.metricas.ventas_perdidas;
+            
+            // Top productos
+            mostrarTopProductos(data.top_productos);
+            
+            // Ventas por región
+            mostrarVentasPorRegion(data.ventas_region);
+        }
+    } catch (error) {
+        console.error('Error cargando dashboard:', error);
+    }
+}
+
+function mostrarTopProductos(productos) {
+    const container = document.getElementById('topProductos');
+    if (!productos || productos.length === 0) {
+        container.innerHTML = '<p class="text-muted">No hay ventas registradas</p>';
+        return;
     }
     
-    // Cargar gráfico inicial
-    document.addEventListener('DOMContentLoaded', function() {
-        const selectProducto = document.getElementById('selectProductoTendencia');
-        cargarGraficoPrecioDemanda(selectProducto.value);
-        
-        selectProducto.addEventListener('change', function() {
-            cargarGraficoPrecioDemanda(this.value);
-        });
+    let html = '<div class="list-group">';
+    productos.forEach((prod, index) => {
+        const badge = index === 0 ? 'warning' : index === 1 ? 'secondary' : 'info';
+        html += `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="badge bg-${badge} me-2">${index + 1}</span>
+                    <strong>${prod.nombre}</strong>
+                </div>
+                <span class="badge bg-primary rounded-pill">${prod.cantidad} unidades</span>
+            </div>
+        `;
     });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function mostrarVentasPorRegion(regiones) {
+    const container = document.getElementById('ventasPorRegion');
+    if (!regiones || regiones.length === 0) {
+        container.innerHTML = '<p class="text-muted">No hay ventas por región</p>';
+        return;
+    }
+    
+    let html = '<div class="list-group">';
+    regiones.forEach(region => {
+        html += `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="fas fa-map-marker-alt text-primary me-2"></i>
+                    <strong>${region.nombre}</strong>
+                </div>
+                <div>
+                    <span class="badge bg-success me-2">$${region.ingresos.toLocaleString()}</span>
+                    <span class="badge bg-info">${region.cantidad} und</span>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+async function cargarCompetitividad() {
+    try {
+        const response = await fetch('/estudiante/api/ventas/competitividad');
+        const data = await response.json();
+        
+        if (data.success) {
+            mostrarCompetitividad(data.competitividad);
+        }
+    } catch (error) {
+        console.error('Error cargando competitividad:', error);
+    }
+}
+
+function mostrarCompetitividad(competitividad) {
+    const container = document.getElementById('competitividadContainer');
+    
+    if (!competitividad || competitividad.length === 0) {
+        container.innerHTML = '<p class="text-muted">No hay datos de competitividad disponibles</p>';
+        return;
+    }
+    
+    let html = '<div class="table-responsive"><table class="table table-hover align-middle">';
+    html += `
+        <thead>
+            <tr>
+                <th><i class="fas fa-wine-bottle"></i> Producto</th>
+                <th class="text-center">Tu Precio</th>
+                <th class="text-center">Precio Mercado</th>
+                <th class="text-center">Diferencia</th>
+                <th class="text-center">Estado</th>
+                <th class="text-center">Expectativa Ventas</th>
+                <th class="text-center">Stock</th>
+            </tr>
+        </thead>
+        <tbody>
+    `;
+    
+    competitividad.forEach(comp => {
+        const diferencia = comp.diferencia_porcentual;
+        const signo = diferencia >= 0 ? '+' : '';
+        const iconoDiferencia = diferencia > 20 ? '📈' : diferencia < -20 ? '📉' : '➡️';
+        
+        html += `
+            <tr>
+                <td><strong>${comp.producto}</strong></td>
+                <td class="text-center">$${comp.precio_empresa.toLocaleString()}</td>
+                <td class="text-center">$${comp.precio_mercado.toLocaleString()}</td>
+                <td class="text-center">
+                    <span class="badge bg-${comp.color}">
+                        ${iconoDiferencia} ${signo}${diferencia.toFixed(1)}%
+                    </span>
+                </td>
+                <td class="text-center">
+                    <span class="badge bg-${comp.color}">${comp.clasificacion}</span>
+                </td>
+                <td class="text-center">${comp.expectativa_ventas}</td>
+                <td class="text-center">
+                    <span class="badge ${comp.stock > 0 ? 'bg-success' : 'bg-danger'}">
+                        ${comp.stock} und
+                    </span>
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += '</tbody></table></div>';
+    
+    // Agregar leyenda
+    html += `
+        <div class="alert alert-info mt-3">
+            <strong><i class="fas fa-info-circle"></i> Interpretación:</strong>
+            <ul class="mb-0 mt-2">
+                <li><strong>Muy Alto (>+50%):</strong> Precio no competitivo - Ventas muy bajas esperadas</li>
+                <li><strong>Alto (+20% a +50%):</strong> Precio alto - Ventas bajas esperadas</li>
+                <li><strong>Competitivo (-10% a +20%):</strong> Precio en rango del mercado - Ventas normales</li>
+                <li><strong>Bajo (-30% a -10%):</strong> Precio atractivo - Ventas altas esperadas</li>
+                <li><strong>Muy Bajo (<-30%):</strong> Precio sospechosamente bajo - Puede generar desconfianza</li>
+            </ul>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// ========== TAB 2: MATRIZ DE PRECIOS ==========
+let costosProductos = {};
+let preciosActuales = {};
+
+async function cargarMatrizPrecios() {
+    try {
+        const response = await fetch('/estudiante/api/ventas/matriz-precios');
+        const data = await response.json();
+        
+        if (data.success) {
+            const tbody = document.getElementById('matrizPreciosBody');
+            let html = '';
+            
+            data.productos.forEach(prod => {
+                costosProductos[prod.id] = prod.costo;
+                
+                html += `
+                    <tr class="producto-row" data-producto-id="${prod.id}">
+                        <td class="fw-bold">${prod.nombre}</td>
+                `;
+                
+                ['Andina', 'Caribe', 'Pacífica', 'Orinoquía', 'Amazonía'].forEach(region => {
+                    const precio = prod.precios[region] || 0;
+                    
+                    html += `
+                        <td class="text-center">
+                            <input type="number" class="form-control precio-input" 
+                                   data-producto="${prod.id}" 
+                                   data-region="${region}" 
+                                   step="1" 
+                                   value="${precio > 0 ? precio.toFixed(0) : ''}">
+                        </td>
+                    `;
+                });
+                
+                html += '</tr>';
+            });
+            
+            tbody.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('Error cargando matriz:', error);
+    }
+}
+
+async function aplicarCambiosPrecios() {
+    const cambios = [];
+    
+    document.querySelectorAll('.precio-input').forEach(input => {
+        const productoId = input.getAttribute('data-producto');
+        const region = input.getAttribute('data-region');
+        const precio = parseFloat(input.value);
+        
+        if (precio && precio > 0) {
+            cambios.push({
+                producto_id: productoId,
+                region: region,
+                precio: precio
+            });
+        }
+    });
+    
+    if (cambios.length === 0) {
+        alert('⚠️ No hay cambios de precios para aplicar');
+        return;
+    }
+    
+    if (!confirm(`¿Confirmar actualización de ${cambios.length} precios?`)) {
+        return;
+    }
+    
+    const btn = document.getElementById('btnAplicarPrecios');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Aplicando cambios...';
+    
+    try {
+        const response = await fetch('/estudiante/api/ventas/actualizar-precios', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({cambios: cambios})
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert(`✅ ${data.actualizados} precios actualizados correctamente`);
+            cargarDashboard();
+        } else {
+            alert('❌ ' + data.message);
+        }
+    } catch (error) {
+        alert('❌ Error al actualizar precios: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Aplicar Cambios de Precios';
+    }
+}
+
+// ========== TAB 3: ANÁLISIS REGIONAL ==========
+async function cargarAnalisisRegional() {
+    try {
+        const response = await fetch('/estudiante/api/ventas/analisis-regiones');
+        const data = await response.json();
+        
+        if (data.success) {
+            const container = document.getElementById('regionesContainer');
+            let html = '';
+            
+            data.regiones.forEach(region => {
+                const tendencia = region.tendencia > 0 ? 'arrow-up text-success' : region.tendencia < 0 ? 'arrow-down text-danger' : 'minus text-secondary';
+                
+                html += `
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="region-card">
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <h5><i class="fas fa-map-marker-alt text-primary"></i> ${region.nombre}</h5>
+                                <span class="badge bg-primary">${region.ventas_totales} ventas</span>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <small class="text-muted">Ingresos Totales</small>
+                                <h4 class="text-success">$${region.ingresos.toLocaleString()}</h4>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <small class="text-muted">Tendencia</small>
+                                <div>
+                                    <i class="fas fa-${tendencia}"></i>
+                                    <span class="ms-2">${Math.abs(region.tendencia)}%</span>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-2">
+                                <small class="text-muted">Producto más vendido:</small>
+                                <div class="fw-bold">${region.top_producto || 'N/A'}</div>
+                            </div>
+                            
+                            ${region.ventas_perdidas > 0 ? `
+                                <div class="alert alert-warning py-2 px-3 mb-0 mt-2">
+                                    <small><i class="fas fa-exclamation-triangle"></i> ${region.ventas_perdidas} ventas perdidas por falta de stock</small>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('Error cargando análisis regional:', error);
+    }
+}
 </script>
 {% endblock %}

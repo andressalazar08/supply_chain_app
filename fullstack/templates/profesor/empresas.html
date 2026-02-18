@@ -1,0 +1,493 @@
+{% extends "base.html" %}
+
+{% block title %}Gestionar Empresas - Profesor{% endblock %}
+
+{% block extra_css %}
+<style>
+    .header-section {
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+    }
+    
+    .empresa-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: all 0.3s;
+        border-left: 5px solid #c41e3a;
+    }
+    
+    .empresa-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    
+    .empresa-card.inactive {
+        opacity: 0.7;
+        border-left-color: #95a5a6;
+    }
+    
+    .stat-box {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+        margin-bottom: 15px;
+    }
+    
+    .stat-box h3 {
+        margin: 0;
+        font-size: 2rem;
+    }
+    
+    .stat-box p {
+        margin: 0;
+        opacity: 0.9;
+        font-size: 0.9rem;
+    }
+    
+    .action-btn {
+        border-radius: 8px;
+        padding: 8px 15px;
+        margin: 3px;
+        transition: all 0.3s;
+    }
+    
+    .action-btn:hover {
+        transform: scale(1.05);
+    }
+    
+    .action-btn.reports {
+        background: linear-gradient(135deg, #f4a261 0%, #e76f51 100%);
+        color: white;
+        border: none;
+    }
+    
+    .modal-header {
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
+        color: white;
+        border-radius: 10px 10px 0 0;
+    }
+    
+    .form-label {
+        font-weight: 600;
+        color: #34495e;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #7f8c8d;
+    }
+    
+    .search-box {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="header-section">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1><i class="fas fa-building me-2"></i>Gestión de Empresas</h1>
+                <p class="mb-0">Administra todas las empresas participantes en la simulación</p>
+            </div>
+            <div>
+                <a href="{{ url_for('profesor.home') }}" class="btn btn-light btn-lg">
+                    <i class="fas fa-arrow-left me-2"></i>Volver al Inicio
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Estadísticas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-box">
+                <h3>{{ empresas|length }}</h3>
+                <p><i class="fas fa-building me-1"></i>Total Empresas</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-box" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                <h3>{{ empresas|selectattr('activa', 'equalto', True)|list|length }}</h3>
+                <p><i class="fas fa-check-circle me-1"></i>Empresas Activas</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-box" style="background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);">
+                <h3>{{ estudiantes_total }}</h3>
+                <p><i class="fas fa-users me-1"></i>Estudiantes Asignados</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-box" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                <h3>${{ '{:,.0f}'.format(capital_total) }}</h3>
+                <p><i class="fas fa-dollar-sign me-1"></i>Capital Total</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Barra de búsqueda y acciones -->
+    <div class="search-box">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <input type="text" id="buscarEmpresa" class="form-control" placeholder="🔍 Buscar empresa por nombre...">
+            </div>
+            <div class="col-md-3">
+                <select id="filtroEstado" class="form-select">
+                    <option value="">Todas las empresas</option>
+                    <option value="activa">Solo activas</option>
+                    <option value="inactiva">Solo inactivas</option>
+                </select>
+            </div>
+            <div class="col-md-3 text-end">
+                <button class="btn btn-primary btn-lg" onclick="mostrarModalCrear()">
+                    <i class="fas fa-plus me-2"></i>Nueva Empresa
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Lista de Empresas -->
+    <div id="listaEmpresas">
+        {% if empresas %}
+            {% for empresa in empresas %}
+            <div class="empresa-card {% if not empresa.activa %}inactive{% endif %}" data-nombre="{{ empresa.nombre.lower() }}" data-estado="{{ 'activa' if empresa.activa else 'inactiva' }}">
+                <div class="row align-items-center">
+                    <div class="col-md-4">
+                        <h4 class="mb-2">
+                            <i class="fas fa-building text-primary me-2"></i>{{ empresa.nombre }}
+                        </h4>
+                        <div class="d-flex gap-2">
+                            {% if empresa.activa %}
+                                <span class="badge bg-success">Activa</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inactiva</span>
+                            {% endif %}
+                            {% if current_user.es_super_admin %}
+                                <span class="badge bg-info">
+                                    {% if empresa.profesor_creador %}
+                                        Prof: {{ empresa.profesor_creador.nombre_completo }}
+                                    {% else %}
+                                        Sin asignar
+                                    {% endif %}
+                                </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="mb-2">
+                            <small class="text-muted">Capital Inicial</small><br>
+                            <strong class="text-info">${{ '{:,.0f}'.format(empresa.capital_inicial) }}</strong>
+                        </div>
+                        <div>
+                            <small class="text-muted">Capital Actual</small><br>
+                            <strong class="text-success">${{ '{:,.0f}'.format(empresa.capital_actual) }}</strong>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-2 text-center">
+                        <h3 class="mb-0 text-primary">{{ empresa.estudiantes|length }}</h3>
+                        <small class="text-muted">Estudiantes</small>
+                    </div>
+                    
+                    <div class="col-md-3 text-end">
+                        <button class="btn btn-sm action-btn reports" onclick="verReportes({{ empresa.id }})" title="Ver Reportes">
+                            <i class="fas fa-chart-line me-1"></i>Reportes
+                        </button>
+                        <button class="btn btn-sm btn-warning action-btn" onclick="editarEmpresa({{ empresa.id }})" title="Editar">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-{% if empresa.activa %}secondary{% else %}success{% endif %} action-btn" 
+                                onclick="toggleEstado({{ empresa.id }})" 
+                                title="{% if empresa.activa %}Desactivar{% else %}Activar{% endif %}">
+                            <i class="fas fa-{% if empresa.activa %}pause{% else %}play{% endif %}"></i>
+                        </button>
+                        {% if current_user.es_super_admin %}
+                        <button class="btn btn-sm btn-danger action-btn" onclick="eliminarEmpresa({{ empresa.id }})" title="Eliminar">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <i class="fas fa-inbox fa-4x mb-3"></i>
+                <h3>No hay empresas creadas</h3>
+                <p>Comienza creando tu primera empresa para la simulación</p>
+                <button class="btn btn-primary btn-lg mt-3" onclick="mostrarModalCrear()">
+                    <i class="fas fa-plus me-2"></i>Crear Primera Empresa
+                </button>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal Crear/Editar Empresa -->
+<div class="modal fade" id="modalEmpresa" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalEmpresaTitle">
+                    <i class="fas fa-building me-2"></i>Nueva Empresa
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formEmpresa" method="POST">
+                <input type="hidden" id="empresa_id" name="empresa_id">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label for="nombre" class="form-label">
+                                <i class="fas fa-tag me-1"></i>Nombre de la Empresa *
+                            </label>
+                            <input type="text" class="form-control" id="nombre" name="nombre" required 
+                                   placeholder="Ej: Distribuidora Alpha">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="capital_inicial" class="form-label">
+                                <i class="fas fa-dollar-sign me-1"></i>Capital Inicial *
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="capital_inicial" name="capital_inicial" 
+                                       required min="0" step="1000" value="1000000">
+                            </div>
+                            <small class="text-muted">Capital con el que inicia la empresa</small>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="capital_actual" class="form-label">
+                                <i class="fas fa-wallet me-1"></i>Capital Actual
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="capital_actual" name="capital_actual" 
+                                       min="0" step="1000" value="1000000">
+                            </div>
+                            <small class="text-muted">Capital actual de la empresa</small>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="activa" class="form-label">
+                                <i class="fas fa-power-off me-1"></i>Estado
+                            </label>
+                            <select class="form-select" id="activa" name="activa">
+                                <option value="1" selected>Activa</option>
+                                <option value="0">Inactiva</option>
+                            </select>
+                        </div>
+                        
+                        {% if current_user.es_super_admin %}
+                        <div class="col-md-6 mb-3">
+                            <label for="profesor_id" class="form-label">
+                                <i class="fas fa-user-tie me-1"></i>Profesor Responsable
+                            </label>
+                            <select class="form-select" id="profesor_id" name="profesor_id">
+                                <option value="{{ current_user.id }}">{{ current_user.nombre_completo }} (Yo)</option>
+                                {% for prof in profesores %}
+                                    {% if prof.id != current_user.id %}
+                                    <option value="{{ prof.id }}">{{ prof.nombre_completo }}</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Nota:</strong> Los estudiantes podrán ser asignados a esta empresa desde la sección de Gestión de Estudiantes.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i>Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i>Guardar Empresa
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Búsqueda y filtrado
+    document.getElementById('buscarEmpresa').addEventListener('input', filtrarEmpresas);
+    document.getElementById('filtroEstado').addEventListener('change', filtrarEmpresas);
+    
+    function filtrarEmpresas() {
+        const busqueda = document.getElementById('buscarEmpresa').value.toLowerCase();
+        const estado = document.getElementById('filtroEstado').value;
+        const empresas = document.querySelectorAll('.empresa-card');
+        
+        empresas.forEach(card => {
+            const nombre = card.dataset.nombre;
+            const estadoCard = card.dataset.estado;
+            
+            const matchNombre = nombre.includes(busqueda);
+            const matchEstado = !estado || estadoCard === estado;
+            
+            if (matchNombre && matchEstado) {
+                card.style.display = '';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+    
+    // Mostrar modal crear
+    function mostrarModalCrear() {
+        document.getElementById('modalEmpresaTitle').innerHTML = '<i class="fas fa-plus me-2"></i>Nueva Empresa';
+        document.getElementById('formEmpresa').reset();
+        document.getElementById('empresa_id').value = '';
+        document.getElementById('capital_actual').value = document.getElementById('capital_inicial').value;
+        document.getElementById('formEmpresa').action = "{{ url_for('profesor.crear_empresa') }}";
+        new bootstrap.Modal(document.getElementById('modalEmpresa')).show();
+    }
+    
+    // Editar empresa
+    function editarEmpresa(id) {
+        fetch(`/profesor/empresas/${id}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const empresa = data.empresa;
+                    document.getElementById('modalEmpresaTitle').innerHTML = '<i class="fas fa-edit me-2"></i>Editar Empresa';
+                    document.getElementById('empresa_id').value = empresa.id;
+                    document.getElementById('nombre').value = empresa.nombre;
+                    document.getElementById('capital_inicial').value = empresa.capital_inicial;
+                    document.getElementById('capital_actual').value = empresa.capital_actual;
+                    document.getElementById('activa').value = empresa.activa ? '1' : '0';
+                    
+                    {% if current_user.es_super_admin %}
+                    if (empresa.profesor_id) {
+                        document.getElementById('profesor_id').value = empresa.profesor_id;
+                    }
+                    {% endif %}
+                    
+                    document.getElementById('formEmpresa').action = `/profesor/empresas/${id}/editar`;
+                    new bootstrap.Modal(document.getElementById('modalEmpresa')).show();
+                } else {
+                    alert('Error al cargar los datos de la empresa');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error al cargar los datos de la empresa');
+            });
+    }
+    
+    // Toggle estado
+    function toggleEstado(id) {
+        if (!confirm('¿Estás seguro de cambiar el estado de esta empresa?')) return;
+        
+        fetch(`/profesor/empresas/${id}/toggle-estado`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.message || 'Error al cambiar el estado');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al cambiar el estado');
+        });
+    }
+    
+    // Eliminar empresa
+    function eliminarEmpresa(id) {
+        if (!confirm('⚠️ ¿Estás seguro de eliminar esta empresa?\n\nEsta acción:\n- Desvinculará todos los estudiantes asignados\n- Eliminará todos los datos de la simulación\n- NO SE PUEDE DESHACER')) return;
+        
+        fetch(`/profesor/empresas/${id}/eliminar`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.message || 'Error al eliminar la empresa');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al eliminar la empresa');
+        });
+    }
+    
+    // Ver reportes
+    function verReportes(id) {
+        window.location.href = `/profesor/empresas/${id}/reportes`;
+    }
+    
+    // Submit del formulario
+    document.getElementById('formEmpresa').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const action = this.action;
+        
+        fetch(action, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.message || 'Error al guardar la empresa');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al guardar la empresa');
+        });
+    });
+    
+    // Sincronizar capital actual con inicial al crear
+    document.getElementById('capital_inicial').addEventListener('input', function() {
+        if (!document.getElementById('empresa_id').value) {
+            document.getElementById('capital_actual').value = this.value;
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,835 @@
+{% extends "base.html" %}
+
+{% block title %}Planeación - {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sidebar {
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
+        min-height: 100vh;
+        padding: 0;
+    }
+    
+    .sidebar a {
+        display: block;
+        padding: 15px 20px;
+        color: rgba(255,255,255,0.8);
+        text-decoration: none;
+        transition: all 0.3s;
+        border-left: 3px solid transparent;
+    }
+    
+    .sidebar a:hover,
+    .sidebar a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-left-color: #fff;
+    }
+    
+    .nav-tabs .nav-link {
+        color: #666;
+        font-weight: 600;
+        border: none;
+        border-bottom: 3px solid transparent;
+        padding: 15px 25px;
+    }
+    
+    .nav-tabs .nav-link.active {
+        color: #c41e3a;
+        background: transparent;
+        border-bottom-color: #c41e3a;
+    }
+    
+    .section-card {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+        margin-bottom: 20px;
+    }
+    
+    .producto-row {
+        background: white;
+        border: 1px solid #e9ecef;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 15px;
+        transition: all 0.3s;
+    }
+    
+    .producto-row:hover {
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+    }
+    
+    .status-badge {
+        padding: 6px 15px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    .status-critico {
+        background: #fee;
+        color: #c00;
+    }
+    
+    .status-bajo {
+        background: #fffbeb;
+        color: #f59e0b;
+    }
+    
+    .status-optimo {
+        background: #d1fae5;
+        color: #059669;
+    }
+    
+    .metodo-selector {
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        padding: 15px;
+        cursor: pointer;
+        transition: all 0.3s;
+        text-align: center;
+    }
+    
+    .metodo-selector:hover {
+        border-color: #c41e3a;
+        background: #f8f9ff;
+    }
+    
+    .metodo-selector.active {
+        border-color: #c41e3a;
+        background: #c41e3a;
+        color: white;
+    }
+    
+    .chart-container {
+        position: relative;
+        height: 300px;
+        margin: 20px 0;
+    }
+    
+    .recomendacion-box {
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 15px;
+        margin-top: 10px;
+    }
+    
+    .input-cantidad {
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        text-align: center;
+        width: 120px;
+    }
+    
+    .input-cantidad:focus {
+        border-color: #c41e3a;
+        outline: none;
+    }
+    
+    .stat-mini {
+        text-align: center;
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+    
+    .stat-mini h4 {
+        margin: 0;
+        font-size: 1.5rem;
+        color: #c41e3a;
+    }
+    
+    .stat-mini p {
+        margin: 5px 0 0 0;
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar">
+            <h5 class="text-white px-3 py-4">
+                <i class="fas fa-calendar-alt me-2"></i>Planeación
+            </h5>
+            <a href="{{ url_for('estudiante.dashboard_general') }}">
+                <i class="fas fa-home me-2"></i>Dashboard General
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_planeacion') }}" class="active">
+                <i class="fas fa-chart-area me-2"></i>Planeación
+            </a>
+            <hr class="bg-light mx-3">
+            <a href="{{ url_for('auth.logout') }}">
+                <i class="fas fa-sign-out-alt me-2"></i>Cerrar Sesión
+            </a>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-md-10 p-4">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1><i class="fas fa-calendar-alt me-2"></i>Planeación de Demanda</h1>
+                    <p class="text-muted mb-0">
+                        <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }}
+                    </p>
+                </div>
+                <div>
+                    <button class="btn btn-outline-primary" onclick="location.reload()">
+                        <i class="fas fa-sync-alt me-2"></i>Actualizar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tabs de Navegación -->
+            <ul class="nav nav-tabs mb-4" id="planeacionTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="pronostico-tab" data-bs-toggle="tab" data-bs-target="#pronostico" type="button" role="tab">
+                        <i class="fas fa-chart-line me-2"></i>Pronóstico de Demanda
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="mrp-tab" data-bs-toggle="tab" data-bs-target="#mrp" type="button" role="tab">
+                        <i class="fas fa-clipboard-list me-2"></i>Plan de Requerimientos (MRP)
+                    </button>
+                </li>
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content" id="planeacionTabContent">
+                <!-- TAB 1: PRONÓSTICO DE DEMANDA -->
+                <div class="tab-pane fade show active" id="pronostico" role="tabpanel">
+                    <div class="section-card">
+                        <h4 class="mb-4"><i class="fas fa-chart-line me-2"></i>Pronóstico de Demanda por Producto</h4>
+                        
+                        <!-- Selector de Producto -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Seleccionar Producto:</label>
+                                <select class="form-select form-select-lg" id="productoSelect" onchange="cargarDatosProducto()">
+                                    <option value="">-- Selecciona un producto --</option>
+                                    {% for producto in productos %}
+                                    <option value="{{ producto.id }}" 
+                                            data-codigo="{{ producto.codigo }}" 
+                                            data-nombre="{{ producto.nombre }}">
+                                        {{ producto.codigo }} - {{ producto.nombre }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Días a Pronosticar:</label>
+                                <input type="number" class="form-control form-control-lg" id="diasPronostico" value="7" min="1" max="30">
+                            </div>
+                        </div>
+
+                        <!-- Contenedor de análisis de producto -->
+                        <div id="analisisProducto" style="display: none;">
+                            <!-- Datos Históricos -->
+                            <div class="mb-4">
+                                <h5><i class="fas fa-history me-2"></i>Demanda Histórica</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-sm" id="tablaHistorica">
+                                        <thead>
+                                            <tr>
+                                                <th>Día</th>
+                                                <th>Demanda Real</th>
+                                                <th>Ventas</th>
+                                                <th>Demanda Perdida</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="datosHistoricos"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Selector de Método -->
+                            <div class="mb-4">
+                                <h5><i class="fas fa-cogs me-2"></i>Método de Pronóstico</h5>
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <div class="metodo-selector" data-metodo="promedio_movil" onclick="seleccionarMetodo(this)">
+                                            <i class="fas fa-chart-bar fa-2x mb-2"></i>
+                                            <h6>Promedio Móvil</h6>
+                                            <small class="text-muted">Últimos N días</small>
+                                            <div class="mt-2" id="params-promedio_movil" style="display:none;">
+                                                <label class="form-label small">Periodos (n):</label>
+                                                <input type="number" class="form-control form-control-sm" value="3" min="2" max="10" id="n_periodos">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="metodo-selector" data-metodo="exp_simple" onclick="seleccionarMetodo(this)">
+                                            <i class="fas fa-wave-square fa-2x mb-2"></i>
+                                            <h6>Suavización Exp. Simple</h6>
+                                            <small class="text-muted">Alpha (α)</small>
+                                            <div class="mt-2" id="params-exp_simple" style="display:none;">
+                                                <label class="form-label small">Alpha (α):</label>
+                                                <input type="number" class="form-control form-control-sm" value="0.3" min="0.1" max="0.9" step="0.1" id="alpha_simple">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="metodo-selector" data-metodo="holt" onclick="seleccionarMetodo(this)">
+                                            <i class="fas fa-chart-line fa-2x mb-2"></i>
+                                            <h6>Holt (Doble Exp.)</h6>
+                                            <small class="text-muted">Alpha y Beta</small>
+                                            <div class="mt-2" id="params-holt" style="display:none;">
+                                                <label class="form-label small">Alpha (α):</label>
+                                                <input type="number" class="form-control form-control-sm" value="0.3" min="0.1" max="0.9" step="0.1" id="alpha_holt">
+                                                <label class="form-label small mt-1">Beta (β):</label>
+                                                <input type="number" class="form-control form-control-sm" value="0.2" min="0.1" max="0.9" step="0.1" id="beta_holt">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="metodo-selector" data-metodo="manual" onclick="seleccionarMetodo(this)">
+                                            <i class="fas fa-edit fa-2x mb-2"></i>
+                                            <h6>Manual</h6>
+                                            <small class="text-muted">Ingreso directo</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Botón Calcular -->
+                            <div class="text-center mb-4">
+                                <button class="btn btn-primary btn-lg px-5" onclick="calcularPronostico()">
+                                    <i class="fas fa-calculator me-2"></i>Calcular Pronóstico
+                                </button>
+                            </div>
+
+                            <!-- Resultados del Pronóstico -->
+                            <div id="resultadosPronostico" style="display: none;">
+                                <h5><i class="fas fa-chart-pie me-2"></i>Resultados del Pronóstico</h5>
+                                
+                                <!-- Gráfico -->
+                                <div class="chart-container">
+                                    <canvas id="graficoPronostico"></canvas>
+                                </div>
+
+                                <!-- Métricas de Error -->
+                                <div class="row g-3 mb-3">
+                                    <div class="col-md-4">
+                                        <div class="stat-mini">
+                                            <h4 id="errorMAPE">-</h4>
+                                            <p>MAPE (Error %)</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="stat-mini">
+                                            <h4 id="errorMAD">-</h4>
+                                            <p>MAD (Desviación)</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="stat-mini">
+                                            <h4 id="demandaPromedio">-</h4>
+                                            <p>Demanda Promedio</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Tabla de Pronósticos -->
+                                <div class="table-responsive mb-3">
+                                    <table class="table table-bordered">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Día</th>
+                                                <th>Pronóstico</th>
+                                                <th>Ajuste Manual</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tablaPronosticos"></tbody>
+                                    </table>
+                                </div>
+
+                                <!-- Botón Guardar -->
+                                <div class="text-center">
+                                    <button class="btn btn-success btn-lg px-5" onclick="guardarPronostico()">
+                                        <i class="fas fa-save me-2"></i>Guardar Pronóstico
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: PLAN DE REQUERIMIENTOS (MRP) -->
+                <div class="tab-pane fade" id="mrp" role="tabpanel">
+                    <div class="section-card">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h4><i class="fas fa-clipboard-list me-2"></i>Plan de Requerimientos de Materiales (MRP)</h4>
+                            <button class="btn btn-primary" onclick="recalcularMRP()">
+                                <i class="fas fa-sync-alt me-2"></i>Recalcular Todo
+                            </button>
+                        </div>
+
+                        <!-- Resumen General -->
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-3">
+                                <div class="stat-mini">
+                                    <h4 class="text-danger" id="productosCriticos">0</h4>
+                                    <p>Productos Críticos</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-mini">
+                                    <h4 class="text-warning" id="productosAdvertencia">0</h4>
+                                    <p>En Advertencia</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-mini">
+                                    <h4 class="text-success" id="productosOptimos">0</h4>
+                                    <p>Stock Óptimo</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-mini">
+                                    <h4 class="text-primary" id="capitalRequerido">$0</h4>
+                                    <p>Capital Requerido</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Lista de Productos con MRP -->
+                        <div id="listaMRP">
+                            {% for producto in productos %}
+                            <div class="producto-row" id="mrp-producto-{{ producto.id }}">
+                                <div class="row align-items-center">
+                                    <!-- Info del Producto -->
+                                    <div class="col-md-3">
+                                        <h5 class="mb-1">{{ producto.nombre }}</h5>
+                                        <small class="text-muted">{{ producto.codigo }}</small>
+                                        <div class="mt-2">
+                                            <span class="status-badge status-optimo" id="status-{{ producto.id }}">Calculando...</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Datos Actuales -->
+                                    <div class="col-md-3">
+                                        <div class="row g-2 text-center">
+                                            <div class="col-6">
+                                                <small class="text-muted d-block">Stock Actual</small>
+                                                <strong class="text-primary" id="stock-{{ producto.id }}">-</strong>
+                                            </div>
+                                            <div class="col-6">
+                                                <small class="text-muted d-block">En Tránsito</small>
+                                                <strong class="text-info" id="transito-{{ producto.id }}">-</strong>
+                                            </div>
+                                            <div class="col-6">
+                                                <small class="text-muted d-block">Pronóstico</small>
+                                                <strong class="text-warning" id="pronostico-{{ producto.id }}">-</strong>
+                                            </div>
+                                            <div class="col-6">
+                                                <small class="text-muted d-block">Días Cobertura</small>
+                                                <strong id="cobertura-{{ producto.id }}">-</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Recomendación Automática -->
+                                    <div class="col-md-3">
+                                        <div class="recomendacion-box">
+                                            <small class="d-block mb-1">Recomendación:</small>
+                                            <h4 class="mb-0" id="recomendacion-{{ producto.id }}">-</h4>
+                                            <small id="justificacion-{{ producto.id }}">-</small>
+                                        </div>
+                                    </div>
+
+                                    <!-- Acciones Manuales -->
+                                    <div class="col-md-3 text-center">
+                                        <label class="form-label small">Cantidad a Pedir:</label>
+                                        <input type="number" 
+                                               class="input-cantidad mx-auto" 
+                                               id="cantidad-{{ producto.id }}" 
+                                               value="0" 
+                                               min="0"
+                                               onchange="actualizarCostoProducto({{ producto.id }})">
+                                        <div class="mt-2">
+                                            <small class="text-muted d-block">Costo Total:</small>
+                                            <strong class="text-success" id="costo-{{ producto.id }}">$0</strong>
+                                        </div>
+                                        <button class="btn btn-success btn-sm mt-2 w-100" onclick="generarRequerimiento({{ producto.id }})">
+                                            <i class="fas fa-paper-plane me-1"></i>Generar Orden
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <!-- Botón Generar Todas las Órdenes -->
+                        <div class="text-center mt-4">
+                            <button class="btn btn-primary btn-lg px-5" onclick="generarTodasOrdenes()">
+                                <i class="fas fa-check-double me-2"></i>Generar Todas las Órdenes Recomendadas
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    let productoActual = null;
+    let metodoActual = null;
+    let datosHistoricos = [];
+    let graficoPronostico = null;
+    let pronosticosCalculados = {};
+
+    // Cargar datos del producto seleccionado
+    function cargarDatosProducto() {
+        const select = document.getElementById('productoSelect');
+        const productoId = select.value;
+        
+        if (!productoId) {
+            document.getElementById('analisisProducto').style.display = 'none';
+            return;
+        }
+        
+        productoActual = parseInt(productoId);
+        document.getElementById('analisisProducto').style.display = 'block';
+        
+        // Cargar datos históricos del servidor
+        fetch(`/estudiante/api/producto/${productoId}/historico`)
+            .then(response => response.json())
+            .then(data => {
+                datosHistoricos = data.historico;
+                mostrarDatosHistoricos(data.historico);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error al cargar datos históricos');
+            });
+    }
+
+    function mostrarDatosHistoricos(historico) {
+        const tbody = document.getElementById('datosHistoricos');
+        tbody.innerHTML = '';
+        
+        if (historico.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay datos históricos disponibles</td></tr>';
+            return;
+        }
+        
+        historico.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>Día ${item.dia}</td>
+                <td><strong>${item.demanda_real}</strong></td>
+                <td class="text-success">${item.ventas}</td>
+                <td class="text-danger">${item.perdida}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function seleccionarMetodo(elemento) {
+        // Remover active de todos
+        document.querySelectorAll('.metodo-selector').forEach(el => {
+            el.classList.remove('active');
+            const metodo = el.getAttribute('data-metodo');
+            const params = document.getElementById(`params-${metodo}`);
+            if (params) params.style.display = 'none';
+        });
+        
+        // Activar el seleccionado
+        elemento.classList.add('active');
+        metodoActual = elemento.getAttribute('data-metodo');
+        
+        const params = document.getElementById(`params-${metodoActual}`);
+        if (params) params.style.display = 'block';
+    }
+
+    function calcularPronostico() {
+        if (!productoActual || !metodoActual) {
+            alert('Por favor selecciona un producto y un método de pronóstico');
+            return;
+        }
+        
+        const diasPronostico = parseInt(document.getElementById('diasPronostico').value);
+        
+        // Recopilar parámetros según el método
+        let parametros = {};
+        if (metodoActual === 'promedio_movil') {
+            parametros.n = parseInt(document.getElementById('n_periodos').value);
+        } else if (metodoActual === 'exp_simple') {
+            parametros.alpha = parseFloat(document.getElementById('alpha_simple').value);
+        } else if (metodoActual === 'holt') {
+            parametros.alpha = parseFloat(document.getElementById('alpha_holt').value);
+            parametros.beta = parseFloat(document.getElementById('beta_holt').value);
+        }
+        
+        // Enviar al servidor para calcular
+        fetch('/estudiante/api/calcular-pronostico', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                producto_id: productoActual,
+                metodo: metodoActual,
+                parametros: parametros,
+                dias_pronostico: diasPronostico
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+                return;
+            }
+            mostrarResultados(data);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al calcular pronóstico');
+        });
+    }
+
+    function mostrarResultados(data) {
+        document.getElementById('resultadosPronostico').style.display = 'block';
+        
+        // Actualizar métricas
+        document.getElementById('errorMAPE').textContent = data.mape.toFixed(2) + '%';
+        document.getElementById('errorMAD').textContent = data.mad.toFixed(2);
+        document.getElementById('demandaPromedio').textContent = data.promedio.toFixed(0);
+        
+        // Crear tabla de pronósticos
+        const tbody = document.getElementById('tablaPronosticos');
+        tbody.innerHTML = '';
+        const diaActual = {{ simulacion.dia_actual }};
+        data.pronosticos.forEach((valor, index) => {
+            const diaPronostico = diaActual + index + 1;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>Día ${diaPronostico}</td>
+                <td><strong>${Math.round(valor)}</strong> unidades</td>
+                <td><input type="number" class="form-control form-control-sm" value="${Math.round(valor)}" id="ajuste-${index}"></td>
+            `;
+            tbody.appendChild(tr);
+        });
+        
+        // Crear gráfico
+        crearGrafico(data);
+        
+        // Guardar para uso posterior
+        pronosticosCalculados[productoActual] = data;
+    }
+
+    function crearGrafico(data) {
+        const ctx = document.getElementById('graficoPronostico').getContext('2d');
+        
+        if (graficoPronostico) {
+            graficoPronostico.destroy();
+        }
+        
+        const diaActualGrafico = {{ simulacion.dia_actual }};
+        const labels = data.historico.map(h => `Día ${h.dia}`).concat(
+            data.pronosticos.map((_, i) => `Día ${diaActualGrafico + i + 1}`)
+        );
+        
+        graficoPronostico = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Demanda Histórica',
+                    data: data.historico.map(h => h.demanda_real).concat(Array(data.pronosticos.length).fill(null)),
+                    borderColor: '#c41e3a',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    tension: 0.4
+                }, {
+                    label: 'Pronóstico',
+                    data: Array(data.historico.length).fill(null).concat(data.pronosticos),
+                    borderColor: '#e74c3c',
+                    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                    borderDash: [5, 5],
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    function guardarPronostico() {
+        // Recopilar ajustes manuales
+        const ajustes = [];
+        const tbody = document.getElementById('tablaPronosticos');
+        const rows = tbody.querySelectorAll('tr');
+        
+        rows.forEach((row, index) => {
+            const input = row.querySelector('input');
+            ajustes.push(parseFloat(input.value));
+        });
+        
+        fetch('/estudiante/api/guardar-pronostico', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                producto_id: productoActual,
+                metodo: metodoActual,
+                pronosticos: ajustes,
+                mape: pronosticosCalculados[productoActual].mape,
+                mad: pronosticosCalculados[productoActual].mad
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ Pronóstico guardado exitosamente');
+                recalcularMRP();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al guardar pronóstico');
+        });
+    }
+
+    // MRP Functions
+    function recalcularMRP() {
+        fetch('/estudiante/api/calcular-mrp')
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error('Error MRP:', data.error);
+                    return;
+                }
+                actualizarResumenMRP(data.resumen);
+                data.productos.forEach(prod => {
+                    actualizarProductoMRP(prod);
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+    }
+
+    function actualizarResumenMRP(resumen) {
+        document.getElementById('productosCriticos').textContent = resumen.criticos;
+        document.getElementById('productosAdvertencia').textContent = resumen.advertencia;
+        document.getElementById('productosOptimos').textContent = resumen.optimos;
+        document.getElementById('capitalRequerido').textContent = '$' + resumen.capital_requerido.toLocaleString();
+    }
+
+    function actualizarProductoMRP(prod) {
+        document.getElementById(`stock-${prod.id}`).textContent = prod.stock_actual;
+        document.getElementById(`transito-${prod.id}`).textContent = prod.en_transito;
+        document.getElementById(`pronostico-${prod.id}`).textContent = prod.pronostico_proximos_dias;
+        document.getElementById(`cobertura-${prod.id}`).textContent = prod.dias_cobertura.toFixed(1) + ' días';
+        document.getElementById(`recomendacion-${prod.id}`).textContent = prod.cantidad_recomendada > 0 ? `${prod.cantidad_recomendada} unidades` : 'Stock suficiente';
+        document.getElementById(`justificacion-${prod.id}`).textContent = prod.justificacion;
+        document.getElementById(`cantidad-${prod.id}`).value = prod.cantidad_recomendada;
+        
+        // Status badge
+        const statusEl = document.getElementById(`status-${prod.id}`);
+        statusEl.className = 'status-badge ' + prod.status_class;
+        statusEl.textContent = prod.status_text;
+        
+        actualizarCostoProducto(prod.id);
+    }
+
+    function actualizarCostoProducto(productoId) {
+        const cantidad = parseInt(document.getElementById(`cantidad-${productoId}`).value) || 0;
+        
+        fetch(`/estudiante/api/producto/${productoId}/precio`)
+            .then(response => response.json())
+            .then(data => {
+                const costo = cantidad * data.precio_compra;
+                document.getElementById(`costo-${productoId}`).textContent = '$' + costo.toLocaleString();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+    }
+
+    function generarRequerimiento(productoId) {
+        const cantidad = parseInt(document.getElementById(`cantidad-${productoId}`).value);
+        
+        if (cantidad <= 0) {
+            alert('La cantidad debe ser mayor a 0');
+            return;
+        }
+        
+        fetch('/estudiante/api/generar-requerimiento', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                producto_id: productoId,
+                cantidad: cantidad
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ Requerimiento generado. El equipo de Compras puede procesarlo.');
+                document.getElementById(`cantidad-${productoId}`).value = 0;
+                actualizarCostoProducto(productoId);
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al generar requerimiento');
+        });
+    }
+
+    function generarTodasOrdenes() {
+        if (!confirm('¿Generar órdenes para todos los productos con recomendaciones?')) return;
+        
+        fetch('/estudiante/api/generar-todas-ordenes', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`✅ ${data.ordenes_generadas} órdenes generadas exitosamente`);
+                recalcularMRP();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al generar órdenes');
+        });
+    }
+
+    // Cargar MRP al iniciar
+    document.addEventListener('DOMContentLoaded', function() {
+        recalcularMRP();
+    });
+</script>
+{% endblock %}

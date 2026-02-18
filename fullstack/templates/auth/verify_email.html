@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Verificar Correo - ERP Educativo{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center align-items-center" style="min-height: 90vh;">
+        <div class="col-md-5">
+            <div class="card shadow-lg">
+                <div class="card-body p-5">
+                    <div class="text-center mb-4">
+                        <i class="fas fa-envelope-open-text fa-4x text-primary mb-3"></i>
+                        <h2 class="fw-bold">Verificar Correo</h2>
+                        <p class="text-muted">Ingresa el código que enviamos a tu correo</p>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Correo:</strong> {{ email }}
+                    </div>
+
+                    <form method="POST" action="{{ url_for('auth.verify_email_form') }}">
+                        <input type="hidden" name="email" value="{{ email }}">
+                        
+                        <div class="mb-4">
+                            <label for="codigo" class="form-label">Código de Verificación</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-shield-alt"></i></span>
+                                <input type="text" class="form-control text-center" id="codigo" name="codigo" 
+                                       placeholder="000000" required maxlength="6" 
+                                       style="font-size: 24px; letter-spacing: 5px; font-weight: bold;">
+                            </div>
+                            <small class="form-text text-muted">
+                                Código de 6 dígitos enviado a tu correo
+                            </small>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-custom w-100 mb-3">
+                            <i class="fas fa-check-circle me-2"></i>Verificar Cuenta
+                        </button>
+                    </form>
+
+                    <hr>
+
+                    <div class="text-center">
+                        <p class="mb-2">¿No recibiste el código?</p>
+                        <form method="POST" action="{{ url_for('auth.resend_verification') }}" style="display: inline;">
+                            <input type="hidden" name="email" value="{{ email }}">
+                            <button type="submit" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-redo me-1"></i>Reenviar Código
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="text-center mt-3">
+                        <a href="{{ url_for('auth.login') }}" class="text-decoration-none">
+                            <i class="fas fa-arrow-left me-1"></i>Volver al inicio de sesión
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-warning mt-3">
+                <strong><i class="fas fa-clock me-2"></i>Importante:</strong>
+                El código expira en 15 minutos. Si no lo encuentras, revisa tu carpeta de spam.
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    body {
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
+    }
+    
+    .card {
+        border-radius: 15px;
+    }
+    
+    .input-group-text {
+        background-color: #c41e3a;
+        color: white;
+        border-color: #c41e3a;
+    }
+    
+    .btn-primary {
+        background-color: #c41e3a;
+        border-color: #c41e3a;
+    }
+    
+    .btn-primary:hover {
+        background-color: #a01729;
+        border-color: #a01729;
+    }
+    
+    .text-primary {
+        color: #c41e3a !important;
+    }
+</style>
+
+<script>
+    // Auto-format código
+    document.getElementById('codigo').addEventListener('input', function(e) {
+        this.value = this.value.replace(/[^0-9]/g, '');
+    });
+</script>
+{% endblock %}

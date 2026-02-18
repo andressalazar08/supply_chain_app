@@ -16,15 +16,14 @@
 
                     <form method="POST" action="{{ url_for('auth.login') }}">
                         <div class="mb-4">
-                            <label for="username" class="form-label">Usuario</label>
+                            <label for="username" class="form-label">Usuario o Correo</label>
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-user"></i></span>
                                 <input type="text" class="form-control" id="username" name="username" 
-                                       placeholder="admin o estudiante_#_#" required autofocus>
+                                       placeholder="Ingresa tu correo o usuario" required autofocus>
                             </div>
                             <small class="form-text text-muted">
-                                Formato estudiante: estudiante_[1-4]_[empresa]<br>
-                                1=Ventas, 2=Planeación, 3=Compras, 4=Logística
+                                <i class="fas fa-info-circle"></i> Usa tu correo institucional o usuario asignado
                             </small>
                         </div>
 
@@ -33,11 +32,8 @@
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-lock"></i></span>
                                 <input type="password" class="form-control" id="password" name="password" 
-                                       placeholder="Ingrese su contraseña">
+                                       placeholder="Ingrese su contraseña" required>
                             </div>
-                            <small class="form-text text-muted">
-                                Solo requerido para administradores
-                            </small>
                         </div>
 
                         <button type="submit" class="btn btn-primary btn-custom w-100 mb-3">
@@ -45,22 +41,34 @@
                         </button>
                     </form>
 
-                    <hr>
+                    <div class="row mt-3 mb-3">
+                        <div class="col-6">
+                            <a href="{{ url_for('auth.register') }}" class="btn btn-outline-primary w-100">
+                                <i class="fas fa-user-plus me-1"></i>Crear Cuenta
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="{{ url_for('auth.forgot_password') }}" class="btn btn-outline-secondary w-100">
+                                <i class="fas fa-key me-1"></i>Recuperar
+                            </a>
+                        </div>
+                    </div>
 
                     <div class="alert alert-info">
-                        <strong><i class="fas fa-info-circle me-2"></i>Ejemplos de acceso:</strong>
-                        <ul class="mb-0 mt-2">
-                            <li><strong>Profesor:</strong> admin / admin123</li>
-                            <li><strong>Ventas Empresa 1:</strong> estudiante_1_1</li>
-                            <li><strong>Planeación Empresa 2:</strong> estudiante_2_2</li>
-                            <li><strong>Compras Empresa 1:</strong> estudiante_3_1</li>
-                            <li><strong>Logística Empresa 3:</strong> estudiante_4_3</li>
+                        <h6 class="alert-heading"><i class="fas fa-info-circle me-2"></i>Información de acceso</h6>
+                        <ul class="mb-0 mt-2 small">
+                            <li><strong>Estudiantes:</strong> Inicia sesión con tu correo institucional y contraseña</li>
+                            <li><strong>Docentes:</strong> Usa tu correo o usuario y contraseña</li>
+                            <li><strong>Admin de prueba:</strong> admin / admin123</li>
                         </ul>
+                        <p class="mb-0 mt-2 small">
+                            <i class="fas fa-user-plus"></i> ¿Nuevo usuario? <a href="{{ url_for('auth.register') }}">Crea tu cuenta aquí</a>
+                        </p>
                     </div>
                 </div>
             </div>
 
-            <div class="text-center mt-3 text-muted">
+            <div class="text-center mt-3 text-white">
                 <small>
                     <i class="fas fa-graduation-cap me-1"></i>
                     Herramienta educativa para gestión de cadena de abastecimiento
@@ -72,7 +80,7 @@
 
 <style>
     body {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
     }
     
     .card {
@@ -80,23 +88,34 @@
     }
     
     .input-group-text {
-        background-color: #9b59b6;
+        background-color: #c41e3a;
         color: white;
-        border-color: #9b59b6;
+        border-color: #c41e3a;
     }
     
     .btn-primary {
-        background-color: #8e44ad;
-        border-color: #8e44ad;
+        background-color: #c41e3a;
+        border-color: #c41e3a;
     }
     
     .btn-primary:hover {
-        background-color: #9b59b6;
-        border-color: #9b59b6;
+        background-color: #a01729;
+        border-color: #a01729;
+    }
+    
+    .btn-outline-primary {
+        color: #c41e3a;
+        border-color: #c41e3a;
+    }
+    
+    .btn-outline-primary:hover {
+        background-color: #c41e3a;
+        border-color: #c41e3a;
+        color: white;
     }
     
     .text-primary {
-        color: #8e44ad !important;
+        color: #c41e3a !important;
     }
 </style>
 {% endblock %}

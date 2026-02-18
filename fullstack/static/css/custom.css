@@ -1,4 +1,16 @@
 /* Estilos personalizados para ERP Educativo */
+/* Paleta de colores universitarios - Tonos rojos */
+:root {
+    --color-primario: #c41e3a;        /* Rojo universitario principal */
+    --color-primario-claro: #e63946;  /* Rojo claro */
+    --color-primario-oscuro: #a01729; /* Rojo oscuro */
+    --color-secundario: #f4a261;      /* Naranja suave */
+    --color-acento: #e76f51;          /* Coral/Terracota */
+    --color-exito: #2a9d8f;           /* Verde azulado */
+    --color-advertencia: #f77f00;     /* Naranja */
+    --color-peligro: #d62828;         /* Rojo intenso */
+    --color-info: #f4a261;            /* Naranja suave */
+}
 
 /* Animaciones */
 @keyframes fadeIn {
@@ -28,10 +40,10 @@
     font-weight: 600;
 }
 
-.badge-ventas { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.badge-planeacion { background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%); }
-.badge-compras { background: linear-gradient(135deg, #f2994a 0%, #f2c94c 100%); }
-.badge-logistica { background: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%); }
+.badge-ventas { background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%); }
+.badge-planeacion { background: linear-gradient(135deg, #2a9d8f 0%, #4ecdc4 100%); }
+.badge-compras { background: linear-gradient(135deg, #f77f00 0%, #f4a261 100%); }
+.badge-logistica { background: linear-gradient(135deg, #e76f51 0%, #f4a261 100%); }
 
 /* Botones con efectos */
 .btn-animated {
@@ -61,7 +73,7 @@
 /* Loading spinner */
 .spinner {
     border: 4px solid #f3f3f3;
-    border-top: 4px solid #3498db;
+    border-top: 4px solid #c41e3a;
     border-radius: 50%;
     width: 40px;
     height: 40px;
@@ -104,13 +116,13 @@
 /* Botón pulsante para acción principal */
 @keyframes pulse {
     0% {
-        box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.7);
+        box-shadow: 0 0 0 0 rgba(196, 30, 58, 0.7);
     }
     70% {
-        box-shadow: 0 0 0 15px rgba(13, 110, 253, 0);
+        box-shadow: 0 0 0 15px rgba(196, 30, 58, 0);
     }
     100% {
-        box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
+        box-shadow: 0 0 0 0 rgba(196, 30, 58, 0);
     }
 }
 
@@ -124,19 +136,19 @@
 
 /* Gradiente para header de cards */
 .bg-gradient-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
 }
 
 .bg-gradient-success {
-    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+    background: linear-gradient(135deg, #2a9d8f 0%, #4ecdc4 100%);
 }
 
 .bg-gradient-warning {
-    background: linear-gradient(135deg, #f2994a 0%, #f2c94c 100%);
+    background: linear-gradient(135deg, #f77f00 0%, #f4a261 100%);
 }
 
 .bg-gradient-danger {
-    background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+    background: linear-gradient(135deg, #d62828 0%, #e63946 100%);
 }
 
 /* Responsive adjustments */
@@ -149,4 +161,146 @@
     .stat-card h3 {
         font-size: 1.8rem;
     }
+}
+
+/* ============================================================================
+   SOBRESCRITURA DE COLORES BOOTSTRAP - TEMA UNIVERSITARIO ROJO
+   ============================================================================ */
+
+/* Botones primarios - Rojo universitario */
+.btn-primary {
+    background-color: var(--color-primario) !important;
+    border-color: var(--color-primario) !important;
+    color: white !important;
+}
+
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active {
+    background-color: var(--color-primario-oscuro) !important;
+    border-color: var(--color-primario-oscuro) !important;
+    color: white !important;
+}
+
+/* Backgrounds primarios */
+.bg-primary {
+    background-color: var(--color-primario) !important;
+}
+
+/* Textos primarios */
+.text-primary {
+    color: var(--color-primario) !important;
+}
+
+/* Borders primarios */
+.border-primary {
+    border-color: var(--color-primario) !important;
+}
+
+/* Botones info - Naranja suave */
+.btn-info {
+    background-color: var(--color-info) !important;
+    border-color: var(--color-info) !important;
+    color: white !important;
+}
+
+.btn-info:hover,
+.btn-info:focus {
+    background-color: #e09451 !important;
+    border-color: #e09451 !important;
+}
+
+/* Backgrounds info */
+.bg-info {
+    background-color: var(--color-info) !important;
+    color: white !important;
+}
+
+/* Spinners - Rojo universitario */
+.spinner-border.text-primary {
+    color: var(--color-primario) !important;
+    border-color: currentColor !important;
+    border-right-color: transparent !important;
+}
+
+/* Badges - Colores universitarios */
+.badge.bg-primary {
+    background-color: var(--color-primario) !important;
+}
+
+.badge.bg-info {
+    background-color: var(--color-info) !important;
+}
+
+/* Links */
+a {
+    color: var(--color-primario);
+}
+
+a:hover {
+    color: var(--color-primario-oscuro);
+}
+
+/* Progress bars */
+.progress-bar {
+    background-color: var(--color-primario) !important;
+}
+
+/* Form controls focus */
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--color-primario-claro);
+    box-shadow: 0 0 0 0.25rem rgba(196, 30, 58, 0.25);
+}
+
+/* Alerts personalizados */
+.alert-primary {
+    background-color: rgba(196, 30, 58, 0.1);
+    border-color: var(--color-primario-claro);
+    color: var(--color-primario-oscuro);
+}
+
+.alert-info {
+    background-color: rgba(244, 162, 97, 0.1);
+    border-color: var(--color-info);
+    color: #d68942;
+}
+
+/* Nav pills y tabs */
+.nav-pills .nav-link.active {
+    background-color: var(--color-primario) !important;
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--color-primario) !important;
+    border-color: var(--color-primario) !important;
+}
+
+/* Badges outline */
+.badge.bg-outline-primary {
+    background-color: transparent !important;
+    border: 2px solid var(--color-primario);
+    color: var(--color-primario);
+}
+
+/* Cards con borde primario */
+.card.border-primary {
+    border-color: var(--color-primario) !important;
+}
+
+.card.border-primary .card-header {
+    background-color: var(--color-primario);
+    color: white;
+}
+
+/* Botones outline */
+.btn-outline-primary {
+    color: var(--color-primario) !important;
+    border-color: var(--color-primario) !important;
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--color-primario) !important;
+    border-color: var(--color-primario) !important;
+    color: white !important;
 }

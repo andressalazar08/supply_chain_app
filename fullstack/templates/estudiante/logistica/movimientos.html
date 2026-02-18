@@ -5,7 +5,7 @@
 {% block extra_css %}
 <style>
     .sidebar {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
         min-height: 100vh;
         padding: 0;
     }
@@ -43,7 +43,7 @@
     .stat-card h3 {
         font-size: 2rem;
         margin: 10px 0;
-        color: #2c3e50;
+        color: #34495e;
     }
     
     .stat-card.entrada { border-top: 4px solid #2ecc71; }
@@ -75,8 +75,8 @@
     .tipo-entrada_compra { background: #2ecc71; color: white; }
     .tipo-salida_venta { background: #e74c3c; color: white; }
     .tipo-salida_despacho { background: #f39c12; color: white; }
-    .tipo-ajuste { background: #9b59b6; color: white; }
-    .tipo-transferencia { background: #3498db; color: white; }
+    .tipo-ajuste { background: #c41e3a; color: white; }
+    .tipo-transferencia { background: #c41e3a; color: white; }
     
     .saldo-positivo { color: #2ecc71; font-weight: bold; }
     .saldo-negativo { color: #e74c3c; font-weight: bold; }
@@ -100,7 +100,7 @@
         width: 12px;
         height: 12px;
         border-radius: 50%;
-        background: #3498db;
+        background: #c41e3a;
     }
     
     .timeline-item.entrada::before { background: #2ecc71; }
@@ -112,23 +112,7 @@
 <div class="container-fluid">
     <div class="row">
         <!-- Sidebar -->
-        <div class="col-md-2 sidebar">
-            <h5 class="text-white px-3 py-4">
-                <i class="fas fa-truck me-2"></i>Logística
-            </h5>
-            <a href="{{ url_for('estudiante.dashboard_logistica') }}">
-                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
-            </a>
-            <a href="{{ url_for('estudiante.vista_recepcion') }}">
-                <i class="fas fa-inbox me-2"></i>Recepción
-            </a>
-            <a href="{{ url_for('estudiante.vista_despacho') }}">
-                <i class="fas fa-shipping-fast me-2"></i>Despacho
-            </a>
-            <a href="{{ url_for('estudiante.vista_movimientos') }}" class="active">
-                <i class="fas fa-exchange-alt me-2"></i>Movimientos
-            </a>
-        </div>
+        {% include 'estudiante/_sidebar.html' %}
 
         <!-- Main Content -->
         <div class="col-md-10 p-4">
