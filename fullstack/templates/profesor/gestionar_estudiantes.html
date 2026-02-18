@@ -1,0 +1,267 @@
+{% extends 'base.html' %}
+
+{% block title %}Gestionar Estudiantes{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <a href="{{ url_for('profesor.home') }}" class="btn btn-outline-primary mb-3">
+                <i class="fas fa-arrow-left me-2"></i>Volver al Inicio
+            </a>
+            <h2><i class="fas fa-users"></i> Gestión de Estudiantes</h2>
+            <p class="text-muted">Asignar roles y empresas a los estudiantes registrados</p>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Buscar por Email/Nombre</label>
+                    <input type="text" name="buscar" class="form-control" 
+                           placeholder="Buscar..." 
+                           value="{{ filtro_buscar or '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Estado</label>
+                    <select name="estado" class="form-select">
+                        <option value="pendiente" {% if filtro_estado == 'pendiente' %}selected{% endif %}>Pendientes</option>
+                        <option value="asignado" {% if filtro_estado == 'asignado' %}selected{% endif %}>Asignados</option>
+                        <option value="todos" {% if filtro_estado == 'todos' %}selected{% endif %}>Todos</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Universidad</label>
+                    <select name="universidad" class="form-select">
+                        <option value="">Todas</option>
+                        {% for univ in universidades %}
+                        <option value="{{ univ }}" {% if filtro_universidad == univ %}selected{% endif %}>{{ univ }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Sede</label>
+                    <select name="sede" class="form-select">
+                        <option value="">Todas</option>
+                        {% for sede_item in sedes %}
+                        <option value="{{ sede_item }}" {% if filtro_sede == sede_item %}selected{% endif %}>{{ sede_item }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-fill">
+                            <i class="fas fa-search"></i> Buscar
+                        </button>
+                        <a href="{{ url_for('profesor.gestionar_estudiantes') }}" class="btn btn-secondary">
+                            <i class="fas fa-times"></i>
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Contador -->
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i> 
+        Mostrando <strong>{{ estudiantes|length }}</strong> estudiante(s)
+    </div>
+
+    <!-- Tabla de Estudiantes -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Email</th>
+                            <th>Código</th>
+                            <th>Universidad</th>
+                            <th>Sede</th>
+                            <th>Carrera</th>
+                            <th>Estado</th>
+                            <th>Asignación Actual</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for estudiante in estudiantes %}
+                        <tr id="estudiante-{{ estudiante.id }}">
+                            <td>{{ estudiante.nombre_completo or estudiante.username }}</td>
+                            <td>{{ estudiante.email }}</td>
+                            <td><code>{{ estudiante.codigo_estudiante }}</code></td>
+                            <td>{{ estudiante.universidad or '-' }}</td>
+                            <td>{{ estudiante.sede or '-' }}</td>
+                            <td><small>{{ estudiante.carrera or '-' }}</small></td>
+                            <td>
+                                {% if estudiante.email_verified %}
+                                    <span class="badge bg-success">Verificado</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Sin verificar</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if estudiante.rol and estudiante.empresa_id %}
+                                    <span class="badge bg-primary">{{ estudiante.rol|upper }}</span>
+                                    <br>
+                                    <small class="text-muted">{{ estudiante.empresa.nombre }}</small>
+                                {% else %}
+                                    <span class="badge bg-secondary">Sin asignar</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if not estudiante.rol or not estudiante.empresa_id %}
+                                <!-- Botón para asignar -->
+                                <button class="btn btn-sm btn-success" 
+                                        onclick="mostrarModalAsignar({{ estudiante.id }}, '{{ estudiante.nombre_completo or estudiante.username }}')">
+                                    <i class="fas fa-user-plus"></i> Asignar
+                                </button>
+                                {% else %}
+                                <!-- Botón para desasignar -->
+                                <button class="btn btn-sm btn-warning" 
+                                        onclick="desasignarEstudiante({{ estudiante.id }})">
+                                    <i class="fas fa-user-minus"></i> Desasignar
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted py-4">
+                                <i class="fas fa-inbox fa-3x mb-3"></i>
+                                <p>No hay estudiantes con los filtros seleccionados</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para asignar estudiante -->
+<div class="modal fade" id="modalAsignar" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Asignar Estudiante</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formAsignar">
+                <div class="modal-body">
+                    <input type="hidden" id="estudianteId" name="estudiante_id">
+                    
+                    <p>Asignar a: <strong id="estudianteNombre"></strong></p>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Empresa</label>
+                        <select class="form-select" name="empresa_id" required>
+                            <option value="">Seleccione una empresa...</option>
+                            {% for empresa in empresas %}
+                            <option value="{{ empresa.id }}">{{ empresa.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Rol</label>
+                        <select class="form-select" name="rol" required>
+                            <option value="">Seleccione un rol...</option>
+                            {% for rol in roles_disponibles %}
+                            <option value="{{ rol }}">{{ rol|upper }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check"></i> Asignar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+let modalAsignar;
+
+document.addEventListener('DOMContentLoaded', function() {
+    modalAsignar = new bootstrap.Modal(document.getElementById('modalAsignar'));
+    
+    // Manejar submit del formulario de asignación
+    document.getElementById('formAsignar').addEventListener('submit', function(e) {
+        e.preventDefault();
+        asignarEstudiante();
+    });
+});
+
+function mostrarModalAsignar(id, nombre) {
+    document.getElementById('estudianteId').value = id;
+    document.getElementById('estudianteNombre').textContent = nombre;
+    modalAsignar.show();
+}
+
+function asignarEstudiante() {
+    const id = document.getElementById('estudianteId').value;
+    const formData = new FormData(document.getElementById('formAsignar'));
+    
+    fetch(`/profesor/estudiantes/${id}/asignar`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            modalAsignar.hide();
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al asignar estudiante');
+    });
+}
+
+function desasignarEstudiante(id) {
+    if (!confirm('¿Está seguro de desasignar a este estudiante?')) {
+        return;
+    }
+    
+    fetch(`/profesor/estudiantes/${id}/desasignar`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al desasignar estudiante');
+    });
+}
+</script>
+
+<style>
+.table td {
+    vertical-align: middle;
+}
+
+.badge {
+    font-size: 0.8rem;
+}
+</style>
+{% endblock %}

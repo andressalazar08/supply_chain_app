@@ -9,17 +9,19 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS - Tema Universitario -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}?v={{ range(1, 9999999) | random }}">
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
     
     <style>
         :root {
-            --primary-color: #2c3e50;
-            --secondary-color: #3498db;
-            --success-color: #27ae60;
-            --danger-color: #e74c3c;
-            --warning-color: #f39c12;
-            --info-color: #16a085;
+            --primary-color: #c41e3a;
+            --secondary-color: #e63946;
+            --success-color: #2a9d8f;
+            --danger-color: #d62828;
+            --warning-color: #f77f00;
+            --info-color: #f4a261;
         }
         
         body {
@@ -46,13 +48,13 @@
         }
         
         .sidebar a:hover {
-            background-color: #2c3e50;
+            background-color: #34495e;
             padding-left: 30px;
         }
         
         .sidebar a.active {
-            background-color: var(--secondary-color);
-            border-left: 4px solid var(--success-color);
+            background-color: var(--primary-color);
+            border-left: 4px solid var(--secondary-color);
         }
         
         .card {
@@ -73,11 +75,11 @@
             margin-bottom: 20px;
         }
         
-        .stat-card.primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .stat-card.success { background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%); }
-        .stat-card.danger { background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); }
-        .stat-card.warning { background: linear-gradient(135deg, #f2994a 0%, #f2c94c 100%); }
-        .stat-card.info { background: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%); }
+        .stat-card.primary { background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%); }
+        .stat-card.success { background: linear-gradient(135deg, #2a9d8f 0%, #4ecdc4 100%); }
+        .stat-card.danger { background: linear-gradient(135deg, #d62828 0%, #e63946 100%); }
+        .stat-card.warning { background: linear-gradient(135deg, #f77f00 0%, #f4a261 100%); }
+        .stat-card.info { background: linear-gradient(135deg, #f4a261 0%, #e76f51 100%); }
         
         .stat-card h3 {
             font-size: 2.5rem;
@@ -119,7 +121,7 @@
         }
         
         .day-indicator {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
             color: white;
             padding: 15px;
             border-radius: 10px;
@@ -153,10 +155,18 @@
                         <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="fas fa-user-circle me-1"></i>
                             {{ current_user.nombre_completo or current_user.username }}
-                            <span class="badge bg-light text-dark ms-2">{{ current_user.rol.upper() }}</span>
+                            {% if current_user.rol %}
+                                <span class="badge bg-light text-dark ms-2">{{ current_user.rol.upper() }}</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark ms-2">SIN ASIGNAR</span>
+                            {% endif %}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#"><i class="fas fa-cog me-2"></i>Configuración</a></li>
+                            {% if current_user.tipo_usuario == 'profesor' or current_user.rol == 'admin' %}
+                                <li><a class="dropdown-item" href="{{ url_for('profesor.home') }}"><i class="fas fa-home me-2"></i>Página Principal</a></li>
+                            {% else %}
+                                <li><a class="dropdown-item" href="{{ url_for('estudiante.home') }}"><i class="fas fa-home me-2"></i>Página Principal</a></li>
+                            {% endif %}
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt me-2"></i>Cerrar Sesión</a></li>
                         </ul>

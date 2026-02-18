@@ -13,19 +13,43 @@ class Usuario(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
-    rol = db.Column(db.String(20), nullable=False)  # admin, ventas, planeacion, compras, logistica
+    rol = db.Column(db.String(20), nullable=True)  # super_admin, admin, ventas, planeacion, compras, logistica (se asigna después)
+    tipo_usuario = db.Column(db.String(20), default='estudiante')  # estudiante, docente, super_admin
     empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=True)
     nombre_completo = db.Column(db.String(100))
-    email = db.Column(db.String(120))
+    email = db.Column(db.String(120), unique=True)
     activo = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
+    # Campos de información académica
+    universidad = db.Column(db.String(200))
+    sede = db.Column(db.String(100))
+    codigo_estudiante = db.Column(db.String(20), unique=True)
+    codigo_profesor = db.Column(db.String(20), unique=True)
+    carrera = db.Column(db.String(200))
+    foto_perfil = db.Column(db.String(255))  # Nombre del archivo de foto
+    
+    # Campos para verificación de correo
+    email_verified = db.Column(db.Boolean, default=False)
+    verification_code = db.Column(db.String(6))
+    verification_code_expires = db.Column(db.DateTime)
+    
+    # Campos para recuperación de contraseña
+    reset_token = db.Column(db.String(10))
+    reset_token_expires = db.Column(db.DateTime)
+    
+    # Campos para sistema de jerarquía
+    es_super_admin = db.Column(db.Boolean, default=False)  # True solo para admin maestro
+    profesor_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)  # Para estudiantes: qué profesor los gestiona
+    
     # Relaciones
-    empresa = db.relationship('Empresa', backref='estudiantes')
+    empresa = db.relationship('Empresa', foreign_keys='[Usuario.empresa_id]', backref='estudiantes')
     decisiones = db.relationship('Decision', backref='usuario', lazy=True)
+    profesor = db.relationship('Usuario', remote_side=[id], foreign_keys=[profesor_id], backref='estudiantes_asignados')
+    empresas_creadas = db.relationship('Empresa', foreign_keys='[Empresa.profesor_id]', backref='profesor_creador')
     
     def __repr__(self):
-        return f'<Usuario {self.username} - {self.rol}>'
+        return f'<Usuario {self.username} - {self.rol if self.rol else "Sin rol"}>'
 
 
 class Empresa(db.Model):
@@ -38,6 +62,8 @@ class Empresa(db.Model):
     capital_actual = db.Column(db.Float, default=1000000.0)
     activa = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    profesor_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)  # Profesor que creó esta empresa
+    simulacion_id = db.Column(db.Integer, db.ForeignKey('simulacion.id'), nullable=True)  # Simulación a la que pertenece
     
     # Relaciones
     inventarios = db.relationship('Inventario', backref='empresa', lazy=True)
@@ -53,16 +79,22 @@ class Simulacion(db.Model):
     __tablename__ = 'simulacion'
     
     id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), default='Simulación')  # Nombre descriptivo
     dia_actual = db.Column(db.Integer, default=1)
     estado = db.Column(db.String(20), default='pausado')  # pausado, en_curso, finalizado
     fecha_inicio = db.Column(db.DateTime)
     fecha_fin = db.Column(db.DateTime)
     duracion_dias = db.Column(db.Integer, default=30)
+    capital_inicial_empresas = db.Column(db.Float, default=50000000.0)  # Capital con el que empiezan todas las empresas
+    activa = db.Column(db.Boolean, default=True)  # Solo una simulación activa a la vez
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Relaciones
+    empresas = db.relationship('Empresa', backref='simulacion', lazy=True)
+    
     def __repr__(self):
-        return f'<Simulacion Día {self.dia_actual} - {self.estado}>'
+        return f'<Simulacion {self.nombre} - Día {self.dia_actual} - {self.estado}>'
 
 
 class Producto(db.Model):
@@ -81,6 +113,7 @@ class Producto(db.Model):
     desviacion_demanda = db.Column(db.Float, default=20)
     elasticidad_precio = db.Column(db.Float, default=1.5)  # Factor de sensibilidad al precio
     tiempo_entrega = db.Column(db.Integer, default=3)  # días
+    stock_maximo = db.Column(db.Float, default=500)  # Límite de inventario (sobrestock genera costos adicionales)
     activo = db.Column(db.Boolean, default=True)
     
     # Relaciones

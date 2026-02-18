@@ -7,16 +7,170 @@ from models import (Simulacion, Empresa, Producto, Inventario, Venta, Compra,
 from extensions import db
 from datetime import datetime
 import random
+from sqlalchemy import func
+from sqlalchemy import func
 from utils.disrupciones import (
     calcular_impacto_demanda, calcular_impacto_lead_time,
     obtener_disrupciones_activas_empresa
 )
 
 
+def calcular_precios_mercado(simulacion, producto_id, region):
+    """
+    Calcula el precio promedio del mercado para un producto en una región
+    Retorna: (precio_promedio, lista de (empresa_id, precio, stock_disponible))
+    """
+    empresas_activas = Empresa.query.filter_by(simulacion_id=simulacion.id).all()
+    precios_mercado = []
+    
+    for empresa in empresas_activas:
+        # Obtener precio del producto para esta empresa
+        producto = Producto.query.get(producto_id)
+        if not producto:
+            continue
+            
+        inventario = Inventario.query.filter_by(
+            empresa_id=empresa.id,
+            producto_id=producto_id
+        ).first()
+        
+        stock_disponible = 0
+        if inventario:
+            stock_disponible = inventario.cantidad_actual - inventario.cantidad_reservada
+            stock_disponible = max(0, stock_disponible)
+        
+        # El precio actual es el mismo para todas las regiones (precio_actual del producto)
+        # En el futuro podríamos tener precios por región
+        precios_mercado.append({
+            'empresa_id': empresa.id,
+            'precio': producto.precio_actual,
+            'stock': stock_disponible
+        })
+    
+    # Calcular precio promedio (solo de empresas con stock > 0)
+    precios_validos = [p['precio'] for p in precios_mercado if p['stock'] > 0]
+    precio_promedio = sum(precios_validos) / len(precios_validos) if precios_validos else 0
+    
+    return precio_promedio, precios_mercado
+
+
+def calcular_market_share(precio_empresa, precio_promedio, stock_disponible, elasticidad):
+    """
+    Calcula el porcentaje de market share que recibe una empresa
+    basado en su precio relativo al mercado y disponibilidad de stock
+    
+    Retorna: porcentaje de 0 a 1
+    """
+    if stock_disponible <= 0:
+        return 0.0  # Sin stock = sin ventas
+    
+    if precio_promedio <= 0:
+        return 1.0 / max(1, stock_disponible)  # Distribuir equitativamente si no hay referencia
+    
+    # Calcular ratio de precio
+    ratio_precio = precio_empresa / precio_promedio
+    
+    # Aplicar elasticidad del producto
+    # Productos premium (baja elasticidad) son menos sensibles al precio
+    # Productos económicos (alta elasticidad) son muy sensibles al precio
+    factor_elasticidad = elasticidad / 2.0  # Normalizar
+    
+    # Calcular market share base según ratio de precio
+    if ratio_precio > 1.5:  # Precio muy alto (>150% del promedio)
+        market_share = 0.0
+    elif ratio_precio > 1.2:  # Precio alto (120-150%)
+        market_share = 0.1 + (1.5 - ratio_precio) * 0.3 * factor_elasticidad
+    elif ratio_precio > 0.9:  # Precio competitivo (90-120%)
+        market_share = 0.5 + (1.2 - ratio_precio) * 0.5
+    elif ratio_precio > 0.7:  # Precio bajo (70-90%)
+        market_share = 0.6 + (0.9 - ratio_precio) * 1.0
+    else:  # Precio muy bajo (<70%)
+        # Sospecha de calidad - no siempre es mejor
+        market_share = 0.4 + random.uniform(-0.1, 0.1)
+    
+    # Agregar factor de aleatoriedad (comportamiento de consumidor)
+    market_share += random.uniform(-0.05, 0.05)
+    
+    # Asegurar que esté entre 0 y 1
+    market_share = max(0.0, min(1.0, market_share))
+    
+    return market_share
+
+
+def distribuir_demanda_competitiva(simulacion, producto, region, demanda_total, dia_actual):
+    """
+    Distribuye la demanda total del mercado entre todas las empresas
+    según su competitividad de precios y disponibilidad de stock
+    
+    Retorna: (lista de asignaciones, precio_promedio)
+    """
+    # Obtener precios de mercado
+    precio_promedio, empresas_info = calcular_precios_mercado(simulacion, producto.id, region)
+    
+    if precio_promedio <= 0 or not empresas_info:
+        return [], 0  # Sin mercado activo - retornar tupla vacía
+    
+    # Calcular market share para cada empresa
+    market_shares = []
+    total_market_share = 0
+    
+    for info in empresas_info:
+        share = calcular_market_share(
+            info['precio'], 
+            precio_promedio, 
+            info['stock'],
+            producto.elasticidad_precio
+        )
+        market_shares.append({
+            'empresa_id': info['empresa_id'],
+            'precio': info['precio'],
+            'stock': info['stock'],
+            'market_share': share
+        })
+        total_market_share += share
+    
+    # Normalizar market shares
+    if total_market_share > 0:
+        for ms in market_shares:
+            ms['market_share'] = ms['market_share'] / total_market_share
+    
+    # Distribuir demanda según market share
+    asignaciones = []
+    demanda_restante = demanda_total
+    
+    # Ordenar por market share descendente
+    market_shares.sort(key=lambda x: x['market_share'], reverse=True)
+    
+    for ms in market_shares:
+        if demanda_restante <= 0:
+            break
+            
+        # Calcular demanda asignada a esta empresa
+        demanda_empresa = round(demanda_total * ms['market_share'])
+        
+        # Limitar por stock disponible
+        cantidad_asignada = min(demanda_empresa, ms['stock'], demanda_restante)
+        
+        if cantidad_asignada > 0:
+            asignaciones.append({
+                'empresa_id': ms['empresa_id'],
+                'cantidad': cantidad_asignada,
+                'precio': ms['precio'],
+                'market_share': ms['market_share'],
+                'stock_disponible': ms['stock']
+            })
+            demanda_restante -= cantidad_asignada
+    
+    # Si queda demanda sin asignar (todas sin stock o precios muy altos)
+    # Se registrará como ventas perdidas para cada empresa según su intención de compra
+    
+    return asignaciones, precio_promedio
+
+
 def procesar_ventas_dia(simulacion, empresa):
     """
-    Procesa las ventas del día para una empresa
-    Genera demanda aleatoria y procesa ventas según disponibilidad
+    Procesa las ventas del día para una empresa usando motor de competencia
+    La demanda se distribuye entre empresas según precios y disponibilidad
     """
     dia_actual = simulacion.dia_actual
     productos = Producto.query.filter_by(activo=True).all()
@@ -28,7 +182,7 @@ def procesar_ventas_dia(simulacion, empresa):
     ventas_generadas = []
     
     for producto in productos:
-        # Obtener inventario
+        # Obtener inventario de esta empresa
         inventario = Inventario.query.filter_by(
             empresa_id=empresa.id,
             producto_id=producto.id
@@ -38,31 +192,93 @@ def procesar_ventas_dia(simulacion, empresa):
             continue
         
         for region in regiones:
-            # Generar demanda base con variabilidad
-            demanda_base = random.gauss(producto.demanda_promedio, producto.desviacion_demanda)
-            demanda_base = max(0, demanda_base)  # No negativa
+            # DEMANDA MÍNIMA GARANTIZADA: Cada empresa DEBE atender esta demanda base
+            # Esto garantiza que el nivel de servicio refleje capacidad real
+            demanda_base_empresa = producto.demanda_promedio * 0.6  # 60% de la demanda promedio
             
-            # Aplicar impacto de disrupciones
-            demanda_ajustada = calcular_impacto_demanda(
-                producto.id, region, demanda_base, dia_actual, disrupciones_activas
+            # Generar demanda TOTAL del mercado (para distribución competitiva)
+            demanda_mercado_base = random.gauss(producto.demanda_promedio, producto.desviacion_demanda)
+            demanda_mercado_base = max(0, demanda_mercado_base)
+            
+            # Aplicar impacto de disrupciones a la demanda del mercado
+            demanda_mercado_ajustada = calcular_impacto_demanda(
+                producto.id, region, demanda_mercado_base, dia_actual, disrupciones_activas
             )
             
-            cantidad_solicitada = round(demanda_ajustada)
+            cantidad_total_mercado = round(demanda_mercado_ajustada)
             
-            if cantidad_solicitada <= 0:
+            if cantidad_total_mercado <= 0:
+                # Registrar venta con 0 demanda
+                venta = Venta(
+                    empresa_id=empresa.id,
+                    producto_id=producto.id,
+                    dia_simulacion=dia_actual,
+                    region=region,
+                    cantidad_solicitada=0,
+                    cantidad_vendida=0,
+                    cantidad_perdida=0,
+                    precio_unitario=producto.precio_actual,
+                    ingreso_total=0,
+                    costo_unitario=inventario.costo_promedio or producto.costo_unitario,
+                    margen=0
+                )
+                db.session.add(venta)
+                ventas_generadas.append(venta)
                 continue
             
+            # DISTRIBUIR LA DEMANDA ENTRE TODAS LAS EMPRESAS COMPETIDORAS
+            asignaciones, precio_promedio = distribuir_demanda_competitiva(
+                simulacion, producto, region, cantidad_total_mercado, dia_actual
+            )
+            
+            # Buscar la asignación para ESTA empresa
+            asignacion_empresa = None
+            for asig in asignaciones:
+                if asig['empresa_id'] == empresa.id:
+                    asignacion_empresa = asig
+                    break
+            
+            # Determinar cuánta demanda recibió esta empresa
+            # SIEMPRE asignar la demanda mínima garantizada + demanda competitiva
+            cantidad_solicitada_minima = round(demanda_base_empresa)  # Demanda que DEBE atender
+            
+            if asignacion_empresa:
+                # Demanda competitiva adicional basada en precio y disponibilidad
+                cantidad_adicional_competitiva = asignacion_empresa['cantidad']
+                cantidad_solicitada = cantidad_solicitada_minima + cantidad_adicional_competitiva
+                market_share_obtenido = asignacion_empresa['market_share']
+            else:
+                # Esta empresa no recibió demanda competitiva, pero SÍ tiene demanda mínima
+                cantidad_solicitada = cantidad_solicitada_minima
+                market_share_obtenido = 0
+            
             # Procesar venta según stock disponible
-            stock_disponible = inventario.cantidad_actual
+            stock_disponible = inventario.cantidad_actual - inventario.cantidad_reservada
+            stock_disponible = max(0, stock_disponible)
             cantidad_vendida = min(cantidad_solicitada, stock_disponible)
             
-            # Calcular valores
+            # Calcular ventas perdidas por diferentes razones
+            ventas_perdidas_sin_stock = max(0, cantidad_solicitada - cantidad_vendida)
+            
+            # Ventas perdidas por precio no competitivo
+            # Si no recibimos demanda pero teníamos stock, es porque nuestro precio no era competitivo
+            ratio_precio = producto.precio_actual / precio_promedio if precio_promedio > 0 else 1.0
+            ventas_perdidas_precio = 0
+            
+            if stock_disponible > 0 and cantidad_solicitada == 0 and ratio_precio > 1.2:
+                # Teníamos stock pero precio muy alto - perdimos potencial de venta
+                # Estimar cuánto podríamos haber vendido con precio competitivo
+                ventas_perdidas_precio = round(cantidad_total_mercado * 0.15)  # Asumimos que podríamos haber capturado 15% del mercado
+            
+            cantidad_perdida_total = ventas_perdidas_sin_stock + ventas_perdidas_precio
+            
+            # Calcular valores financieros
             precio_unitario = producto.precio_actual
             ingreso_total = cantidad_vendida * precio_unitario
             costo_unitario = inventario.costo_promedio or producto.costo_unitario
             margen = ingreso_total - (cantidad_vendida * costo_unitario)
             
-            # Crear registro de venta
+            # Crear registro de venta con información de competitividad
             venta = Venta(
                 empresa_id=empresa.id,
                 producto_id=producto.id,
@@ -70,7 +286,7 @@ def procesar_ventas_dia(simulacion, empresa):
                 region=region,
                 cantidad_solicitada=cantidad_solicitada,
                 cantidad_vendida=cantidad_vendida,
-                cantidad_perdida=cantidad_solicitada - cantidad_vendida,
+                cantidad_perdida=cantidad_perdida_total,
                 precio_unitario=precio_unitario,
                 ingreso_total=ingreso_total,
                 costo_unitario=costo_unitario,
@@ -84,18 +300,28 @@ def procesar_ventas_dia(simulacion, empresa):
                 saldo_anterior = inventario.cantidad_actual
                 inventario.cantidad_actual -= cantidad_vendida
                 
+                # Calcular porcentaje de competitividad para el mensaje
+                competitividad_msg = ""
+                if precio_promedio > 0:
+                    if ratio_precio > 1.5:
+                        competitividad_msg = f" - Precio 50%+ sobre mercado (${precio_promedio:,.0f})"
+                    elif ratio_precio > 1.2:
+                        competitividad_msg = f" - Precio alto vs mercado (${precio_promedio:,.0f})"
+                    elif ratio_precio < 0.8:
+                        competitividad_msg = f" - Precio muy competitivo vs mercado (${precio_promedio:,.0f})"
+                
                 # Registrar movimiento de inventario
                 movimiento = MovimientoInventario(
                     empresa_id=empresa.id,
                     producto_id=producto.id,
-                    usuario_id=None,  # Automático del sistema
+                    usuario_id=None,
                     dia_simulacion=dia_actual,
                     tipo_movimiento='salida_venta',
                     cantidad=cantidad_vendida,
                     saldo_anterior=saldo_anterior,
                     saldo_nuevo=inventario.cantidad_actual,
-                    venta_id=None,  # Se actualizará después del commit
-                    observaciones=f'Venta automática día {dia_actual} - Región {region}'
+                    venta_id=None,
+                    observaciones=f'Venta día {dia_actual} - {region} - Market share: {market_share_obtenido*100:.1f}%{competitividad_msg}'
                 )
                 
                 db.session.add(movimiento)
@@ -198,9 +424,70 @@ def procesar_despachos_regionales(simulacion, empresa):
     return despachos_llegan
 
 
-def calcular_metricas_dia(simulacion, empresa):
+def calcular_costos_operativos(simulacion, empresa):
     """
-    Calcula las métricas de desempeño del día
+    Calcula y aplica costos operativos automáticos diarios:
+    - Costos fijos: $800,000/día
+    - Mantenimiento de inventario: 0.3% del valor del inventario/día
+    - Penalización por ventas perdidas: 30% del precio de las unidades no vendidas
+    
+    Retorna un diccionario con el desglose de costos
+    """
+    dia_actual = simulacion.dia_actual
+    
+    # 1. COSTOS FIJOS OPERACIONALES ($800,000/día)
+    costos_fijos = 800000
+    
+    # 2. COSTOS DE MANTENIMIENTO DE INVENTARIO (0.3% del valor)
+    inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
+    valor_inventario = sum(
+        inv.cantidad_actual * (inv.costo_promedio or 0) for inv in inventarios
+    )
+    costos_mantenimiento = valor_inventario * 0.003  # 0.3%
+    
+    # 2.1 PENALIZACIÓN POR SOBRESTOCK (0.5% adicional sobre el exceso)
+    penalizacion_sobrestock = 0
+    for inv in inventarios:
+        if inv.producto.stock_maximo and inv.cantidad_actual > inv.producto.stock_maximo:
+            exceso = inv.cantidad_actual - inv.producto.stock_maximo
+            valor_exceso = exceso * (inv.costo_promedio or 0)
+            penalizacion_sobrestock += valor_exceso * 0.005  # 0.5% adicional
+    
+    costos_mantenimiento += penalizacion_sobrestock
+    
+    # 3. PENALIZACIÓN POR VENTAS PERDIDAS (30% del precio)
+    ventas_dia = Venta.query.filter_by(
+        empresa_id=empresa.id,
+        dia_simulacion=dia_actual
+    ).all()
+    
+    penalizacion_ventas_perdidas = 0
+    for venta in ventas_dia:
+        cantidad_perdida = venta.cantidad_solicitada - venta.cantidad_vendida
+        if cantidad_perdida > 0:
+            # Obtener precio actual del producto
+            producto = Producto.query.get(venta.producto_id)
+            precio_venta = producto.precio_actual if producto else 0
+            penalizacion_ventas_perdidas += cantidad_perdida * precio_venta * 0.30  # 30% del precio
+    
+    # APLICAR COSTOS AL CAPITAL
+    costo_total = costos_fijos + costos_mantenimiento + penalizacion_ventas_perdidas
+    empresa.capital_actual -= costo_total
+    
+    # Retornar desglose para métricas
+    return {
+        'costo_total': costo_total,
+        'costos_fijos': costos_fijos,
+        'costos_mantenimiento': costos_mantenimiento - penalizacion_sobrestock,  # Mantenimiento base
+        'penalizacion_sobrestock': penalizacion_sobrestock,
+        'penalizacion_ventas_perdidas': penalizacion_ventas_perdidas,
+        'valor_inventario': valor_inventario
+    }
+
+
+def calcular_metricas_dia(simulacion, empresa, costos_operativos=None):
+    """
+    Calcula las métricas de desempeño del día incluyendo costos operativos
     """
     dia_actual = simulacion.dia_actual
     
@@ -222,10 +509,18 @@ def calcular_metricas_dia(simulacion, empresa):
     
     costos_compras = sum(c.costo_total for c in compras_dia)
     
-    # Calcular nivel de servicio
-    total_solicitado = sum(v.cantidad_solicitada for v in ventas_dia)
-    total_vendido = sum(v.cantidad_vendida for v in ventas_dia)
-    nivel_servicio = (total_vendido / total_solicitado * 100) if total_solicitado > 0 else 100
+    # Calcular nivel de servicio ACUMULATIVO (todo el historial de la simulación)
+    ventas_historicas = Venta.query.filter_by(
+        empresa_id=empresa.id
+    ).filter(
+        Venta.dia_simulacion <= dia_actual
+    ).all()
+    
+    total_solicitado_historico = sum(v.cantidad_solicitada for v in ventas_historicas)
+    total_vendido_historico = sum(v.cantidad_vendida for v in ventas_historicas)
+    
+    # Nivel de servicio acumulativo: ventas totales / demanda total
+    nivel_servicio = (total_vendido_historico / total_solicitado_historico * 100) if total_solicitado_historico > 0 else 100
     
     # Calcular valor del inventario
     inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
@@ -236,16 +531,22 @@ def calcular_metricas_dia(simulacion, empresa):
     # Calcular rotación de inventario (simplificado)
     rotacion_inventario = (costos_ventas / valor_inventario) if valor_inventario > 0 else 0
     
-    # Actualizar capital de la empresa
+    # Sumar costos operativos automáticos si existen
+    costos_operativos_total = 0
+    if costos_operativos:
+        costos_operativos_total = costos_operativos.get('costo_total', 0)
+    
+    # Actualizar capital de la empresa (ingresos - compras)
+    # Los costos operativos ya fueron descontados en calcular_costos_operativos()
     empresa.capital_actual += (ingresos - costos_compras)
     
-    # Crear registro de métrica
+    # Crear registro de métrica con todos los costos
     metrica = Metrica(
         empresa_id=empresa.id,
         dia_simulacion=dia_actual,
         ingresos=ingresos,
-        costos=costos_ventas + costos_compras,
-        utilidad=ingresos - costos_ventas,
+        costos=costos_ventas + costos_compras + costos_operativos_total,
+        utilidad=ingresos - costos_ventas - costos_operativos_total,
         nivel_servicio=nivel_servicio,
         rotacion_inventario=rotacion_inventario
     )
@@ -320,10 +621,13 @@ def procesar_dia_completo(simulacion):
         despachos_entregados = procesar_despachos_regionales(simulacion, empresa)
         resumen['total_despachos_entregados'] += len(despachos_entregados)
         
-        # 4. Calcular métricas del día
-        metrica = calcular_metricas_dia(simulacion, empresa)
+        # 4. APLICAR COSTOS OPERATIVOS AUTOMÁTICOS
+        costos_operativos = calcular_costos_operativos(simulacion, empresa)
         
-        # 5. Verificar alertas de inventario
+        # 5. Calcular métricas del día (incluyendo costos operativos)
+        metrica = calcular_metricas_dia(simulacion, empresa, costos_operativos)
+        
+        # 6. Verificar alertas de inventario
         alertas_empresa = verificar_alertas_inventario(empresa)
         if alertas_empresa:
             resumen['alertas'].append({
@@ -347,7 +651,7 @@ def avanzar_simulacion():
         tuple: (success: bool, mensaje: str, resumen: dict)
     """
     try:
-        simulacion = Simulacion.query.first()
+        simulacion = Simulacion.query.filter_by(activa=True).first()
         
         if not simulacion:
             return False, "No existe una simulación activa", None

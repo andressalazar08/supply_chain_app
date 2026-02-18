@@ -1,0 +1,681 @@
+{% extends "base.html" %}
+
+{% block title %}Reportes - {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .header-reportes {
+        background: linear-gradient(135deg, #f4a261 0%, #e76f51 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+        transition: all 0.3s;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    
+    .stat-card h3 {
+        font-size: 2.5rem;
+        margin: 10px 0;
+        font-weight: bold;
+    }
+    
+    .stat-card.ventas { border-left: 5px solid #c41e3a; }
+    .stat-card.planeacion { border-left: 5px solid #27ae60; }
+    .stat-card.compras { border-left: 5px solid #f5576c; }
+    .stat-card.logistica { border-left: 5px solid #00f2fe; }
+    
+    .decision-card {
+        background: white;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border-left: 4px solid #c41e3a;
+    }
+    
+    .decision-card.compra { border-left-color: #f5576c; }
+    .decision-card.venta { border-left-color: #c41e3a; }
+    .decision-card.precio { border-left-color: #f39c12; }
+    .decision-card.distribucion { border-left-color: #00f2fe; }
+    .decision-card.pronostico { border-left-color: #27ae60; }
+    
+    .timeline {
+        position: relative;
+        padding-left: 30px;
+    }
+    
+    .timeline::before {
+        content: '';
+        position: absolute;
+        left: 10px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: linear-gradient(to bottom, #c41e3a, #e63946);
+    }
+    
+    .timeline-item {
+        position: relative;
+        margin-bottom: 20px;
+    }
+    
+    .timeline-item::before {
+        content: '';
+        position: absolute;
+        left: -24px;
+        top: 5px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #c41e3a;
+        border: 3px solid white;
+        box-shadow: 0 0 0 2px #c41e3a;
+    }
+    
+    .tabs-nav {
+        border-bottom: 2px solid #ecf0f1;
+        margin-bottom: 20px;
+    }
+    
+    .tab-button {
+        background: none;
+        border: none;
+        padding: 12px 25px;
+        color: #7f8c8d;
+        cursor: pointer;
+        transition: all 0.3s;
+        border-bottom: 3px solid transparent;
+        font-weight: 500;
+        font-size: 1rem;
+    }
+    
+    .tab-button.active {
+        color: #f4a261;
+        border-bottom-color: #f4a261;
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+    
+    .estudiante-header {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+    }
+    
+    .badge-rol {
+        padding: 8px 15px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    .badge-ventas { background: #c41e3a; color: white; }
+    .badge-planeacion { background: #27ae60; color: white; }
+    .badge-compras { background: #f5576c; color: white; }
+    .badge-logistica { background: #00f2fe; color: white; }
+    
+    .metric-box {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+    }
+    
+    .chart-container {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #7f8c8d;
+    }
+    
+    .filter-box {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="header-reportes">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1><i class="fas fa-chart-line me-2"></i>Reportes y Análisis</h1>
+                <h3 class="mb-0">{{ empresa.nombre }}</h3>
+                <p class="mb-0 mt-2">Comportamiento y decisiones de los estudiantes durante la simulación</p>
+            </div>
+            <div>
+                <a href="{{ url_for('profesor.gestionar_empresas') }}" class="btn btn-light btn-lg">
+                    <i class="fas fa-arrow-left me-2"></i>Volver
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Resumen General -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="fas fa-users fa-2x text-primary mb-2"></i>
+                <h3>{{ estudiantes|length }}</h3>
+                <p class="text-muted mb-0">Estudiantes</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="fas fa-tasks fa-2x text-success mb-2"></i>
+                <h3>{{ total_decisiones }}</h3>
+                <p class="text-muted mb-0">Decisiones Totales</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="fas fa-calendar-day fa-2x text-warning mb-2"></i>
+                <h3>{{ dias_activos }}</h3>
+                <p class="text-muted mb-0">Días con Actividad</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="fas fa-dollar-sign fa-2x text-info mb-2"></i>
+                <h3>${{ '{:,.0f}'.format(empresa.capital_actual) }}</h3>
+                <p class="text-muted mb-0">Capital Actual</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tabs de Navegación -->
+    <div class="tabs-nav">
+        <button class="tab-button active" onclick="cambiarTab('resumen')">
+            <i class="fas fa-chart-pie me-2"></i>Resumen por Rol
+        </button>
+        <button class="tab-button" onclick="cambiarTab('estudiantes')">
+            <i class="fas fa-users me-2"></i>Por Estudiante
+        </button>
+        <button class="tab-button" onclick="cambiarTab('timeline')">
+            <i class="fas fa-history me-2"></i>Línea de Tiempo
+        </button>
+        <button class="tab-button" onclick="cambiarTab('metricas')">
+            <i class="fas fa-chart-bar me-2"></i>Métricas de Desempeño
+        </button>
+    </div>
+    
+    <!-- Tab: Resumen por Rol -->
+    <div id="tab-resumen" class="tab-content active">
+        <div class="row">
+            {% for rol, datos in decisiones_por_rol.items() %}
+            <div class="col-md-6 mb-4">
+                <div class="stat-card {{ rol }}">
+                    <h4>
+                        <i class="fas fa-{% if rol == 'ventas' %}chart-line{% elif rol == 'planeacion' %}calendar-alt{% elif rol == 'compras' %}shopping-cart{% elif rol == 'logistica' %}truck{% endif %} me-2"></i>
+                        {{ rol.upper() }}
+                    </h4>
+                    <hr>
+                    <div class="row text-start">
+                        <div class="col-6">
+                            <p class="mb-2"><strong>Estudiantes:</strong> {{ datos.estudiantes|length }}</p>
+                            <p class="mb-2"><strong>Decisiones:</strong> {{ datos.total_decisiones }}</p>
+                        </div>
+                        <div class="col-6">
+                            <p class="mb-2"><strong>Promedio/día:</strong> {{ '%.1f'|format(datos.promedio_dia) }}</p>
+                            <p class="mb-2"><strong>Última actividad:</strong> Día {{ datos.ultimo_dia }}</p>
+                        </div>
+                    </div>
+                    
+                    {% if datos.estudiantes %}
+                    <div class="mt-3">
+                        <small class="text-muted">Estudiantes:</small><br>
+                        {% for est in datos.estudiantes %}
+                        <span class="badge badge-rol badge-{{ rol }} me-1">{{ est.nombre_completo }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <!-- Tab: Por Estudiante -->
+    <div id="tab-estudiantes" class="tab-content">
+        {% if estudiantes %}
+            {% for estudiante in estudiantes %}
+            <div class="estudiante-header">
+                <div class="row align-items-center">
+                    <div class="col-md-6">
+                        <h5 class="mb-0">
+                            <i class="fas fa-user-circle me-2"></i>{{ estudiante.nombre_completo }}
+                        </h5>
+                        <small>{{ estudiante.email }}</small>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <span class="badge badge-rol badge-{{ estudiante.rol }}">{{ estudiante.rol.upper() if estudiante.rol else 'SIN ROL' }}</span>
+                        <span class="badge bg-light text-dark ms-2">{{ decisiones_estudiantes.get(estudiante.id, [])|length }} decisiones</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    {% set decisiones_est = decisiones_estudiantes.get(estudiante.id, []) %}
+                    {% if decisiones_est %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Día</th>
+                                        <th>Tipo de Decisión</th>
+                                        <th>Detalles</th>
+                                        <th>Resultado</th>
+                                        <th>Fecha</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for decision in decisiones_est[:20] %}
+                                    <tr>
+                                        <td><span class="badge bg-primary">Día {{ decision.dia_simulacion }}</span></td>
+                                        <td>
+                                            <span class="badge badge-rol badge-{{ estudiante.rol }}">
+                                                {{ decision.tipo_decision|upper }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {% if decision.datos_decision %}
+                                                <small class="text-muted">
+                                                    {% for key, value in decision.datos_decision.items() %}
+                                                        <strong>{{ key }}:</strong> {{ value }}<br>
+                                                    {% endfor %}
+                                                </small>
+                                            {% else %}
+                                                <small class="text-muted">Sin detalles</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if decision.resultado %}
+                                                <small class="text-success">
+                                                    {% for key, value in decision.resultado.items() %}
+                                                        {{ key }}: {{ value }}<br>
+                                                    {% endfor %}
+                                                </small>
+                                            {% else %}
+                                                <small class="text-muted">Pendiente</small>
+                                            {% endif %}
+                                        </td>
+                                        <td><small>{{ decision.created_at.strftime('%d/%m %H:%M') }}</small></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        {% if decisiones_est|length > 20 %}
+                        <div class="text-center mt-3">
+                            <small class="text-muted">Mostrando las primeras 20 de {{ decisiones_est|length }} decisiones</small>
+                        </div>
+                        {% endif %}
+                    {% else %}
+                        <div class="empty-state">
+                            <i class="fas fa-inbox fa-3x mb-3"></i>
+                            <p>Este estudiante aún no ha tomado decisiones</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <i class="fas fa-users-slash fa-4x mb-3"></i>
+                <h4>No hay estudiantes asignados</h4>
+                <p>Asigna estudiantes a esta empresa desde la sección de Gestión de Estudiantes</p>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- Tab: Línea de Tiempo -->
+    <div id="tab-timeline" class="tab-content">
+        {% if decisiones_timeline %}
+            <div class="filter-box">
+                <div class="row align-items-center">
+                    <div class="col-md-4">
+                        <label class="form-label"><strong>Filtrar por Estudiante</strong></label>
+                        <select id="filtroEstudiante" class="form-select">
+                            <option value="">Todos los estudiantes</option>
+                            {% for est in estudiantes %}
+                            <option value="{{ est.id }}">{{ est.nombre_completo }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label"><strong>Filtrar por Tipo</strong></label>
+                        <select id="filtroTipo" class="form-select">
+                            <option value="">Todos los tipos</option>
+                            <option value="compra">Compras</option>
+                            <option value="venta">Ventas</option>
+                            <option value="precio">Precio</option>
+                            <option value="distribucion">Distribución</option>
+                            <option value="pronostico">Pronóstico</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label"><strong>Filtrar por Día</strong></label>
+                        <input type="number" id="filtroDia" class="form-control" placeholder="Ej: 5" min="1">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="timeline" id="timelineContainer">
+                {% for decision in decisiones_timeline %}
+                <div class="timeline-item" 
+                     data-estudiante="{{ decision.usuario_id }}" 
+                     data-tipo="{{ decision.tipo_decision }}"
+                     data-dia="{{ decision.dia_simulacion }}">
+                    <div class="decision-card {{ decision.tipo_decision }}">
+                        <div class="row align-items-center">
+                            <div class="col-md-1 text-center">
+                                <span class="badge bg-primary">Día {{ decision.dia_simulacion }}</span>
+                            </div>
+                            <div class="col-md-3">
+                                <strong>{{ decision.usuario.nombre_completo }}</strong><br>
+                                <span class="badge badge-rol badge-{{ decision.usuario.rol }}">{{ decision.usuario.rol|upper }}</span>
+                            </div>
+                            <div class="col-md-2">
+                                <span class="badge bg-secondary">{{ decision.tipo_decision|upper }}</span>
+                            </div>
+                            <div class="col-md-4">
+                                {% if decision.datos_decision %}
+                                <small class="text-muted">
+                                    {% for key, value in decision.datos_decision.items() %}
+                                        <strong>{{ key }}:</strong> {{ value }}
+                                        {% if not loop.last %} | {% endif %}
+                                    {% endfor %}
+                                </small>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-2 text-end">
+                                <small class="text-muted">{{ decision.created_at.strftime('%d/%m %H:%M') }}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <i class="fas fa-clock fa-4x mb-3"></i>
+                <h4>No hay actividad registrada</h4>
+                <p>Las decisiones aparecerán aquí una vez que los estudiantes empiecen a jugar</p>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- Tab: Métricas de Desempeño -->
+    <div id="tab-metricas" class="tab-content">
+        {% if metricas_dias %}
+            <div class="chart-container">
+                <h5><i class="fas fa-chart-line me-2"></i>Evolución del Capital</h5>
+                <canvas id="chartCapital" height="80"></canvas>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="chart-container">
+                        <h5><i class="fas fa-dollar-sign me-2"></i>Ingresos vs Costos</h5>
+                        <canvas id="chartIngresosCostos" height="100"></canvas>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="chart-container">
+                        <h5><i class="fas fa-percentage me-2"></i>Nivel de Servicio</h5>
+                        <canvas id="chartNivelServicio" height="100"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="table-responsive mt-4">
+                <table class="table table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Día</th>
+                            <th>Ingresos</th>
+                            <th>Costos</th>
+                            <th>Utilidad</th>
+                            <th>Nivel Servicio</th>
+                            <th>Quiebres Stock</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for metrica in metricas_dias[:15] %}
+                        <tr>
+                            <td><strong>Día {{ metrica.dia_simulacion }}</strong></td>
+                            <td class="text-success">${{ '{:,.2f}'.format(metrica.ingresos) }}</td>
+                            <td class="text-danger">${{ '{:,.2f}'.format(metrica.costos) }}</td>
+                            <td class="{{ 'text-success' if metrica.utilidad > 0 else 'text-danger' }}">
+                                ${{ '{:,.2f}'.format(metrica.utilidad) }}
+                            </td>
+                            <td>
+                                <div class="progress" style="height: 25px;">
+                                    <div class="progress-bar bg-{{ 'success' if metrica.nivel_servicio >= 90 else 'warning' if metrica.nivel_servicio >= 70 else 'danger' }}" 
+                                         style="width: {{ metrica.nivel_servicio }}%">
+                                        {{ '%.1f'|format(metrica.nivel_servicio) }}%
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="badge bg-{{ 'danger' if metrica.quiebres_stock > 0 else 'success' }}">
+                                    {{ metrica.quiebres_stock }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <i class="fas fa-chart-bar fa-4x mb-3"></i>
+                <h4>No hay métricas disponibles</h4>
+                <p>Las métricas se generarán automáticamente durante la simulación</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Función para cambiar tabs
+    function cambiarTab(tabName) {
+        // Ocultar todos los tabs
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        
+        // Desactivar todos los botones
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Mostrar tab seleccionado
+        document.getElementById('tab-' + tabName).classList.add('active');
+        event.target.classList.add('active');
+    }
+    
+    // Filtros de timeline
+    const filtroEstudiante = document.getElementById('filtroEstudiante');
+    const filtroTipo = document.getElementById('filtroTipo');
+    const filtroDia = document.getElementById('filtroDia');
+    
+    if (filtroEstudiante) {
+        [filtroEstudiante, filtroTipo, filtroDia].forEach(filtro => {
+            filtro?.addEventListener('change', filtrarTimeline);
+            filtro?.addEventListener('input', filtrarTimeline);
+        });
+    }
+    
+    function filtrarTimeline() {
+        const estudianteId = filtroEstudiante?.value || '';
+        const tipo = filtroTipo?.value || '';
+        const dia = filtroDia?.value || '';
+        
+        document.querySelectorAll('.timeline-item').forEach(item => {
+            const matchEstudiante = !estudianteId || item.dataset.estudiante === estudianteId;
+            const matchTipo = !tipo || item.dataset.tipo === tipo;
+            const matchDia = !dia || item.dataset.dia === dia;
+            
+            if (matchEstudiante && matchTipo && matchDia) {
+                item.style.display = '';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+    
+    // Gráficos con Chart.js
+    {% if metricas_dias %}
+    const dias = {{ metricas_dias|map(attribute='dia_simulacion')|list|tojson }};
+    const ingresos = {{ metricas_dias|map(attribute='ingresos')|list|tojson }};
+    const costos = {{ metricas_dias|map(attribute='costos')|list|tojson }};
+    const utilidades = {{ metricas_dias|map(attribute='utilidad')|list|tojson }};
+    const nivelesServicio = {{ metricas_dias|map(attribute='nivel_servicio')|list|tojson }};
+    
+    // Gráfico de Capital (calculado como capital_inicial + suma acumulada de utilidades)
+    const capitalInicial = {{ empresa.capital_inicial }};
+    let capitalAcumulado = [capitalInicial];
+    for (let i = 0; i < utilidades.length; i++) {
+        capitalAcumulado.push(capitalAcumulado[capitalAcumulado.length - 1] + utilidades[i]);
+    }
+    capitalAcumulado.shift(); // Remover el inicial
+    
+    new Chart(document.getElementById('chartCapital'), {
+        type: 'line',
+        data: {
+            labels: dias,
+            datasets: [{
+                label: 'Capital',
+                data: capitalAcumulado,
+                borderColor: '#c41e3a',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    // Gráfico Ingresos vs Costos
+    new Chart(document.getElementById('chartIngresosCostos'), {
+        type: 'bar',
+        data: {
+            labels: dias,
+            datasets: [
+                {
+                    label: 'Ingresos',
+                    data: ingresos,
+                    backgroundColor: 'rgba(46, 213, 115, 0.7)'
+                },
+                {
+                    label: 'Costos',
+                    data: costos,
+                    backgroundColor: 'rgba(245, 87, 108, 0.7)'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                y: {
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    // Gráfico Nivel de Servicio
+    new Chart(document.getElementById('chartNivelServicio'), {
+        type: 'line',
+        data: {
+            labels: dias,
+            datasets: [{
+                label: 'Nivel de Servicio (%)',
+                data: nivelesServicio,
+                borderColor: '#f39c12',
+                backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    min: 0,
+                    max: 100,
+                    ticks: {
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
+                }
+            }
+        }
+    });
+    {% endif %}
+</script>
+{% endblock %}

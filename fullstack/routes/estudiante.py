@@ -27,6 +27,10 @@ from utils.disrupciones import obtener_disrupciones_activas_empresa
 
 bp = Blueprint('estudiante', __name__, url_prefix='/estudiante')
 
+def obtener_simulacion_activa():
+    """Helper para obtener la simulación actualmente activa"""
+    return Simulacion.query.filter_by(activa=True).first()
+
 def estudiante_required(f):
     """Decorador para verificar que el usuario sea estudiante"""
     @wraps(f)
@@ -36,6 +40,29 @@ def estudiante_required(f):
             return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+@bp.route('/')
+@bp.route('/home')
+@login_required
+def home():
+    """Página de inicio del estudiante mostrando su empresa asignada"""
+    empresas_acceso = []
+    
+    # Solo mostrar la empresa asignada al estudiante
+    if current_user.empresa_id and current_user.rol:
+        empresa = current_user.empresa
+        if empresa and empresa.activa:
+            empresas_acceso.append({
+                'empresa': empresa,
+                'rol': current_user.rol
+            })
+    
+    simulacion = Simulacion.query.first()
+    
+    return render_template('estudiante/home.html',
+                         empresas_acceso=empresas_acceso,
+                         simulacion=simulacion)
 
 
 @bp.route('/dashboard')
@@ -58,6 +85,12 @@ def dashboard_general():
     Permite acceso a los 4 módulos: Ventas, Planeación, Compras, Logística
     """
     empresa = current_user.empresa
+    
+    # Verificar que el estudiante tenga empresa asignada
+    if not empresa or not current_user.rol:
+        flash('⚠️ No tienes una empresa asignada. Contacta con tu profesor.', 'warning')
+        return redirect(url_for('estudiante.home'))
+    
     simulacion = Simulacion.query.first()
     
     if not simulacion:
@@ -142,75 +175,317 @@ def dashboard_general():
 @login_required
 @estudiante_required
 def dashboard_ventas():
-    """Dashboard específico para el rol de Ventas - Accesible para todos"""
+    """Dashboard unificado de ventas con 3 tabs"""
     simulacion = Simulacion.query.first()
     empresa = current_user.empresa
     
-    # Obtener productos con precios actuales
-    productos = Producto.query.filter_by(activo=True).all()
-    
-    # Ventas por región - últimos 7 días
-    regiones = ['Caribe', 'Pacifica', 'Orinoquia', 'Amazonia', 'Andina']
-    ventas_por_region = {}
-    for region in regiones:
-        ventas = Venta.query.filter_by(
-            empresa_id=empresa.id,
-            region=region
-        ).filter(
-            Venta.dia_simulacion >= max(1, simulacion.dia_actual - 7)
-        ).all()
-        ventas_por_region[region] = {
-            'total_ingresos': sum([v.ingreso_total for v in ventas]),
-            'total_unidades': sum([v.cantidad_vendida for v in ventas]),
-            'ventas_perdidas': sum([v.cantidad_perdida for v in ventas])
-        }
-    
-    # Ventas del día actual
-    ventas_hoy = Venta.query.filter_by(
-        empresa_id=empresa.id,
-        dia_simulacion=simulacion.dia_actual
-    ).all()
-    
-    total_ingresos_hoy = sum([v.ingreso_total for v in ventas_hoy])
-    total_unidades_hoy = sum([v.cantidad_vendida for v in ventas_hoy])
-    ventas_perdidas_hoy = sum([v.cantidad_perdida for v in ventas_hoy])
-    
-    # Calcular nivel de servicio
-    total_solicitado = sum([v.cantidad_solicitada for v in ventas_hoy])
-    nivel_servicio = (total_unidades_hoy / total_solicitado * 100) if total_solicitado > 0 else 100
-    
-    # Ventas por producto - últimos 7 días
-    ventas_por_producto = {}
-    for producto in productos:
-        ventas = Venta.query.filter_by(
-            empresa_id=empresa.id,
-            producto_id=producto.id
-        ).filter(
-            Venta.dia_simulacion >= max(1, simulacion.dia_actual - 7)
-        ).all()
-        ventas_por_producto[producto.nombre] = {
-            'total_unidades': sum([v.cantidad_vendida for v in ventas]),
-            'total_ingresos': sum([v.ingreso_total for v in ventas]),
-            'precio_promedio': sum([v.precio_unitario for v in ventas]) / len(ventas) if ventas else producto.precio_actual
-        }
-    
-    # Historial de precios y demanda para análisis
-    historial_ventas = Venta.query.filter_by(
-        empresa_id=empresa.id
-    ).order_by(Venta.dia_simulacion.desc()).limit(30).all()
-    
     return render_template('estudiante/ventas/dashboard.html',
                          simulacion=simulacion,
-                         empresa=empresa,
-                         productos=productos,
-                         regiones=regiones,
-                         ventas_por_region=ventas_por_region,
-                         ventas_por_producto=ventas_por_producto,
-                         total_ingresos_hoy=total_ingresos_hoy,
-                         total_unidades_hoy=total_unidades_hoy,
-                         ventas_perdidas_hoy=ventas_perdidas_hoy,
-                         nivel_servicio=nivel_servicio,
-                         historial_ventas=historial_ventas)
+                         empresa=empresa)
+
+
+@bp.route('/api/ventas/dashboard')
+@login_required
+@estudiante_required
+def api_ventas_dashboard():
+    """API para métricas del dashboard"""
+    try:
+        empresa = current_user.empresa
+        simulacion = Simulacion.query.first()
+        
+        # Ventas del día actual
+        ventas_hoy = Venta.query.filter_by(
+            empresa_id=empresa.id,
+            dia_simulacion=simulacion.dia_actual
+        ).all()
+        
+        total_unidades = sum([v.cantidad_vendida for v in ventas_hoy])
+        total_ingresos = sum([v.ingreso_total for v in ventas_hoy])
+        total_perdidas = sum([v.cantidad_perdida for v in ventas_hoy])
+        
+        # Calcular margen promedio
+        margenes = [v.margen for v in ventas_hoy if v.margen > 0]
+        margen_promedio = int(sum(margenes) / len(margenes)) if margenes else 0
+        
+        # Top productos (últimos 7 días)
+        from sqlalchemy import func
+        top_productos = db.session.query(
+            Producto.nombre,
+            func.sum(Venta.cantidad_vendida).label('cantidad')
+        ).join(Venta).filter(
+            Venta.empresa_id == empresa.id,
+            Venta.dia_simulacion >= max(1, simulacion.dia_actual - 7)
+        ).group_by(Producto.nombre).order_by(func.sum(Venta.cantidad_vendida).desc()).limit(5).all()
+        
+        # Ventas por región (últimos 7 días)
+        ventas_region = db.session.query(
+            Venta.region,
+            func.sum(Venta.cantidad_vendida).label('cantidad'),
+            func.sum(Venta.ingreso_total).label('ingresos')
+        ).filter(
+            Venta.empresa_id == empresa.id,
+            Venta.dia_simulacion >= max(1, simulacion.dia_actual - 7)
+        ).group_by(Venta.region).all()
+        
+        return jsonify({
+            'success': True,
+            'metricas': {
+                'ventas_hoy': int(total_unidades),
+                'ingresos_hoy': int(total_ingresos),
+                'margen_promedio': margen_promedio,
+                'ventas_perdidas': int(total_perdidas)
+            },
+            'top_productos': [{'nombre': p[0], 'cantidad': int(p[1])} for p in top_productos],
+            'ventas_region': [{'nombre': v[0], 'cantidad': int(v[1]), 'ingresos': int(v[2])} for v in ventas_region]
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@bp.route('/api/ventas/matriz-precios')
+@login_required
+@estudiante_required
+def api_ventas_matriz_precios():
+    """API para obtener matriz de precios actual"""
+    try:
+        empresa = current_user.empresa
+        productos = Producto.query.filter_by(activo=True).all()
+        
+        regiones = ['Andina', 'Caribe', 'Pacífica', 'Orinoquía', 'Amazonía']
+        
+        productos_data = []
+        for producto in productos:
+            precios = {}
+            
+            # Obtener precios actuales por región (últimas ventas)
+            for region in regiones:
+                ultima_venta = Venta.query.filter_by(
+                    empresa_id=empresa.id,
+                    producto_id=producto.id,
+                    region=region
+                ).order_by(Venta.dia_simulacion.desc()).first()
+                
+                precios[region] = ultima_venta.precio_unitario if ultima_venta else producto.precio_actual
+            
+            productos_data.append({
+                'id': producto.id,
+                'nombre': producto.nombre,
+                'costo': producto.costo_unitario,
+                'precios': precios
+            })
+        
+        return jsonify({
+            'success': True,
+            'productos': productos_data
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@bp.route('/api/ventas/actualizar-precios', methods=['POST'])
+@login_required
+@estudiante_required
+def api_ventas_actualizar_precios():
+    """API para actualizar múltiples precios"""
+    try:
+        data = request.get_json()
+        cambios = data.get('cambios', [])
+        
+        if not cambios:
+            return jsonify({'success': False, 'message': 'No hay cambios para aplicar'}), 400
+        
+        empresa = current_user.empresa
+        simulacion = Simulacion.query.first()
+        
+        actualizados = 0
+        
+        # Registrar cada cambio de precio como decisión
+        for cambio in cambios:
+            producto_id = cambio['producto_id']
+            region = cambio['region']
+            precio = cambio['precio']
+            
+            producto = Producto.query.get(producto_id)
+            
+            # Registrar decisión de cambio de precio
+            decision = Decision(
+                usuario_id=current_user.id,
+                empresa_id=empresa.id,
+                tipo_decision='ajuste_precio',
+                dia_simulacion=simulacion.dia_actual,
+                datos_decision={
+                    'producto_id': producto_id,
+                    'producto_nombre': producto.nombre,
+                    'region': region,
+                    'precio_nuevo': precio,
+                    'descripcion': f'Precio ajustado a ${precio} en {region}'
+                }
+            )
+            db.session.add(decision)
+            actualizados += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'{actualizados} precios actualizados',
+            'actualizados': actualizados
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@bp.route('/api/ventas/analisis-regiones')
+@login_required
+@estudiante_required
+def api_ventas_analisis_regiones():
+    """API para análisis detallado por región"""
+    try:
+        empresa = current_user.empresa
+        simulacion = Simulacion.query.first()
+        
+        regiones = ['Andina', 'Caribe', 'Pacífica', 'Orinoquía', 'Amazonía']
+        regiones_data = []
+        
+        for region in regiones:
+            # Ventas últimos 7 días
+            ventas_recientes = Venta.query.filter_by(
+                empresa_id=empresa.id,
+                region=region
+            ).filter(
+                Venta.dia_simulacion >= max(1, simulacion.dia_actual - 7)
+            ).all()
+            
+            # Ventas 7 días anteriores para calcular tendencia
+            ventas_anteriores = Venta.query.filter_by(
+                empresa_id=empresa.id,
+                region=region
+            ).filter(
+                Venta.dia_simulacion >= max(1, simulacion.dia_actual - 14),
+                Venta.dia_simulacion < max(1, simulacion.dia_actual - 7)
+            ).all()
+            
+            ingresos_recientes = sum([v.ingreso_total for v in ventas_recientes])
+            ingresos_anteriores = sum([v.ingreso_total for v in ventas_anteriores])
+            
+            # Calcular tendencia
+            tendencia = 0
+            if ingresos_anteriores > 0:
+                tendencia = int(((ingresos_recientes - ingresos_anteriores) / ingresos_anteriores) * 100)
+            
+            # Producto más vendido
+            from sqlalchemy import func
+            top = db.session.query(
+                Producto.nombre
+            ).join(Venta).filter(
+                Venta.empresa_id == empresa.id,
+                Venta.region == region,
+                Venta.dia_simulacion >= max(1, simulacion.dia_actual - 7)
+            ).group_by(Producto.nombre).order_by(func.sum(Venta.cantidad_vendida).desc()).first()
+            
+            regiones_data.append({
+                'nombre': region,
+                'ventas_totales': len(ventas_recientes),
+                'ingresos': int(ingresos_recientes),
+                'tendencia': tendencia,
+                'top_producto': top[0] if top else 'N/A',
+                'ventas_perdidas': int(sum([v.cantidad_perdida for v in ventas_recientes]))
+            })
+        
+        return jsonify({
+            'success': True,
+            'regiones': regiones_data
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@bp.route('/api/ventas/competitividad')
+@login_required
+@estudiante_required
+def api_ventas_competitividad():
+    """API para obtener información de competitividad de precios vs mercado"""
+    try:
+        empresa = current_user.empresa
+        simulacion = Simulacion.query.first()
+        
+        if not simulacion:
+            return jsonify({'success': False, 'message': 'No hay simulación activa'}), 404
+        
+        productos = Producto.query.filter_by(activo=True).all()
+        empresas_competencia = Empresa.query.filter_by(simulacion_id=simulacion.id).all()
+        
+        competitividad_data = []
+        
+        for producto in productos:
+            # Calcular precio promedio del mercado
+            precios_mercado = []
+            for emp in empresas_competencia:
+                # Por ahora asumimos que todas las empresas usan el mismo precio_actual del producto
+                # En el futuro esto podría ser por empresa
+                inventario = Inventario.query.filter_by(
+                    empresa_id=emp.id,
+                    producto_id=producto.id
+                ).first()
+                
+                if inventario and inventario.cantidad_actual > 0:
+                    precios_mercado.append(producto.precio_actual)
+            
+            precio_promedio_mercado = sum(precios_mercado) / len(precios_mercado) if precios_mercado else producto.precio_actual
+            precio_empresa = producto.precio_actual
+            
+            # Calcular ratio y clasificación
+            ratio = precio_empresa / precio_promedio_mercado if precio_promedio_mercado > 0 else 1.0
+            
+            if ratio > 1.5:
+                clasificacion = 'Muy Alto'
+                color = 'danger'
+                expectativa_ventas = 'Muy Bajas'
+            elif ratio > 1.2:
+                clasificacion = 'Alto'
+                color = 'warning'
+                expectativa_ventas = 'Bajas'
+            elif ratio > 0.9:
+                clasificacion = 'Competitivo'
+                color = 'success'
+                expectativa_ventas = 'Normales'
+            elif ratio > 0.7:
+                clasificacion = 'Bajo'
+                color = 'info'
+                expectativa_ventas = 'Altas'
+            else:
+                clasificacion = 'Muy Bajo'
+                color = 'warning'
+                expectativa_ventas = 'Medias (posible desconfianza)'
+            
+            # Obtener stock actual
+            inventario_empresa = Inventario.query.filter_by(
+                empresa_id=empresa.id,
+                producto_id=producto.id
+            ).first()
+            
+            stock_actual = inventario_empresa.cantidad_actual if inventario_empresa else 0
+            
+            competitividad_data.append({
+                'producto': producto.nombre,
+                'producto_id': producto.id,
+                'precio_empresa': precio_empresa,
+                'precio_mercado': precio_promedio_mercado,
+                'ratio': ratio,
+                'diferencia_porcentual': (ratio - 1) * 100,
+                'clasificacion': clasificacion,
+                'color': color,
+                'expectativa_ventas': expectativa_ventas,
+                'stock': stock_actual
+            })
+        
+        return jsonify({
+            'success': True,
+            'competitividad': competitividad_data
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 @bp.route('/ventas/ajustar-precio', methods=['POST'])
@@ -499,7 +774,7 @@ def dashboard_planeacion():
         estado='pendiente'
     ).count()
     
-    return render_template('estudiante/planeacion/dashboard.html',
+    return render_template('estudiante/planeacion/dashboard_planeacion.html',
                          simulacion=simulacion,
                          empresa=empresa,
                          productos=productos,
@@ -1223,18 +1498,9 @@ def dashboard_logistica():
         empresa_id=empresa.id
     ).order_by(MovimientoInventario.created_at.desc()).limit(10).all()
     
-    return render_template('estudiante/logistica/dashboard.html',
+    return render_template('estudiante/logistica/dashboard_logistica.html',
                          simulacion=simulacion,
-                         empresa=empresa,
-                         inventarios=inventarios,
-                         ordenes_transito=ordenes_transito,
-                         ordenes_hoy=ordenes_hoy,
-                         despachos_pendientes=despachos_pendientes,
-                         despachos_transito=despachos_transito,
-                         stock_por_region=stock_por_region,
-                         alertas=alertas_generales,
-                         movimientos_recientes=movimientos_recientes,
-                         productos=productos)
+                         empresa=empresa)
 
 
 @bp.route('/logistica/recepcion')
@@ -1652,3 +1918,724 @@ def api_inventario(empresa_id):
         })
     
     return jsonify(datos)
+
+
+# ============== API PLANEACIÓN - PRONÓSTICOS Y MRP ==============
+
+@bp.route('/api/producto/<int:producto_id>/historico')
+@login_required
+@estudiante_required
+def api_producto_historico(producto_id):
+    """API: Obtener datos históricos de demanda de un producto"""
+    empresa = current_user.empresa
+    
+    # Obtener ventas históricas
+    ventas = Venta.query.filter_by(
+        empresa_id=empresa.id,
+        producto_id=producto_id
+    ).order_by(Venta.dia_simulacion).all()
+    
+    historico = []
+    for venta in ventas:
+        historico.append({
+            'dia': venta.dia_simulacion,
+            'demanda_real': venta.cantidad_vendida + venta.cantidad_perdida,
+            'ventas': venta.cantidad_vendida,
+            'perdida': venta.cantidad_perdida
+        })
+    
+    return jsonify({'historico': historico})
+
+
+@bp.route('/api/calcular-pronostico', methods=['POST'])
+@login_required
+@estudiante_required
+def api_calcular_pronostico():
+    """API: Calcular pronóstico con diferentes métodos"""
+    data = request.get_json()
+    producto_id = data.get('producto_id')
+    metodo = data.get('metodo')
+    parametros = data.get('parametros', {})
+    dias_pronostico = data.get('dias_pronostico', 7)
+    
+    empresa = current_user.empresa
+    
+    # Obtener datos históricos
+    ventas = Venta.query.filter_by(
+        empresa_id=empresa.id,
+        producto_id=producto_id
+    ).order_by(Venta.dia_simulacion).all()
+    
+    if not ventas:
+        return jsonify({'error': 'No hay datos históricos para este producto'}), 400
+    
+    # Preparar serie temporal
+    demanda_historica = [v.cantidad_vendida + v.cantidad_perdida for v in ventas]
+    
+    # Calcular pronóstico según método
+    pronosticos = []
+    
+    if metodo == 'promedio_movil':
+        n = parametros.get('n', 3)
+        pronosticos = promedio_movil(demanda_historica, n, dias_pronostico)
+    
+    elif metodo == 'exp_simple':
+        alpha = parametros.get('alpha', 0.3)
+        pronosticos = suavizacion_exponencial_simple(demanda_historica, alpha, dias_pronostico)
+    
+    elif metodo == 'holt':
+        alpha = parametros.get('alpha', 0.3)
+        beta = parametros.get('beta', 0.2)
+        pronosticos = suavizacion_exponencial_doble_holt(demanda_historica, alpha, beta, dias_pronostico)
+    
+    elif metodo == 'manual':
+        # Para método manual, devolver el promedio como base
+        promedio = sum(demanda_historica) / len(demanda_historica)
+        pronosticos = [promedio] * dias_pronostico
+    
+    else:
+        return jsonify({'error': 'Método no válido'}), 400
+    
+    # Calcular métricas de error
+    mape = 0
+    mad = 0
+    
+    if len(demanda_historica) > 1:
+        # Calcular error en los datos históricos
+        errores = []
+        for i in range(1, len(demanda_historica)):
+            if metodo == 'promedio_movil':
+                n = parametros.get('n', 3)
+                if i >= n:
+                    pred = sum(demanda_historica[i-n:i]) / n
+                    error = abs(demanda_historica[i] - pred)
+                    errores.append(error)
+                    if demanda_historica[i] > 0:
+                        mape += (error / demanda_historica[i]) * 100
+        
+        if errores:
+            mad = sum(errores) / len(errores)
+            if len(errores) > 0:
+                mape = mape / len(errores)
+    
+    # Preparar datos históricos para gráfico
+    historico = [{'dia': v.dia_simulacion, 'demanda_real': v.cantidad_vendida + v.cantidad_perdida} for v in ventas]
+    
+    return jsonify({
+        'pronosticos': pronosticos,
+        'historico': historico,
+        'mape': mape,
+        'mad': mad,
+        'promedio': sum(demanda_historica) / len(demanda_historica) if demanda_historica else 0
+    })
+
+
+@bp.route('/api/guardar-pronostico', methods=['POST'])
+@login_required
+@estudiante_required
+def api_guardar_pronostico():
+    """API: Guardar pronóstico en base de datos"""
+    data = request.get_json()
+    producto_id = data.get('producto_id')
+    metodo = data.get('metodo')
+    pronosticos = data.get('pronosticos', [])
+    mape = data.get('mape', 0)
+    mad = data.get('mad', 0)
+    
+    empresa = current_user.empresa
+    simulacion = Simulacion.query.first()
+    
+    # Guardar cada pronóstico
+    for i, valor in enumerate(pronosticos):
+        dia_pronostico = simulacion.dia_actual + i + 1
+        
+        pronostico = Pronostico(
+            usuario_id=current_user.id,
+            empresa_id=empresa.id,
+            producto_id=producto_id,
+            dia_generacion=simulacion.dia_actual,
+            dia_pronostico=dia_pronostico,
+            metodo_usado=metodo,
+            demanda_pronosticada=valor,
+            error_mape=mape,
+            error_mad=mad
+        )
+        db.session.add(pronostico)
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'pronosticos_guardados': len(pronosticos)})
+
+
+@bp.route('/api/calcular-mrp')
+@login_required
+@estudiante_required
+def api_calcular_mrp():
+    """API: Calcular MRP (Material Requirements Planning) para todos los productos"""
+    empresa = current_user.empresa
+    simulacion = Simulacion.query.first()
+    
+    productos = Producto.query.filter_by(activo=True).all()
+    
+    resultados = []
+    criticos = 0
+    advertencia = 0
+    optimos = 0
+    capital_total = 0
+    
+    for producto in productos:
+        # Stock actual
+        inventario = Inventario.query.filter_by(
+            empresa_id=empresa.id,
+            producto_id=producto.id
+        ).first()
+        
+        stock_actual = inventario.cantidad_actual if inventario else 0
+        
+        # Pedidos en tránsito
+        compras_transito = Compra.query.filter_by(
+            empresa_id=empresa.id,
+            producto_id=producto.id,
+            estado='en_transito'
+        ).all()
+        
+        en_transito = sum([c.cantidad for c in compras_transito])
+        
+        # Pronóstico próximos 7 días
+        pronosticos = Pronostico.query.filter_by(
+            empresa_id=empresa.id,
+            producto_id=producto.id
+        ).filter(
+            Pronostico.dia_pronostico > simulacion.dia_actual,
+            Pronostico.dia_pronostico <= simulacion.dia_actual + 7
+        ).all()
+        
+        if pronosticos:
+            pronostico_total = sum([p.demanda_pronosticada for p in pronosticos])
+        else:
+            # Si no hay pronóstico, usar promedio histórico
+            ventas = Venta.query.filter_by(
+                empresa_id=empresa.id,
+                producto_id=producto.id
+            ).all()
+            
+            if ventas:
+                demanda_promedio = sum([v.cantidad_vendida + v.cantidad_perdida for v in ventas]) / len(ventas)
+                pronostico_total = demanda_promedio * 7
+            else:
+                pronostico_total = 0
+        
+        # Cálculo de cobertura
+        stock_disponible = stock_actual + en_transito
+        dias_cobertura = (stock_disponible / (pronostico_total / 7)) if pronostico_total > 0 else 999
+        
+        # Determinar status y recomendación
+        if dias_cobertura < 3:
+            status_class = 'status-critico'
+            status_text = 'CRÍTICO'
+            criticos += 1
+            # Recomendar para 10 días
+            cantidad_recomendada = max(0, int((pronostico_total / 7) * 10 - stock_disponible))
+            justificacion = f'Stock bajo ({dias_cobertura:.1f} días)'
+        elif dias_cobertura < 7:
+            status_class = 'status-bajo'
+            status_text = 'ADVERTENCIA'
+            advertencia += 1
+            cantidad_recomendada = max(0, int((pronostico_total / 7) * 10 - stock_disponible))
+            justificacion = f'Stock justo ({dias_cobertura:.1f} días)'
+        else:
+            status_class = 'status-optimo'
+            status_text = 'ÓPTIMO'
+            optimos += 1
+            cantidad_recomendada = 0
+            justificacion = f'Stock suficiente ({dias_cobertura:.1f} días)'
+        
+        capital_total += cantidad_recomendada * producto.costo_unitario
+        
+        resultados.append({
+            'id': producto.id,
+            'stock_actual': stock_actual,
+            'en_transito': en_transito,
+            'pronostico_proximos_dias': int(pronostico_total),
+            'dias_cobertura': dias_cobertura,
+            'status_class': status_class,
+            'status_text': status_text,
+            'cantidad_recomendada': cantidad_recomendada,
+            'justificacion': justificacion
+        })
+    
+    return jsonify({
+        'productos': resultados,
+        'resumen': {
+            'criticos': criticos,
+            'advertencia': advertencia,
+            'optimos': optimos,
+            'capital_requerido': capital_total
+        }
+    })
+
+
+@bp.route('/api/producto/<int:producto_id>/precio')
+@login_required
+@estudiante_required
+def api_producto_precio(producto_id):
+    """API: Obtener precio de un producto"""
+    producto = Producto.query.get_or_404(producto_id)
+    
+    return jsonify({
+        'precio_compra': producto.costo_unitario,
+        'precio_venta': producto.precio_actual
+    })
+
+
+@bp.route('/api/generar-requerimiento', methods=['POST'])
+@login_required
+@estudiante_required
+def api_generar_requerimiento():
+    """API: Generar requerimiento de compra"""
+    data = request.get_json()
+    producto_id = data.get('producto_id')
+    cantidad = data.get('cantidad')
+    
+    empresa = current_user.empresa
+    simulacion = Simulacion.query.first()
+    producto = Producto.query.get(producto_id)
+    
+    if not producto:
+        return jsonify({'error': 'Producto no encontrado'}), 404
+    
+    # Obtener inventario actual
+    inventario = Inventario.query.filter_by(
+        empresa_id=empresa.id,
+        producto_id=producto_id
+    ).first()
+    
+    stock_actual = inventario.cantidad_actual if inventario else 0
+    stock_seguridad = inventario.stock_seguridad if inventario else 0
+    
+    # Crear requerimiento
+    requerimiento = RequerimientoCompra(
+        empresa_id=empresa.id,
+        producto_id=producto_id,
+        usuario_planeacion_id=current_user.id,
+        dia_generacion=simulacion.dia_actual,
+        dia_necesidad=simulacion.dia_actual + producto.tiempo_entrega,
+        demanda_pronosticada=cantidad,
+        stock_actual=stock_actual,
+        stock_seguridad=stock_seguridad,
+        lead_time=producto.tiempo_entrega,
+        cantidad_sugerida=cantidad,
+        estado='pendiente'
+    )
+    
+    db.session.add(requerimiento)
+    
+    # Registrar decisión
+    decision = Decision(
+        usuario_id=current_user.id,
+        empresa_id=empresa.id,
+        tipo_decision='requerimiento_compra',
+        dia_simulacion=simulacion.dia_actual,
+        datos_decision={
+            'producto_id': producto_id,
+            'cantidad': cantidad,
+            'costo_estimado': cantidad * producto.costo_unitario,
+            'descripcion': f'Requerimiento de {cantidad} unidades de {producto.nombre}'
+        }
+    )
+    db.session.add(decision)
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'requerimiento_id': requerimiento.id})
+
+
+@bp.route('/api/generar-todas-ordenes', methods=['POST'])
+@login_required
+@estudiante_required
+def api_generar_todas_ordenes():
+    """API: Generar requerimientos para todos los productos con recomendaciones"""
+    empresa = current_user.empresa
+    simulacion = Simulacion.query.first()
+    
+    # Calcular MRP primero
+    response = api_calcular_mrp()
+    data = response.get_json()
+    
+    ordenes_generadas = 0
+    
+    for prod in data['productos']:
+        if prod['cantidad_recomendada'] > 0:
+            producto = Producto.query.get(prod['id'])
+            
+            # Obtener inventario actual
+            inventario = Inventario.query.filter_by(
+                empresa_id=empresa.id,
+                producto_id=prod['id']
+            ).first()
+            
+            stock_actual = inventario.cantidad_actual if inventario else 0
+            stock_seguridad = inventario.stock_seguridad if inventario else 0
+            
+            requerimiento = RequerimientoCompra(
+                empresa_id=empresa.id,
+                producto_id=prod['id'],
+                usuario_planeacion_id=current_user.id,
+                dia_generacion=simulacion.dia_actual,
+                dia_necesidad=simulacion.dia_actual + producto.tiempo_entrega,
+                demanda_pronosticada=prod['pronostico_proximos_dias'] / 7,
+                stock_actual=stock_actual,
+                stock_seguridad=stock_seguridad,
+                lead_time=producto.tiempo_entrega,
+                cantidad_sugerida=prod['cantidad_recomendada'],
+                estado='pendiente',
+                notas_planeacion=prod['justificacion']
+            )
+            
+            db.session.add(requerimiento)
+            
+            # Registrar decisión
+            decision = Decision(
+                usuario_id=current_user.id,
+                empresa_id=empresa.id,
+                tipo_decision='requerimiento_compra',
+                dia_simulacion=simulacion.dia_actual,
+                datos_decision={
+                    'producto_id': prod['id'],
+                    'cantidad': prod['cantidad_recomendada'],
+                    'automatico': True,
+                    'justificacion': prod['justificacion'],
+                    'descripcion': f'Requerimiento automático de {prod["cantidad_recomendada"]} unidades de {producto.nombre}'
+                }
+            )
+            db.session.add(decision)
+            
+            ordenes_generadas += 1
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'ordenes_generadas': ordenes_generadas})
+
+
+# ============== API LOGÍSTICA ==============
+@bp.route('/api/logistica/stock')
+@login_required
+@estudiante_required
+def api_logistica_stock():
+    """Obtener stock disponible para despachos"""
+    empresa = current_user.empresa
+    
+    inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
+    
+    stock_data = []
+    for inv in inventarios:
+        stock_data.append({
+            'producto_id': inv.producto_id,
+            'producto_nombre': inv.producto.nombre,
+            'stock_actual': inv.cantidad_actual,
+            'stock_seguridad': inv.stock_seguridad,
+            'capacidad_maxima': inv.producto.capacidad_produccion if hasattr(inv.producto, 'capacidad_produccion') else 1000
+        })
+    
+    return jsonify({'success': True, 'stock': stock_data})
+
+
+@bp.route('/api/logistica/despachar', methods=['POST'])
+@login_required
+@estudiante_required
+def api_logistica_despachar():
+    """Crear un nuevo despacho regional"""
+    empresa = current_user.empresa
+    simulacion = Simulacion.query.first()
+    data = request.get_json()
+    
+    producto_id = data.get('producto_id')
+    cantidad = data.get('cantidad')
+    region = data.get('region')
+    
+    if not all([producto_id, cantidad, region]):
+        return jsonify({'success': False, 'message': 'Faltan datos requeridos'}), 400
+    
+    # Validar producto
+    producto = Producto.query.get(producto_id)
+    if not producto:
+        return jsonify({'success': False, 'message': 'Producto no encontrado'}), 404
+    
+    # Validar inventario
+    inventario = Inventario.query.filter_by(
+        empresa_id=empresa.id,
+        producto_id=producto_id
+    ).first()
+    
+    if not inventario:
+        return jsonify({'success': False, 'message': 'Producto no disponible en inventario'}), 400
+    
+    if inventario.cantidad_actual < cantidad:
+        return jsonify({
+            'success': False, 
+            'message': f'Stock insuficiente. Disponible: {inventario.cantidad_actual}'
+        }), 400
+    
+    # Calcular tiempo de entrega según región
+    tiempos_entrega = {
+        'Andina': 3,
+        'Caribe': 4,
+        'Pacífica': 4,
+        'Orinoquía': 5,
+        'Amazonía': 6
+    }
+    dias_entrega = tiempos_entrega.get(region, 4)
+    dia_llegada = simulacion.dia_actual + dias_entrega
+    
+    # Crear despacho
+    despacho = DespachoRegional(
+        empresa_id=empresa.id,
+        producto_id=producto_id,
+        region=region,
+        cantidad=cantidad,
+        dia_despacho=simulacion.dia_actual,
+        dia_entrega_estimado=dia_llegada,
+        estado='en_transito',
+        usuario_logistica_id=current_user.id
+    )
+    
+    # Actualizar inventario
+    inventario.cantidad_actual -= cantidad
+    
+    # Registrar movimiento
+    movimiento = MovimientoInventario(
+        empresa_id=empresa.id,
+        producto_id=producto_id,
+        tipo_movimiento='salida_despacho',
+        cantidad=cantidad,
+        dia_simulacion=simulacion.dia_actual,
+        descripcion=f'Despacho a {region}',
+        usuario_id=current_user.id
+    )
+    
+    # Registrar decisión
+    decision = Decision(
+        usuario_id=current_user.id,
+        empresa_id=empresa.id,
+        tipo_decision='despacho_regional',
+        dia_simulacion=simulacion.dia_actual,
+        datos_decision={
+            'producto_id': producto_id,
+            'producto_nombre': producto.nombre,
+            'cantidad': cantidad,
+            'region': region,
+            'dia_llegada': dia_llegada,
+            'descripcion': f'Despacho de {cantidad} unidades de {producto.nombre} a {region}'
+        }
+    )
+    
+    db.session.add(despacho)
+    db.session.add(movimiento)
+    db.session.add(decision)
+    db.session.commit()
+    
+    return jsonify({
+        'success': True, 
+        'message': f'Despacho creado exitosamente. Llegará a {region} el día {dia_llegada}'
+    })
+
+
+@bp.route('/api/logistica/despachar-multiple', methods=['POST'])
+@login_required
+@estudiante_required
+def api_logistica_despachar_multiple():
+    """Crear múltiples despachos a diferentes regiones en una sola operación"""
+    try:
+        data = request.get_json()
+        producto_id = data.get('producto_id')
+        despachos_data = data.get('despachos', [])  # [{region: 'Andina', cantidad: 50}, ...]
+        
+        if not producto_id or not despachos_data:
+            return jsonify({
+                'success': False,
+                'message': 'Datos incompletos'
+            }), 400
+        
+        # Validar que hay al menos un despacho
+        if len(despachos_data) == 0:
+            return jsonify({
+                'success': False,
+                'message': 'Debe especificar al menos una región con cantidad'
+            }), 400
+        
+        empresa = current_user.empresa
+        if not empresa:
+            return jsonify({
+                'success': False,
+                'message': 'No tienes una empresa asignada'
+            }), 400
+            
+        simulacion = Simulacion.query.first()
+        if not simulacion:
+            return jsonify({
+                'success': False,
+                'message': 'No hay simulación activa'
+            }), 400
+            
+        producto = Producto.query.get(producto_id)
+        inventario = Inventario.query.filter_by(
+            empresa_id=empresa.id,
+            producto_id=producto_id
+        ).first()
+        
+        if not producto or not inventario:
+            return jsonify({
+                'success': False,
+                'message': 'Producto no encontrado en inventario'
+            }), 404
+        
+        # Calcular cantidad total
+        cantidad_total = sum(d.get('cantidad', 0) for d in despachos_data)
+        
+        # Validar stock suficiente
+        if inventario.cantidad_actual < cantidad_total:
+            return jsonify({
+                'success': False,
+                'message': f'Stock insuficiente. Disponible: {inventario.cantidad_actual}, Solicitado: {cantidad_total}'
+            }), 400
+        
+        # Tiempos de entrega según región
+        tiempos_entrega = {
+            'Andina': 3,
+            'Caribe': 4,
+            'Pacífica': 4,
+            'Orinoquía': 5,
+            'Amazonía': 6
+        }
+        
+        despachos_creados = []
+        
+        # Crear cada despacho
+        for despacho_info in despachos_data:
+            region = despacho_info.get('region')
+            cantidad = despacho_info.get('cantidad', 0)
+            
+            if cantidad <= 0:
+                continue
+            
+            dias_entrega = tiempos_entrega.get(region, 4)
+            dia_llegada = simulacion.dia_actual + dias_entrega
+            
+            # Crear despacho
+            despacho = DespachoRegional(
+                empresa_id=empresa.id,
+                producto_id=producto_id,
+                region=region,
+                cantidad=cantidad,
+                dia_despacho=simulacion.dia_actual,
+                dia_entrega_estimado=dia_llegada,
+                estado='en_transito',
+                usuario_logistica_id=current_user.id
+            )
+            
+            db.session.add(despacho)
+            despachos_creados.append({
+                'region': region,
+                'cantidad': cantidad,
+                'dia_llegada': dia_llegada
+            })
+        
+        # Actualizar inventario una sola vez con el total
+        saldo_anterior = inventario.cantidad_actual
+        inventario.cantidad_actual -= cantidad_total
+        saldo_nuevo = inventario.cantidad_actual
+        
+        # Registrar movimiento total
+        regiones_str = ', '.join([f"{d['region']}: {d['cantidad']}" for d in despachos_creados])
+        movimiento = MovimientoInventario(
+            empresa_id=empresa.id,
+            producto_id=producto_id,
+            tipo_movimiento='salida_despacho',
+            cantidad=cantidad_total,
+            saldo_anterior=saldo_anterior,
+            saldo_nuevo=saldo_nuevo,
+            dia_simulacion=simulacion.dia_actual,
+            observaciones=f'Despachos múltiples ({regiones_str})',
+            usuario_id=current_user.id
+        )
+        
+        # Registrar decisión
+        decision = Decision(
+            usuario_id=current_user.id,
+            empresa_id=empresa.id,
+            tipo_decision='despacho_regional_multiple',
+            dia_simulacion=simulacion.dia_actual,
+            datos_decision={
+                'producto_id': producto_id,
+                'producto_nombre': producto.nombre,
+                'cantidad_total': cantidad_total,
+                'despachos': despachos_creados,
+                'descripcion': f'Despachos de {cantidad_total} unidades de {producto.nombre} a {len(despachos_creados)} regiones'
+            }
+        )
+        
+        db.session.add(movimiento)
+        db.session.add(decision)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'{len(despachos_creados)} despachos creados exitosamente',
+            'despachos_creados': len(despachos_creados),
+            'cantidad_total': cantidad_total,
+            'despachos': despachos_creados
+        })
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error al procesar despachos: {str(e)}'
+        }), 500
+
+
+@bp.route('/api/logistica/transito')
+@login_required
+@estudiante_required
+def api_logistica_transito():
+    """Obtener compras y despachos en tránsito"""
+    empresa = current_user.empresa
+    
+    # Compras en tránsito
+    compras = Compra.query.filter_by(
+        empresa_id=empresa.id,
+        estado='en_transito'
+    ).order_by(Compra.dia_entrega).all()
+    
+    compras_data = []
+    for compra in compras:
+        compras_data.append({
+            'id': compra.id,
+            'producto_id': compra.producto_id,
+            'producto_nombre': compra.producto.nombre,
+            'cantidad': compra.cantidad,
+            'dia_entrega': compra.dia_entrega
+        })
+    
+    # Despachos en tránsito
+    despachos = DespachoRegional.query.filter_by(
+        empresa_id=empresa.id,
+        estado='en_transito'
+    ).order_by(DespachoRegional.dia_entrega_estimado).all()
+    
+    despachos_data = []
+    for despacho in despachos:
+        despachos_data.append({
+            'id': despacho.id,
+            'producto_id': despacho.producto_id,
+            'producto_nombre': despacho.producto.nombre,
+            'cantidad': despacho.cantidad,
+            'region_destino': despacho.region,
+            'dia_llegada': despacho.dia_entrega_estimado
+        })
+    
+    return jsonify({
+        'success': True,
+        'compras': compras_data,
+        'despachos': despachos_data
+    })

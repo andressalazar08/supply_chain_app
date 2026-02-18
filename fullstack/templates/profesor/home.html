@@ -1,0 +1,356 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Docente{% endblock %}
+
+{% block content %}
+<div class="container-fluid dashboard-container">
+    <div class="row g-4">
+        <!-- Sidebar Izquierdo - Perfil -->
+        <div class="col-lg-3">
+            {% include 'components/sidebar_perfil.html' %}
+        </div>
+        
+        <!-- Panel Principal - Gestión de Empresas -->
+        <div class="col-lg-9">
+            <div class="main-panel">
+                <div class="panel-header mb-4">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2><i class="fas fa-building"></i> Gestión de Empresas</h2>
+                            <p class="text-muted">Administra tus empresas, estudiantes y simulaciones</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="window.location.href='{{ url_for('profesor.dashboard') }}'">
+                            <i class="fas fa-cog"></i> Panel Completo
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Estadísticas Rápidas -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="stat-card stat-empresas">
+                            <div class="stat-icon">
+                                <i class="fas fa-building"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>{{ empresas|length }}</h3>
+                                <p>Empresas</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="stat-card stat-estudiantes">
+                            <div class="stat-icon">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>{{ total_estudiantes }}</h3>
+                                <p>Estudiantes</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="stat-card stat-simulacion">
+                            <div class="stat-icon">
+                                <i class="fas fa-calendar-day"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>{{ simulacion.dia_actual if simulacion else 0 }}</h3>
+                                <p>Día Actual</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="stat-card stat-pendientes">
+                            <div class="stat-icon">
+                                <i class="fas fa-user-clock"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>{{ estudiantes_pendientes }}</h3>
+                                <p>Pendientes</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Accesos Rápidos -->
+                <div class="quick-actions mb-4">
+                    <h5><i class="fas fa-bolt"></i> Accesos Rápidos</h5>
+                    <div class="row g-3">
+                        {% if current_user.es_super_admin %}
+                        <div class="col-md-3">
+                            <a href="{{ url_for('profesor.gestionar_profesores') }}" class="action-card bg-gradient-warning">
+                                <i class="fas fa-user-tie"></i>
+                                <span>Gestionar Profesores</span>
+                                <small class="d-block mt-1" style="font-size: 0.75rem; opacity: 0.9;">Solo Admin Maestro</small>
+                            </a>
+                        </div>
+                        {% endif %}
+                        <div class="col-md-{% if current_user.es_super_admin %}3{% else %}4{% endif %}">
+                            <a href="{{ url_for('profesor.gestionar_estudiantes') }}" class="action-card">
+                                <i class="fas fa-user-plus"></i>
+                                <span>Gestionar Estudiantes</span>
+                            </a>
+                        </div>
+                        <div class="col-md-{% if current_user.es_super_admin %}3{% else %}4{% endif %}">
+                            <a href="{{ url_for('profesor.gestionar_empresas') }}" class="action-card">
+                                <i class="fas fa-building"></i>
+                                <span>Gestionar Empresas</span>
+                            </a>
+                        </div>
+                        <div class="col-md-{% if current_user.es_super_admin %}3{% else %}4{% endif %}">
+                            <a href="{{ url_for('profesor.gestion_escenarios') }}" class="action-card">
+                                <i class="fas fa-bolt"></i>
+                                <span>Escenarios</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Lista de Empresas -->
+                <div class="empresas-section">
+                    <h5><i class="fas fa-list"></i> Mis Empresas</h5>
+                    
+                    {% if empresas %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Empresa</th>
+                                        <th>Capital</th>
+                                        <th>Estudiantes</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for empresa in empresas %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ empresa.nombre }}</strong>
+                                        </td>
+                                        <td>
+                                            <span class="text-success">
+                                                ${{ '{:,.0f}'.format(empresa.capital_actual) }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-info">
+                                                {{ empresa.estudiantes|length }} estudiantes
+                                            </span>
+                                            <button class="btn btn-sm btn-link" onclick="verEstudiantes({{ empresa.id }})">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                        </td>
+                                        <td>
+                                            {% if empresa.activa %}
+                                                <span class="badge bg-success">Activa</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Inactiva</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="empty-state-small">
+                            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                            <p>No tienes empresas creadas aún</p>
+                            <button class="btn btn-primary" onclick="window.location.href='{{ url_for('profesor.gestionar_empresas') }}'">
+                                <i class="fas fa-plus"></i> Crear Primera Empresa
+                            </button>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para ver estudiantes -->
+<div class="modal fade" id="modalEstudiantes" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Estudiantes de la Empresa</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="contenido-estudiantes">
+                <div class="text-center">
+                    <div class="spinner-border" role="status"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .dashboard-container {
+        padding: 30px;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+    
+    .main-panel {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .stat-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        transition: all 0.3s;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    }
+    
+    .stat-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+        color: white;
+    }
+    
+    .stat-empresas .stat-icon {
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
+    }
+    
+    .stat-estudiantes .stat-icon {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+    
+    .stat-simulacion .stat-icon {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+    
+    .stat-pendientes .stat-icon {
+        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    }
+    
+    .stat-content h3 {
+        margin: 0;
+        font-size: 2rem;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .stat-content p {
+        margin: 0;
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+    
+    .quick-actions h5 {
+        margin-bottom: 15px;
+        color: #333;
+    }
+    
+    .action-card {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding: 20px;
+        background: white;
+        border-radius: 12px;
+        border: 2px solid #e9ecef;
+        text-decoration: none;
+        color: #333;
+        transition: all 0.3s;
+    }
+    
+    .action-card:hover {
+        border-color: #c41e3a;
+        background: #f8f9ff;
+        transform: translateX(5px);
+    }
+    
+    .action-card i {
+        font-size: 1.8rem;
+        color: #c41e3a;
+    }
+    
+    .action-card span {
+        font-weight: 600;
+    }
+    
+    .empresas-section {
+        margin-top: 30px;
+    }
+    
+    .empresas-section h5 {
+        margin-bottom: 20px;
+        color: #333;
+    }
+    
+    .empty-state-small {
+        text-align: center;
+        padding: 40px;
+        background: #f8f9fa;
+        border-radius: 12px;
+    }
+</style>
+
+<script>
+    let modalEstudiantes;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        modalEstudiantes = new bootstrap.Modal(document.getElementById('modalEstudiantes'));
+    });
+    
+    function verEstudiantes(empresaId) {
+        document.getElementById('contenido-estudiantes').innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div></div>';
+        modalEstudiantes.show();
+        
+        fetch(`/profesor/api/empresa/${empresaId}/estudiantes`)
+            .then(response => response.json())
+            .then(data => {
+                let html = '<div class="list-group">';
+                if (data.estudiantes.length > 0) {
+                    data.estudiantes.forEach(est => {
+                        html += `
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="mb-1">${est.nombre_completo}</h6>
+                                        <small class="text-muted">${est.email}</small>
+                                    </div>
+                                    <span class="badge bg-primary">${est.rol.toUpperCase()}</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += '<p class="text-center text-muted py-4">No hay estudiantes asignados</p>';
+                }
+                html += '</div>';
+                document.getElementById('contenido-estudiantes').innerHTML = html;
+            });
+    }
+    
+    function verReportes(empresaId) {
+        window.location.href = `/profesor/reportes/${empresaId}`;
+    }
+    
+    function editarEmpresa(empresaId) {
+        window.location.href = `/profesor/empresas`;
+    }
+</script>
+{% endblock %}
