@@ -355,12 +355,24 @@ def procesar_ventas_semana(simulacion, empresa):
             stock_disponible = inventario.cantidad_actual - inventario.cantidad_reservada
             stock_disponible = max(0, stock_disponible)
 
-            # DISRUPCIÓN - Opción B: Racionamiento del producto afectado
+            # DISRUPCIÓN - efectos sobre demanda, racionamiento y precio
             efecto_d = efectos_disrupcion.get(producto.id)
+
+            # Opción B disrupcion 1: Racionamiento del stock disponible
             if efecto_d and efecto_d['tipo'] == 'racionamiento':
                 factor = efecto_d['efectos'].get('limite_ventas_factor', 0.60)
                 tope_racionamiento = round(inventario.cantidad_actual * factor)
                 stock_disponible = min(stock_disponible, tope_racionamiento)
+
+            # Disrupcion 2 Opciones A y B: multiplicador de demanda
+            if efecto_d and efecto_d['tipo'] == 'aumento_demanda':
+                mult = efecto_d['efectos'].get('demanda_multiplicador', 1.0)
+                cantidad_solicitada = round(cantidad_solicitada * mult)
+
+            # Disrupcion 2 Opcion D: menor demanda por precio alto
+            if efecto_d and efecto_d['tipo'] == 'aumento_precio_demanda':
+                mult_d = efecto_d['efectos'].get('demanda_multiplicador', 0.90)
+                cantidad_solicitada = round(cantidad_solicitada * mult_d)
 
             cantidad_vendida = min(cantidad_solicitada, stock_disponible)
             
@@ -381,6 +393,11 @@ def procesar_ventas_semana(simulacion, empresa):
             
             # Calcular valores financieros
             precio_unitario = producto.precio_actual
+            # Disrupcion 2 Opcion D: precio ajustado al alza
+            if efecto_d and efecto_d['tipo'] == 'aumento_precio_demanda':
+                precio_unitario = round(
+                    producto.precio_actual * efecto_d['efectos'].get('precio_multiplicador', 1.15)
+                )
             ingreso_total = cantidad_vendida * precio_unitario
             costo_unitario = inventario.costo_promedio or producto.costo_unitario
             margen = ingreso_total - (cantidad_vendida * costo_unitario)

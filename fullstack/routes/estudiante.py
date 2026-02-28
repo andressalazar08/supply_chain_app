@@ -233,8 +233,33 @@ def responder_disrupcion():
     dis.usuario_decision_id = current_user.id
     dis.fecha_decision = datetime.utcnow()
 
-    # Efecto inmediato de Opci�n C: extender compras pendientes del producto afectado
-    if opcion == 'C' and dis.producto_afectado_id and not dis.efecto_inicial_aplicado:
+    # Efecto inmediato disrupcion 2 Opcion A: auto-generar orden de compra adicional
+    if (opcion == 'A' and dis.disrupcion_key == 'aumento_demanda'
+            and dis.producto_afectado_id and not dis.efecto_inicial_aplicado):
+        from utils.catalogo_disrupciones import get_disrupcion as _gd2
+        cat2 = _gd2(dis.disrupcion_key)
+        duracion = cat2['duracion_semanas'] if cat2 else 2
+        producto_afectado = dis.producto_afectado
+        compras_auto_factor = definicion['opciones']['A']['efectos'].get('compras_auto_factor', 0.40)
+        cantidad_auto = round(producto_afectado.demanda_promedio * duracion * compras_auto_factor)
+        orden_auto = Compra(
+            empresa_id=empresa.id,
+            producto_id=dis.producto_afectado_id,
+            semana_orden=simulacion.semana_actual,
+            semana_entrega=simulacion.semana_actual + 1,
+            cantidad=cantidad_auto,
+            costo_unitario=producto_afectado.costo_unitario,
+            costo_total=cantidad_auto * producto_afectado.costo_unitario,
+            estado='en_transito',
+        )
+        db.session.add(orden_auto)
+        dis.efecto_inicial_aplicado = True
+        msg_extra = (f' Se emiti\u00f3 autom\u00e1ticamente una orden de compra de {cantidad_auto} unidades '
+                     f'de {producto_afectado.nombre} (entrega semana {simulacion.semana_actual + 1}).')
+
+    # Efecto inmediato de Opci\xf3n C (disrupcion 1): extender compras pendientes
+    elif (opcion == 'C' and dis.disrupcion_key == 'retraso_proveedor'
+          and dis.producto_afectado_id and not dis.efecto_inicial_aplicado):
         delay = definicion['opciones']['C']['efectos'].get('delay_compras_pendientes', 2)
         compras_pendientes = Compra.query.filter(
             Compra.empresa_id == empresa.id,
@@ -244,7 +269,7 @@ def responder_disrupcion():
         for c in compras_pendientes:
             c.semana_entrega += delay
         dis.efecto_inicial_aplicado = True
-        msg_extra = f' Las {len(compras_pendientes)} �rdenes pendientes de {dis.producto_afectado.nombre} se retrasaron {delay} semanas.'
+        msg_extra = f' Las {len(compras_pendientes)} \xf3rdenes pendientes de {dis.producto_afectado.nombre} se retrasaron {delay} semanas.'
     else:
         msg_extra = ''
 

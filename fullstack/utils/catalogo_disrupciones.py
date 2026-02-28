@@ -81,7 +81,98 @@ CATALOGO_DISRUPCIONES = [
                 },
             },
         },
-    }
+    },
+    {
+        'key': 'aumento_demanda',
+        'nombre': 'Aumento Inesperado en la Demanda',
+        'semana_trigger': 5,
+        'duracion_semanas': 2,
+        'icono': 'fas fa-chart-line',
+        'color': 'success',
+        'contexto_html': """
+            <p>El área de <strong>Ventas</strong> recibe información urgente del mercado:</p>
+            <blockquote class="fst-italic border-start border-4 border-success ps-3 my-3 text-muted">
+                &ldquo;Uno de los competidores principales ha presentado
+                <strong>problemas de abastecimiento</strong>. Varios clientes están buscando
+                nuevos proveedores para cubrir sus necesidades inmediatas.&rdquo;
+            </blockquote>
+            <p>En las últimas 48 horas se han recibido
+            <strong>solicitudes de cotización superiores a lo habitual</strong> y
+            clientes actuales quieren aumentar el volumen de sus pedidos.</p>
+            <div class="alert alert-success py-2 mt-2 mb-1">
+                <strong><i class="fas fa-lightbulb me-1"></i>Oportunidad:</strong>
+                <ul class="mb-0 mt-1">
+                    <li>Incremento potencial de ventas del <strong>+30%</strong> en el producto principal</li>
+                    <li>Captación de nuevos clientes del competidor</li>
+                    <li>Riesgo: sobreinventario si la demanda vuelve a la normalidad</li>
+                </ul>
+            </div>
+            <p class="text-muted small mt-2">Todo el equipo debe decidir cómo reaccionar ante
+            esta oportunidad de mercado con la información disponible.</p>
+        """,
+        'mensaje_fin': (
+            "✅ La situación del competidor se ha regularizado. "
+            "La demanda extraordinaria ha concluido y el mercado vuelve a sus niveles habituales."
+        ),
+        'opciones': {
+            'A': {
+                'titulo': 'Aceptar todos los pedidos y aumentar compras inmediatamente',
+                'descripcion': (
+                    'Confirmar pedidos actuales y nuevos clientes. '
+                    'Se emite automáticamente una orden de compra adicional (+40% de la demanda promedio). '
+                    'Mayor riesgo de sobreinventario si la demanda normaliza.'
+                ),
+                'icono': 'fas fa-bolt',
+                'color': 'success',
+                'efectos': {
+                    'tipo': 'aumento_demanda',
+                    'demanda_multiplicador': 1.30,
+                    'compras_auto_factor': 0.40,
+                },
+            },
+            'B': {
+                'titulo': 'Aceptar parcialmente el aumento de demanda',
+                'descripcion': (
+                    'Priorizar clientes estratégicos y de mayor margen. '
+                    'Limitar el volumen aceptado a nuevos clientes. '
+                    'Compras ajustadas moderadamente sin riesgo de sobrestock.'
+                ),
+                'icono': 'fas fa-sliders-h',
+                'color': 'info',
+                'efectos': {
+                    'tipo': 'aumento_demanda',
+                    'demanda_multiplicador': 1.15,
+                },
+            },
+            'C': {
+                'titulo': 'Mantener el plan actual sin aceptar incrementos',
+                'descripcion': (
+                    'No aceptar pedidos extraordinarios. '
+                    'Mantener plan de compras original. '
+                    'Se perderán las ventas adicionales del mercado, pero se protege la estabilidad operativa.'
+                ),
+                'icono': 'fas fa-minus-circle',
+                'color': 'danger',
+                'efectos': {
+                    'tipo': 'sin_efecto',
+                },
+            },
+            'D': {
+                'titulo': 'Aumentar precios ante el incremento de demanda',
+                'descripcion': (
+                    'Ajustar el precio de venta del producto afectado +15% para aprovechar la coyuntura. '
+                    'La demanda cae un 10% por elasticidad, pero el margen por unidad mejora significativamente.'
+                ),
+                'icono': 'fas fa-tags',
+                'color': 'warning',
+                'efectos': {
+                    'tipo': 'aumento_precio_demanda',
+                    'precio_multiplicador': 1.15,
+                    'demanda_multiplicador': 0.90,
+                },
+            },
+        },
+    },
     # Aquí se agregarán futuras disrupciones
 ]
 
