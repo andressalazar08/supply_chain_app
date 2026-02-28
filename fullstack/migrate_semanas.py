@@ -21,7 +21,8 @@ RENAMES = [
     ('despachos_regionales',  'dia_entrega_real',       'semana_entrega_real'),
     ('pronosticos',           'dia_generacion',         'semana_generacion'),
     ('pronosticos',           'dia_pronostico',         'semana_pronostico'),
-    ('requerimientos_compra', 'dia_necesidad',          'semana_necesidad'),
+    ('requerimientos_compra', 'dia_generacion',          'semana_generacion'),
+    ('requerimientos_compra', 'dia_necesidad',            'semana_necesidad'),
 ]
 
 DROP_TABLES = ['disrupciones_activas', 'escenarios']
