@@ -7,7 +7,7 @@ from flask_login import login_required, current_user
 from functools import wraps
 from models import (Usuario, Empresa, Simulacion, Inventario, Venta, Compra, Decision,
                     Metrica, Producto, MovimientoInventario, DespachoRegional,
-                    RequerimientoCompra, Pronostico)
+                    RequerimientoCompra, Pronostico, DisrupcionEmpresa)
 from extensions import db
 from datetime import datetime
 import random
@@ -73,11 +73,19 @@ def dashboard():
     # Obtener métricas del día actual
     metricas_dia = Metrica.query.filter_by(semana_simulacion=simulacion.semana_actual).all()
     
+    # Disrupciones de la simulacion activa para panel de seguimiento
+    from utils.catalogo_disrupciones import get_disrupcion
+    disrupciones_sim = DisrupcionEmpresa.query.filter_by(
+        simulacion_id=simulacion.id
+    ).order_by(DisrupcionEmpresa.empresa_id, DisrupcionEmpresa.semana_inicio).all()
+
     return render_template('profesor/dashboard.html',
                          simulacion=simulacion,
                          empresas=empresas,
                          total_estudiantes=total_estudiantes,
-                         metricas_dia=metricas_dia)
+                         metricas_dia=metricas_dia,
+                         disrupciones_sim=disrupciones_sim,
+                         get_disrupcion=get_disrupcion)
 
 
 @bp.route('/control-simulacion', methods=['POST'])
