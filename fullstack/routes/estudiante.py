@@ -147,6 +147,13 @@ def dashboard_general():
     ).order_by(Compra.semana_entrega).limit(5).all()
 
     # --- DISRUPCIONES ---
+    # Garantizar que esta empresa tenga sus disrupciones creadas aunque se haya
+    # incorporado a la simulacion despues del avance de semana que las genera.
+    from utils.procesamiento_dias import verificar_y_activar_disrupciones
+    nuevas_disrupciones = verificar_y_activar_disrupciones(simulacion)
+    if nuevas_disrupciones:
+        db.session.commit()
+
     # Disrupci�n activa sin respuesta (muestra el modal)
     disrupcion_pendiente = DisrupcionEmpresa.query.filter(
         DisrupcionEmpresa.empresa_id == empresa.id,
