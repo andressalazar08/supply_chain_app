@@ -411,6 +411,8 @@ class DisrupcionEmpresa(db.Model):
     efecto_inicial_aplicado = db.Column(db.Boolean, default=False)
     # Para notificación de cierre: ¿ya la vio el equipo estudiante?
     notificacion_fin_vista = db.Column(db.Boolean, default=False)
+    # Datos extra para reversiones (ej: precio original antes de Opción D)
+    datos_extra = db.Column(db.JSON, nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

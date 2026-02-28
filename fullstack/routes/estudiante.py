@@ -270,6 +270,22 @@ def responder_disrupcion():
             c.semana_entrega += delay
         dis.efecto_inicial_aplicado = True
         msg_extra = f' Las {len(compras_pendientes)} \xf3rdenes pendientes de {dis.producto_afectado.nombre} se retrasaron {delay} semanas.'
+
+    # Efecto inmediato Opcion D (disrupcion 2): actualizar precio real del producto
+    elif (opcion == 'D' and dis.disrupcion_key == 'aumento_demanda'
+          and dis.producto_afectado_id and not dis.efecto_inicial_aplicado):
+        from models import Producto
+        producto_afectado = dis.producto_afectado
+        precio_original = float(producto_afectado.precio_actual)
+        mult_precio = definicion['opciones']['D']['efectos'].get('precio_multiplicador', 1.15)
+        nuevo_precio = round(precio_original * mult_precio)
+        producto_afectado.precio_actual = nuevo_precio
+        dis.datos_extra = {'precio_original': precio_original}
+        dis.efecto_inicial_aplicado = True
+        msg_extra = (f' El precio de {producto_afectado.nombre} se ajust\u00f3 a '
+                     f'${nuevo_precio:,.0f} (era ${precio_original:,.0f}). '
+                     'Volver\u00e1 al precio original al finalizar la disrupci\u00f3n.')
+
     else:
         msg_extra = ''
 

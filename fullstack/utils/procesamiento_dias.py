@@ -226,8 +226,10 @@ def verificar_y_activar_disrupciones(simulacion):
 def verificar_y_expirar_disrupciones(simulacion):
     """
     Marca como inactivas las disrupciones cuya semana_fin quedó en el pasado.
+    Revierte efectos permanentes (ej: precio Opción D) antes de desactivarlas.
     Retorna las disrupciones recién expiradas para que la UI muestre la notificación.
     """
+    from models import Producto
     expiradas = DisrupcionEmpresa.query.filter(
         DisrupcionEmpresa.simulacion_id == simulacion.id,
         DisrupcionEmpresa.activa == True,
@@ -235,6 +237,15 @@ def verificar_y_expirar_disrupciones(simulacion):
     ).all()
 
     for d in expiradas:
+        # Revertir precio si hubo Opción D en disrupcion aumento_demanda
+        if (d.disrupcion_key == 'aumento_demanda'
+                and d.opcion_elegida == 'D'
+                and d.producto_afectado_id
+                and d.datos_extra
+                and 'precio_original' in d.datos_extra):
+            producto = Producto.query.get(d.producto_afectado_id)
+            if producto:
+                producto.precio_actual = d.datos_extra['precio_original']
         d.activa = False
 
     return expiradas
@@ -375,33 +386,21 @@ def procesar_ventas_semana(simulacion, empresa):
                 cantidad_solicitada = round(cantidad_solicitada * mult_d)
 
             cantidad_vendida = min(cantidad_solicitada, stock_disponible)
-            
-            # Calcular ventas perdidas por diferentes razones
+
+            # Calcular ventas perdidas
             ventas_perdidas_sin_stock = max(0, cantidad_solicitada - cantidad_vendida)
-            
-            # Ventas perdidas por precio no competitivo
-            # Si no recibimos demanda pero teníamos stock, es porque nuestro precio no era competitivo
             ratio_precio = producto.precio_actual / precio_promedio if precio_promedio > 0 else 1.0
             ventas_perdidas_precio = 0
-            
             if stock_disponible > 0 and cantidad_solicitada == 0 and ratio_precio > 1.2:
-                # Teníamos stock pero precio muy alto - perdimos potencial de venta
-                # Estimar cuánto podríamos haber vendido con precio competitivo
-                ventas_perdidas_precio = round(cantidad_total_mercado * 0.15)  # Asumimos que podríamos haber capturado 15% del mercado
-            
+                ventas_perdidas_precio = round(cantidad_total_mercado * 0.15)
             cantidad_perdida_total = ventas_perdidas_sin_stock + ventas_perdidas_precio
-            
-            # Calcular valores financieros
+
+            # Precio unitario — ya actualizado en DB si el equipo eligió Opción D
             precio_unitario = producto.precio_actual
-            # Disrupcion 2 Opcion D: precio ajustado al alza
-            if efecto_d and efecto_d['tipo'] == 'aumento_precio_demanda':
-                precio_unitario = round(
-                    producto.precio_actual * efecto_d['efectos'].get('precio_multiplicador', 1.15)
-                )
             ingreso_total = cantidad_vendida * precio_unitario
             costo_unitario = inventario.costo_promedio or producto.costo_unitario
             margen = ingreso_total - (cantidad_vendida * costo_unitario)
-            
+
             # Crear registro de venta con información de competitividad
             venta = Venta(
                 empresa_id=empresa.id,
