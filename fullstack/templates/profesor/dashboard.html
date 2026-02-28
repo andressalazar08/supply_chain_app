@@ -46,7 +46,7 @@
                             <div class="p-3 text-center border rounded bg-light">
                                 <p class="text-muted mb-1 small">Día Actual</p>
                                 <h2 class="mb-0 text-primary">
-                                    <i class="fas fa-calendar-day me-2"></i>{{ simulacion.dia_actual }}
+                                    <i class="fas fa-calendar-day me-2"></i>{{ simulacion.semana_actual }}
                                 </h2>
                             </div>
                         </div>
@@ -104,7 +104,7 @@
                             {% elif simulacion.estado == 'en_curso' %}
                             <div class="alert alert-success mb-3">
                                 <i class="fas fa-check-circle me-2"></i>
-                                <strong>Simulación en curso.</strong> Presiona "Avanzar 1 Día" para procesar todos los eventos del día {{ simulacion.dia_actual }}.
+                                <strong>Simulación en curso.</strong> Presiona "Avanzar 1 Semana" para procesar todos los eventos del día {{ simulacion.semana_actual }}.
                             </div>
                             {% elif simulacion.estado == 'finalizado' %}
                             <div class="alert alert-warning mb-3">
@@ -124,7 +124,7 @@
                                     <i class="fas fa-pause me-2"></i>Pausar
                                 </button>
                                 <button type="submit" name="accion" value="avanzar_dia" class="btn btn-primary btn-lg pulse-button">
-                                    <i class="fas fa-forward me-2"></i>Avanzar al Día {{ simulacion.dia_actual + 1 }}
+                                    <i class="fas fa-forward me-2"></i>Avanzar a la Semana {{ simulacion.semana_actual + 1 }}
                                 </button>
                                 {% endif %}
                                 
@@ -245,7 +245,7 @@
             <div class="card mb-4">
                 <div class="card-body">
                     <h4 class="card-title mb-4">
-                        <i class="fas fa-chart-bar me-2"></i>Desempeño por Empresa - Día {{ simulacion.dia_actual }}
+                        <i class="fas fa-chart-bar me-2"></i>Desempeño por Empresa - Semana {{ simulacion.semana_actual }}
                     </h4>
                     
                     <div class="table-responsive">
@@ -375,7 +375,7 @@ async function cargarHistorialSimulaciones() {
                         <td><strong>#${sim.id}</strong></td>
                         <td>${sim.nombre}</td>
                         <td><span class="badge ${estadoBadge}">${estadoTexto}</span></td>
-                        <td class="text-center">${sim.dia_actual}</td>
+                        <td class="text-center">${sim.semana_actual}</td>
                         <td>${sim.fecha_inicio || 'N/A'}</td>
                         <td>${sim.fecha_fin || '-'}</td>
                         <td class="text-center">${sim.total_empresas}</td>

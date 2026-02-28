@@ -211,7 +211,7 @@
                 <div>
                     <h1><i class="fas fa-truck me-2"></i>Dashboard de Logística</h1>
                     <p class="text-muted mb-0">
-                        <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }}
+                        <strong>{{ empresa.nombre }}</strong> | Semana {{ simulacion.semana_actual }}
                     </p>
                 </div>
             </div>
@@ -315,7 +315,7 @@
                                     <div class="row align-items-center">
                                         <div class="col-md-5">
                                             <h6 class="mb-0"><strong>{{ orden.producto.nombre }}</strong></h6>
-                                            <small class="text-muted">Orden #{{ orden.id }} - Día {{ orden.dia_orden }}</small>
+                                            <small class="text-muted">Orden #{{ orden.id }} - Semana {{ orden.semana_orden }}</small>
                                         </div>
                                         <div class="col-md-3">
                                             <small class="text-muted">Cantidad</small>
@@ -324,7 +324,7 @@
                                         <div class="col-md-4 text-end">
                                             <small class="text-muted">Llegada</small>
                                             <div>
-                                                {% set dias_faltantes = orden.dia_entrega - simulacion.dia_actual %}
+                                                {% set dias_faltantes = orden.semana_entrega - simulacion.semana_actual %}
                                                 {% if dias_faltantes == 0 %}
                                                 <span class="badge bg-danger">HOY</span>
                                                 {% elif dias_faltantes == 1 %}

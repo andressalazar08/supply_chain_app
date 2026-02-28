@@ -1,4 +1,4 @@
-"""
+﻿"""
 Utilidades para reiniciar simulación manteniendo histórico
 """
 from models import (Simulacion, Empresa, Producto, Inventario, Usuario)
@@ -34,10 +34,10 @@ def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None):
         
         nueva_simulacion = Simulacion(
             nombre=nombre_simulacion,
-            dia_actual=1,
+            semana_actual=1,
             estado='pausado',
             fecha_inicio=datetime.utcnow(),
-            duracion_dias=30,
+            duracion_semanas=30,
             capital_inicial_empresas=capital_inicial,
             activa=True
         )
@@ -112,8 +112,8 @@ def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None):
         🏢 Empresas inicializadas: {len(nuevas_empresas)}
         💰 Capital inicial: ${capital_inicial:,.0f}
         📦 Inventario por producto:
-           - Productos 750ml: 300 unidades
-           - Productos 1L: 200 unidades
+           - Productos 750ml: 120 unidades
+           - Productos 1L: 80 unidades
         
         🔄 La simulación anterior se mantuvo como histórico
         """

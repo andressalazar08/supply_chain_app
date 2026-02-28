@@ -306,7 +306,7 @@
                                 <tbody>
                                     {% for decision in decisiones_est[:20] %}
                                     <tr>
-                                        <td><span class="badge bg-primary">Día {{ decision.dia_simulacion }}</span></td>
+                                        <td><span class="badge bg-primary">Día {{ decision.semana_simulacion }}</span></td>
                                         <td>
                                             <span class="badge badge-rol badge-{{ estudiante.rol }}">
                                                 {{ decision.tipo_decision|upper }}
@@ -401,11 +401,11 @@
                 <div class="timeline-item" 
                      data-estudiante="{{ decision.usuario_id }}" 
                      data-tipo="{{ decision.tipo_decision }}"
-                     data-dia="{{ decision.dia_simulacion }}">
+                     data-dia="{{ decision.semana_simulacion }}">
                     <div class="decision-card {{ decision.tipo_decision }}">
                         <div class="row align-items-center">
                             <div class="col-md-1 text-center">
-                                <span class="badge bg-primary">Día {{ decision.dia_simulacion }}</span>
+                                <span class="badge bg-primary">Día {{ decision.semana_simulacion }}</span>
                             </div>
                             <div class="col-md-3">
                                 <strong>{{ decision.usuario.nombre_completo }}</strong><br>
@@ -479,7 +479,7 @@
                     <tbody>
                         {% for metrica in metricas_dias[:15] %}
                         <tr>
-                            <td><strong>Día {{ metrica.dia_simulacion }}</strong></td>
+                            <td><strong>Día {{ metrica.semana_simulacion }}</strong></td>
                             <td class="text-success">${{ '{:,.2f}'.format(metrica.ingresos) }}</td>
                             <td class="text-danger">${{ '{:,.2f}'.format(metrica.costos) }}</td>
                             <td class="{{ 'text-success' if metrica.utilidad > 0 else 'text-danger' }}">

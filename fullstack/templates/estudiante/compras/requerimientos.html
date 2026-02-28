@@ -200,7 +200,7 @@
                 <div>
                     <h1><i class="fas fa-clipboard-list me-2"></i>Requerimientos de Compra</h1>
                     <p class="text-muted mb-0">
-                        <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }}
+                        <strong>{{ empresa.nombre }}</strong> | Semana {{ simulacion.semana_actual }}
                     </p>
                 </div>
             </div>
@@ -269,7 +269,7 @@
                                     {% endif %}
                                     
                                     <!-- Urgencia basada en días hasta necesidad -->
-                                    {% set dias_faltantes = req.dia_necesidad - simulacion.dia_actual %}
+                                    {% set dias_faltantes = req.semana_necesidad - simulacion.semana_actual %}
                                     {% if dias_faltantes <= 3 %}
                                     <span class="urgencia-badge urgencia-alta ms-2">
                                         <i class="fas fa-fire me-1"></i>URGENTE
@@ -297,7 +297,7 @@
                                     <div class="col-md-4">
                                         <div class="info-box">
                                             <small class="text-muted">Para el Día</small>
-                                            <div><strong>{{ req.dia_necesidad }}</strong></div>
+                                            <div><strong>{{ req.semana_necesidad }}</strong></div>
                                             <small class="text-muted">(Faltan {{ dias_faltantes }} días)</small>
                                         </div>
                                     </div>
@@ -305,7 +305,7 @@
                                         <div class="info-box">
                                             <small class="text-muted">Lead Time</small>
                                             <div><strong>{{ req.producto.tiempo_entrega }}</strong> días</div>
-                                            <small class="text-muted">Ordenar antes día {{ req.dia_necesidad - req.producto.tiempo_entrega }}</small>
+                                            <small class="text-muted">Ordenar antes semana {{ req.semana_necesidad - req.producto.tiempo_entrega }}</small>
                                         </div>
                                     </div>
                                 </div>
@@ -409,7 +409,7 @@
                                     <div class="col-md-3">
                                         <div class="info-box">
                                             <small class="text-muted">Día Necesidad</small>
-                                            <div><strong>{{ req.dia_necesidad }}</strong></div>
+                                            <div><strong>{{ req.semana_necesidad }}</strong></div>
                                         </div>
                                     </div>
                                     <div class="col-md-3">

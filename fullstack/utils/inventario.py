@@ -1,4 +1,4 @@
-"""
+﻿"""
 Funciones para cálculos de inventario y gestión de compras
 """
 
@@ -21,7 +21,7 @@ def calcular_consumo_diario(ventas: List, dias: int = 7) -> float:
         return 0.0
     
     total_vendido = sum([v.cantidad_vendida for v in ventas])
-    dias_unicos = len(set([v.dia_simulacion for v in ventas]))
+    dias_unicos = len(set([v.semana_simulacion for v in ventas]))
     
     if dias_unicos == 0:
         return 0.0

@@ -151,7 +151,7 @@
                 <div>
                     <h1><i class="fas fa-shipping-fast me-2"></i>Despacho Regional</h1>
                     <p class="text-muted mb-0">
-                        <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }}
+                        <strong>{{ empresa.nombre }}</strong> | Semana {{ simulacion.semana_actual }}
                     </p>
                 </div>
             </div>
@@ -322,7 +322,7 @@
             <div id="tab-activos" class="tab-content">
                 {% if despachos_activos %}
                     {% for despacho in despachos_activos %}
-                    {% set dias_restantes = despacho.dia_entrega_estimado - simulacion.dia_actual %}
+                    {% set dias_restantes = despacho.semana_entrega_estimado - simulacion.semana_actual %}
                     
                     <div class="despacho-card en-transito">
                         <div class="row align-items-center">
@@ -341,11 +341,11 @@
                                     </div>
                                     <div class="col-3">
                                         <small class="text-muted">Día Despacho</small>
-                                        <div><strong>{{ despacho.dia_despacho }}</strong></div>
+                                        <div><strong>{{ despacho.semana_despacho }}</strong></div>
                                     </div>
                                     <div class="col-3">
                                         <small class="text-muted">Día Entrega</small>
-                                        <div><strong>{{ despacho.dia_entrega_estimado }}</strong></div>
+                                        <div><strong>{{ despacho.semana_entrega_estimado }}</strong></div>
                                     </div>
                                     <div class="col-3">
                                         <small class="text-muted">Estado</small>
@@ -364,7 +364,7 @@
                             
                             <div class="col-md-5">
                                 <div class="progress" style="height: 25px;">
-                                    {% set progreso = ((simulacion.dia_actual - despacho.dia_despacho) / (despacho.dia_entrega_estimado - despacho.dia_despacho) * 100)|int %}
+                                    {% set progreso = ((simulacion.semana_actual - despacho.semana_despacho) / (despacho.semana_entrega_estimado - despacho.semana_despacho) * 100)|int %}
                                     <div class="progress-bar bg-warning" role="progressbar" 
                                          style="width: {{ [progreso, 100]|min }}%">
                                         <strong>{{ [progreso, 100]|min }}% en tránsito</strong>
@@ -411,8 +411,8 @@
                                         </span>
                                     </td>
                                     <td><strong>{{ "%.0f"|format(despacho.cantidad) }}</strong></td>
-                                    <td>{{ despacho.dia_despacho }}</td>
-                                    <td>{{ despacho.dia_entrega_estimado }}</td>
+                                    <td>{{ despacho.semana_despacho }}</td>
+                                    <td>{{ despacho.semana_entrega_estimado }}</td>
                                     <td>
                                         {% if despacho.estado == 'entregado' %}
                                         <span class="badge bg-success">Entregado</span>
@@ -440,7 +440,7 @@
 
 {% block extra_js %}
 <script>
-    const diaActual = {{ simulacion.dia_actual }};
+    const semanaActual = {{ simulacion.semana_actual }};
     
     function cambiarTab(tabName) {
         document.querySelectorAll('.tab-content').forEach(tab => {

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Script de inicialización de base de datos
 Crea datos de ejemplo para pruebas
 """
@@ -173,9 +173,9 @@ def init_db():
         
         # Crear simulación inicial
         simulacion = Simulacion(
-            dia_actual=1,
+            semana_actual=1,
             estado='pausado',
-            duracion_dias=30
+            duracion_semanas=30
         )
         db.session.add(simulacion)
         db.session.commit()
@@ -256,7 +256,7 @@ def init_db():
                         venta = Venta(
                             empresa_id=empresa.id,
                             producto_id=producto.id,
-                            dia_simulacion=dia,
+                            semana_simulacion=dia,
                             region=region,
                             canal=canal,
                             cantidad_solicitada=cantidad_solicitada,
