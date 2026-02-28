@@ -186,7 +186,8 @@ def obtener_producto_mas_demandado(empresa):
 def verificar_y_activar_disrupciones(simulacion):
     """
     Revisa el catálogo y crea registros DisrupcionEmpresa para las empresas
-    que aún no tienen la disrupción cuyo semana_trigger coincide con la semana actual.
+    que aún no tienen la disrupción cuyo semana_trigger ya fue alcanzada o pasada.
+    Usar >= permite crear disrupciones para empresas que se unieron tarde a la simulación.
     """
     from utils.catalogo_disrupciones import CATALOGO_DISRUPCIONES
 
@@ -195,7 +196,7 @@ def verificar_y_activar_disrupciones(simulacion):
     nuevas = []
 
     for definicion in CATALOGO_DISRUPCIONES:
-        if definicion['semana_trigger'] != semana:
+        if definicion['semana_trigger'] > semana:
             continue
         for empresa in empresas:
             ya_existe = DisrupcionEmpresa.query.filter_by(
