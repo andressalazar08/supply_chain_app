@@ -3,7 +3,7 @@ Utilidades para procesamiento automático de semanas de simulación
 """
 
 from models import (Simulacion, Empresa, Producto, Inventario, Venta, Compra,
-                    DespachoRegional, MovimientoInventario, Metrica)
+                    DespachoRegional, MovimientoInventario, Metrica, DisrupcionEmpresa)
 from extensions import db
 from datetime import datetime
 import random
@@ -162,6 +162,115 @@ def distribuir_demanda_competitiva(simulacion, producto, region, demanda_total, 
     return asignaciones, precio_promedio
 
 
+# ---------------------------------------------------------------------------
+# SISTEMA DE DISRUPCIONES
+# ---------------------------------------------------------------------------
+
+def obtener_producto_mas_demandado(empresa):
+    """
+    Retorna el producto con mayor volumen de ventas histórico para la empresa.
+    Si no hay ventas aún, usa el de mayor demanda_promedio en el catálogo.
+    """
+    resultado = db.session.query(
+        Venta.producto_id,
+        func.sum(Venta.cantidad_vendida).label('total')
+    ).filter_by(empresa_id=empresa.id).group_by(Venta.producto_id).order_by(
+        func.sum(Venta.cantidad_vendida).desc()
+    ).first()
+
+    if resultado:
+        return Producto.query.get(resultado.producto_id)
+    return Producto.query.filter_by(activo=True).order_by(Producto.demanda_promedio.desc()).first()
+
+
+def verificar_y_activar_disrupciones(simulacion):
+    """
+    Revisa el catálogo y crea registros DisrupcionEmpresa para las empresas
+    que aún no tienen la disrupción cuyo semana_trigger coincide con la semana actual.
+    """
+    from utils.catalogo_disrupciones import CATALOGO_DISRUPCIONES
+
+    semana = simulacion.semana_actual
+    empresas = Empresa.query.filter_by(activa=True, simulacion_id=simulacion.id).all()
+    nuevas = []
+
+    for definicion in CATALOGO_DISRUPCIONES:
+        if definicion['semana_trigger'] != semana:
+            continue
+        for empresa in empresas:
+            ya_existe = DisrupcionEmpresa.query.filter_by(
+                simulacion_id=simulacion.id,
+                empresa_id=empresa.id,
+                disrupcion_key=definicion['key']
+            ).first()
+            if ya_existe:
+                continue
+
+            producto = obtener_producto_mas_demandado(empresa)
+            nueva = DisrupcionEmpresa(
+                simulacion_id=simulacion.id,
+                empresa_id=empresa.id,
+                disrupcion_key=definicion['key'],
+                producto_afectado_id=producto.id if producto else None,
+                semana_inicio=semana,
+                semana_fin=semana + definicion['duracion_semanas'] - 1,
+                activa=True,
+            )
+            db.session.add(nueva)
+            nuevas.append(nueva)
+
+    return nuevas
+
+
+def verificar_y_expirar_disrupciones(simulacion):
+    """
+    Marca como inactivas las disrupciones cuya semana_fin quedó en el pasado.
+    Retorna las disrupciones recién expiradas para que la UI muestre la notificación.
+    """
+    expiradas = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.semana_fin < simulacion.semana_actual
+    ).all()
+
+    for d in expiradas:
+        d.activa = False
+
+    return expiradas
+
+
+def obtener_efectos_por_empresa(simulacion_id, empresa_id):
+    """
+    Retorna un dict {producto_id: efectos} con los efectos de disrupción
+    activos para la empresa (solo disrupciones con opción elegida).
+    """
+    from utils.catalogo_disrupciones import CATALOGO_DISRUPCIONES
+    cat_dict = {d['key']: d for d in CATALOGO_DISRUPCIONES}
+
+    disrupciones = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.simulacion_id == simulacion_id,
+        DisrupcionEmpresa.empresa_id == empresa_id,
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.opcion_elegida != None
+    ).all()
+
+    efectos = {}
+    for dis in disrupciones:
+        cat = cat_dict.get(dis.disrupcion_key)
+        if not cat or not dis.producto_afectado_id:
+            continue
+        opcion = cat['opciones'].get(dis.opcion_elegida)
+        if opcion:
+            efectos[dis.producto_afectado_id] = {
+                'tipo': opcion['efectos']['tipo'],
+                'efectos': opcion['efectos'],
+                'disrupcion_id': dis.id,
+            }
+    return efectos
+
+
+# ---------------------------------------------------------------------------
+
 def procesar_ventas_semana(simulacion, empresa):
     """
     Procesa las ventas de la semana para una empresa usando motor de competencia
@@ -170,9 +279,11 @@ def procesar_ventas_semana(simulacion, empresa):
     semana_actual = simulacion.semana_actual
     productos = Producto.query.filter_by(activo=True).all()
     regiones = ['Andina', 'Caribe', 'Pacífica', 'Orinoquía', 'Amazonía']
-    
     ventas_generadas = []
-    
+
+    # Obtener efectos de disrupciones activas una sola vez por empresa
+    efectos_disrupcion = obtener_efectos_por_empresa(simulacion.id, empresa.id)
+
     for producto in productos:
         # Obtener inventario de esta empresa
         inventario = Inventario.query.filter_by(
@@ -242,6 +353,14 @@ def procesar_ventas_semana(simulacion, empresa):
             # Procesar venta según stock disponible
             stock_disponible = inventario.cantidad_actual - inventario.cantidad_reservada
             stock_disponible = max(0, stock_disponible)
+
+            # DISRUPCIÓN - Opción B: Racionamiento del producto afectado
+            efecto_d = efectos_disrupcion.get(producto.id)
+            if efecto_d and efecto_d['tipo'] == 'racionamiento':
+                factor = efecto_d['efectos'].get('limite_ventas_factor', 0.60)
+                tope_racionamiento = round(inventario.cantidad_actual * factor)
+                stock_disponible = min(stock_disponible, tope_racionamiento)
+
             cantidad_vendida = min(cantidad_solicitada, stock_disponible)
             
             # Calcular ventas perdidas por diferentes razones
@@ -650,10 +769,23 @@ def avanzar_simulacion():
         semana_anterior = simulacion.semana_actual
         simulacion.semana_actual += 1
 
-        # Procesar semana completa
+        # Expirar disrupciones cuya duración ya terminó
+        expiradas = verificar_y_expirar_disrupciones(simulacion)
+
+        # Procesar semana completa (los efectos activos se consultan dentro)
         resumen = procesar_semana_completa(simulacion)
 
+        # Activar nuevas disrupciones que tienen semana_trigger == semana actual
+        nuevas = verificar_y_activar_disrupciones(simulacion)
+
+        resumen['disrupciones_activadas'] = len(nuevas)
+        resumen['disrupciones_expiradas'] = len(expiradas)
+
+        db.session.commit()
+
         mensaje = f"✅ Semana {semana_anterior} → Semana {simulacion.semana_actual} procesada exitosamente"
+        if nuevas:
+            mensaje += f" | ⚠️ {len(nuevas)} nueva(s) disrupción(es) activada(s)"
 
         return True, mensaje, resumen
 

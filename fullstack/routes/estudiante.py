@@ -6,8 +6,9 @@ Dashboard diferenciado según rol: Ventas, Planeación, Compras, Logística
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
-from models import (Usuario, Empresa, Simulacion, Inventario, Venta, Compra, Decision, 
-                    Producto, Pronostico, RequerimientoCompra, MovimientoInventario, DespachoRegional)
+from models import (Usuario, Empresa, Simulacion, Inventario, Venta, Compra, Decision,
+                    Producto, Pronostico, RequerimientoCompra, MovimientoInventario, DespachoRegional,
+                    DisrupcionEmpresa)
 from extensions import db
 from datetime import datetime
 from utils.pronosticos import (
@@ -144,7 +145,35 @@ def dashboard_general():
     ).filter(
         Compra.semana_entrega <= simulacion.semana_actual + 3
     ).order_by(Compra.semana_entrega).limit(5).all()
-    
+
+    # --- DISRUPCIONES ---
+    # Disrupción activa sin respuesta (muestra el modal)
+    disrupcion_pendiente = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.empresa_id == empresa.id,
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.opcion_elegida == None
+    ).first()
+
+    # Disrupciones recién expiradas cuya notificación de cierre aún no se vio
+    disrupciones_finalizadas = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.empresa_id == empresa.id,
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.activa == False,
+        DisrupcionEmpresa.notificacion_fin_vista == False
+    ).all()
+
+    # Disrupciones activas con decisión ya tomada (para info en dashboard)
+    disrupciones_activas = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.empresa_id == empresa.id,
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.opcion_elegida != None
+    ).all()
+
+    # Cargar definiciones del catálogo para el template
+    from utils.catalogo_disrupciones import CATALOGO_DISRUPCIONES, get_disrupcion
+
     return render_template('estudiante/dashboard_general.html',
                          empresa=empresa,
                          simulacion=simulacion,
@@ -157,7 +186,93 @@ def dashboard_general():
                          requerimientos_pendientes=requerimientos_pendientes,
                          alertas_inventario=alertas_inventario,
                          movimientos_recientes=movimientos_recientes,
-                         ordenes_proximas=ordenes_proximas)
+                         ordenes_proximas=ordenes_proximas,
+                         disrupcion_pendiente=disrupcion_pendiente,
+                         disrupciones_finalizadas=disrupciones_finalizadas,
+                         disrupciones_activas=disrupciones_activas,
+                         get_disrupcion=get_disrupcion)
+
+
+@bp.route('/api/disrupcion/responder', methods=['POST'])
+@login_required
+@estudiante_required
+def responder_disrupcion():
+    """Registra la opción elegida por el equipo ante una disrupción."""
+    empresa = current_user.empresa
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+
+    disrupcion_id = request.form.get('disrupcion_id', type=int)
+    opcion = request.form.get('opcion', '').upper()
+
+    dis = DisrupcionEmpresa.query.get_or_404(disrupcion_id)
+
+    # Validaciones de seguridad
+    if dis.empresa_id != empresa.id:
+        flash('No autorizado.', 'error')
+        return redirect(url_for('estudiante.dashboard_general'))
+
+    if dis.opcion_elegida:
+        flash('Ya se registró una decisión para esta disrupción.', 'warning')
+        return redirect(url_for('estudiante.dashboard_general'))
+
+    from utils.catalogo_disrupciones import get_disrupcion
+    definicion = get_disrupcion(dis.disrupcion_key)
+    if not definicion or opcion not in definicion['opciones']:
+        flash('Opción inválida.', 'error')
+        return redirect(url_for('estudiante.dashboard_general'))
+
+    # Registrar decisión
+    dis.opcion_elegida = opcion
+    dis.usuario_decision_id = current_user.id
+    dis.fecha_decision = datetime.utcnow()
+
+    # Efecto inmediato de Opción C: extender compras pendientes del producto afectado
+    if opcion == 'C' and dis.producto_afectado_id and not dis.efecto_inicial_aplicado:
+        delay = definicion['opciones']['C']['efectos'].get('delay_compras_pendientes', 2)
+        compras_pendientes = Compra.query.filter(
+            Compra.empresa_id == empresa.id,
+            Compra.producto_id == dis.producto_afectado_id,
+            Compra.estado.in_(['pendiente', 'en_transito'])
+        ).all()
+        for c in compras_pendientes:
+            c.semana_entrega += delay
+        dis.efecto_inicial_aplicado = True
+        msg_extra = f' Las {len(compras_pendientes)} órdenes pendientes de {dis.producto_afectado.nombre} se retrasaron {delay} semanas.'
+    else:
+        msg_extra = ''
+
+    # Registrar en tabla de decisiones
+    decision = Decision(
+        usuario_id=current_user.id,
+        empresa_id=empresa.id,
+        semana_simulacion=simulacion.semana_actual,
+        tipo_decision='disrupcion_respuesta',
+        datos_decision={
+            'disrupcion_key': dis.disrupcion_key,
+            'opcion_elegida': opcion,
+            'producto_afectado_id': dis.producto_afectado_id,
+        }
+    )
+    db.session.add(decision)
+    db.session.commit()
+
+    flash(f'✅ Decisión registrada: Opción {opcion} — {definicion["opciones"][opcion]["titulo"]}.{msg_extra}', 'success')
+    return redirect(url_for('estudiante.dashboard_general'))
+
+
+@bp.route('/api/disrupcion/marcar-fin-visto', methods=['POST'])
+@login_required
+@estudiante_required
+def marcar_disrupcion_fin_vista():
+    """Marca como vista la notificación de cierre de una disrupción."""
+    dis_ids = request.form.getlist('disrupcion_ids[]', type=int)
+    empresa = current_user.empresa
+    for did in dis_ids:
+        dis = DisrupcionEmpresa.query.get(did)
+        if dis and dis.empresa_id == empresa.id:
+            dis.notificacion_fin_vista = True
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 # ============== DASHBOARD VENTAS ==============
@@ -165,7 +280,6 @@ def dashboard_general():
 @login_required
 @estudiante_required
 def dashboard_ventas():
-    """Dashboard unificado de ventas con 3 tabs"""
     simulacion = Simulacion.query.first()
     empresa = current_user.empresa
     
@@ -1195,30 +1309,51 @@ def crear_orden_desde_requerimiento(requerimiento_id):
         simulacion = Simulacion.query.first()
         producto = Producto.query.get(requerimiento.producto_id)
         
-        # Calcular costos
+        # Calcular costos (con posible ajuste por disrupción Opción A)
         costo_unitario = producto.costo_unitario
+        tiempo_entrega = producto.tiempo_entrega
+
+        dis_opcion_a = DisrupcionEmpresa.query.filter(
+            DisrupcionEmpresa.empresa_id == current_user.empresa_id,
+            DisrupcionEmpresa.simulacion_id == simulacion.id,
+            DisrupcionEmpresa.producto_afectado_id == requerimiento.producto_id,
+            DisrupcionEmpresa.activa == True,
+            DisrupcionEmpresa.opcion_elegida == 'A'
+        ).first()
+        if dis_opcion_a:
+            from utils.catalogo_disrupciones import get_disrupcion
+            cat = get_disrupcion(dis_opcion_a.disrupcion_key)
+            if cat:
+                efectos_a = cat['opciones']['A']['efectos']
+                costo_unitario *= efectos_a.get('costo_multiplicador', 1.20)
+                tiempo_entrega = efectos_a.get('tiempo_entrega_override', tiempo_entrega)
+                pedido_min = efectos_a.get('pedido_minimo', 0)
+                if cantidad < pedido_min:
+                    flash(f'⚠️ Con el proveedor alterno, el pedido mínimo es {pedido_min:.0f} unidades.', 'error')
+                    return redirect(url_for('estudiante.ver_requerimientos'))
+
         costo_total = cantidad * costo_unitario
-        
+
         # Validar capital
         empresa = current_user.empresa
         ordenes_pendientes = Compra.query.filter_by(
             empresa_id=empresa.id,
             estado='en_transito'
         ).all()
-        
+
         validacion = validar_capacidad_compra(
             empresa.capital_actual,
             costo_total,
             ordenes_pendientes
         )
-        
+
         if not validacion['puede_comprar']:
             flash(f"Capital insuficiente. {validacion['sugerencia']}", 'error')
             return redirect(url_for('estudiante.ver_requerimientos'))
-        
+
         # Crear orden de compra
-        semana_entrega = simulacion.semana_actual + producto.tiempo_entrega
-        
+        semana_entrega = simulacion.semana_actual + tiempo_entrega
+
         compra = Compra(
             empresa_id=current_user.empresa_id,
             producto_id=requerimiento.producto_id,
@@ -1285,29 +1420,50 @@ def crear_orden_manual():
             flash('Producto no encontrado', 'error')
             return redirect(url_for('estudiante.dashboard_compras'))
         
-        # Calcular costos
+        # Calcular costos (con posible ajuste por disrupción Opción A)
         costo_unitario = producto.costo_unitario
+        tiempo_entrega = producto.tiempo_entrega
+
+        dis_opcion_a = DisrupcionEmpresa.query.filter(
+            DisrupcionEmpresa.empresa_id == current_user.empresa_id,
+            DisrupcionEmpresa.simulacion_id == simulacion.id,
+            DisrupcionEmpresa.producto_afectado_id == producto_id,
+            DisrupcionEmpresa.activa == True,
+            DisrupcionEmpresa.opcion_elegida == 'A'
+        ).first()
+        if dis_opcion_a:
+            from utils.catalogo_disrupciones import get_disrupcion
+            cat = get_disrupcion(dis_opcion_a.disrupcion_key)
+            if cat:
+                efectos_a = cat['opciones']['A']['efectos']
+                costo_unitario *= efectos_a.get('costo_multiplicador', 1.20)
+                tiempo_entrega = efectos_a.get('tiempo_entrega_override', tiempo_entrega)
+                pedido_min = efectos_a.get('pedido_minimo', 0)
+                if cantidad < pedido_min:
+                    flash(f'⚠️ Con el proveedor alterno, el pedido mínimo es {pedido_min:.0f} unidades.', 'error')
+                    return redirect(url_for('estudiante.dashboard_compras'))
+
         costo_total = cantidad * costo_unitario
-        
+
         # Validar capital
         empresa = current_user.empresa
         ordenes_pendientes = Compra.query.filter_by(
             empresa_id=empresa.id,
             estado='en_transito'
         ).all()
-        
+
         validacion = validar_capacidad_compra(
             empresa.capital_actual,
             costo_total,
             ordenes_pendientes
         )
-        
+
         if not validacion['puede_comprar']:
             flash(f"Capital insuficiente. {validacion['sugerencia']}", 'error')
             return redirect(url_for('estudiante.dashboard_compras'))
-        
+
         # Crear orden
-        semana_entrega = simulacion.semana_actual + producto.tiempo_entrega
+        semana_entrega = simulacion.semana_actual + tiempo_entrega
         
         compra = Compra(
             empresa_id=current_user.empresa_id,

@@ -378,3 +378,47 @@ class DespachoRegional(db.Model):
     
     def __repr__(self):
         return f'<DespachoRegional {self.region} - {self.cantidad} unidades - {self.estado}>'
+
+
+class DisrupcionEmpresa(db.Model):
+    """
+    Instancia de una disrupción activa para una empresa específica.
+    Se crea automáticamente cuando la simulación alcanza la semana_trigger del catálogo.
+    """
+    __tablename__ = 'disrupciones_empresa'
+
+    id = db.Column(db.Integer, primary_key=True)
+    simulacion_id = db.Column(db.Integer, db.ForeignKey('simulacion.id'), nullable=False)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+
+    # Key del catálogo (ej: 'retraso_proveedor')
+    disrupcion_key = db.Column(db.String(50), nullable=False)
+
+    # Producto más demandado al momento de activación
+    producto_afectado_id = db.Column(db.Integer, db.ForeignKey('productos.id'), nullable=True)
+
+    semana_inicio = db.Column(db.Integer, nullable=False)
+    semana_fin = db.Column(db.Integer, nullable=False)
+
+    # Decisión del equipo: 'A', 'B' o 'C' — None = pendiente de respuesta
+    opcion_elegida = db.Column(db.String(1), nullable=True)
+    usuario_decision_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    fecha_decision = db.Column(db.DateTime, nullable=True)
+
+    # Control interno
+    activa = db.Column(db.Boolean, default=True)
+    # Para opción C: marca si ya se aplicó el delay a compras pendientes
+    efecto_inicial_aplicado = db.Column(db.Boolean, default=False)
+    # Para notificación de cierre: ¿ya la vio el equipo estudiante?
+    notificacion_fin_vista = db.Column(db.Boolean, default=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relaciones
+    empresa = db.relationship('Empresa', backref='disrupciones')
+    simulacion = db.relationship('Simulacion', backref='disrupciones')
+    producto_afectado = db.relationship('Producto', backref='disrupciones')
+    usuario_decision = db.relationship('Usuario', backref='decisiones_disrupcion')
+
+    def __repr__(self):
+        return f'<DisrupcionEmpresa {self.disrupcion_key} - Empresa {self.empresa_id} - Opción {self.opcion_elegida}>'

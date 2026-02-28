@@ -63,7 +63,27 @@
                         </small>
                     </div>
                 </div>
+            </div><!-- /header row -->
+
+            {% if disrupciones_activas %}
+            {% for dis_act in disrupciones_activas %}
+            {% set def_act = get_disrupcion(dis_act.disrupcion_key) %}
+            {% if def_act %}
+            <div class="alert alert-{{ def_act.color }} d-flex align-items-center gap-2 mb-3 py-2" role="alert">
+              <i class="{{ def_act.icono }} fs-5"></i>
+              <div>
+                <strong>Disrupción activa hasta semana {{ dis_act.semana_fin }}:</strong>
+                {{ def_act.nombre }} &mdash;
+                Opción <strong>{{ dis_act.opcion_elegida }}</strong>:
+                {{ def_act.opciones[dis_act.opcion_elegida].titulo }}
+                {% if dis_act.producto_afectado %}
+                (Producto afectado: <em>{{ dis_act.producto_afectado.nombre }}</em>)
+                {% endif %}
+              </div>
             </div>
+            {% endif %}
+            {% endfor %}
+            {% endif %}
 
             <!-- Indicadores Financieros -->
             <div class="card mb-4 border-primary">
@@ -351,4 +371,6 @@
         </div>
     </div>
 </div>
+
+{% include 'components/modal_disrupcion.html' %}
 {% endblock %}
