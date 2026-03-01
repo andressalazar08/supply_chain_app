@@ -177,7 +177,7 @@ CATALOGO_DISRUPCIONES = [
         'key': 'falla_flota',
         'nombre': 'Reducción de Capacidad Logística por Fallas en Flota',
         'semana_trigger': 8,
-        'duracion_semanas': 2,
+        'duracion_semanas': 3,
         'icono': 'fas fa-truck',
         'color': 'danger',
         'contexto_html': """

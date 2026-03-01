@@ -140,17 +140,21 @@
 
 <!-- ===== TOAST NOTIFICACIÓN FIN DE DISRUPCIÓN ===== -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:1100;">
-  <div class="toast show align-items-center text-white bg-success border-0 shadow"
-       id="toastFinDisrupcion{{ dis_fin.id }}" role="alert" aria-live="assertive">
-    <div class="d-flex">
-      <div class="toast-body">
-        <i class="fas fa-check-circle me-2"></i>
-        <strong>Disrupción finalizada:</strong> {{ def_fin.nombre }}<br>
-        <small>{{ def_fin.mensaje_fin }}</small>
-      </div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto"
-              data-bs-dismiss="toast" aria-label="Cerrar"
-              onclick="marcarFinVisto({{ dis_fin.id }})"></button>
+  <div class="toast show border-0 shadow"
+       id="toastFinDisrupcion{{ dis_fin.id }}" role="alert" aria-live="assertive"
+       style="min-width:360px; max-width:480px; background:#1a7a3f; color:#fff;">
+    <div class="toast-header" style="background:#155f30; color:#fff; border-bottom:1px solid rgba(255,255,255,.2);">
+      <i class="fas fa-check-circle me-2"></i>
+      <strong class="me-auto">Disrupción finalizada</strong>
+      <small class="ms-2 opacity-75" id="toastTimer{{ dis_fin.id }}">15s</small>
+    </div>
+    <div class="toast-body py-3 px-3">
+      <p class="mb-1 fw-semibold">{{ def_fin.nombre }}</p>
+      <p class="mb-3 small opacity-90">{{ def_fin.mensaje_fin }}</p>
+      <button type="button" class="btn btn-light btn-sm fw-semibold w-100"
+              onclick="cerrarToastFin({{ dis_fin.id }})">
+        <i class="fas fa-times me-1"></i>Cerrar notificación
+      </button>
     </div>
   </div>
 </div>
@@ -168,18 +172,32 @@ function marcarFinVisto(disId) {
     headers: {'X-Requested-With': 'XMLHttpRequest'}
   });
 }
-// Auto-dismiss after 10s y marcar como visto
+
+function cerrarToastFin(disId) {
+  var t = document.getElementById('toastFinDisrupcion' + disId);
+  if (t) {
+    t.style.transition = 'opacity .4s';
+    t.style.opacity = '0';
+    setTimeout(function () { t.closest('.toast-container').remove(); }, 400);
+  }
+  marcarFinVisto(disId);
+}
+
+// Auto-dismiss after 15s con cuenta regresiva visible
 document.addEventListener('DOMContentLoaded', function () {
   {% for dis_fin in disrupciones_finalizadas %}
   (function () {
-    var t = document.getElementById('toastFinDisrupcion{{ dis_fin.id }}');
-    if (t) {
-      setTimeout(function () {
-        var toast = bootstrap.Toast.getOrCreateInstance(t);
-        toast.hide();
-        marcarFinVisto({{ dis_fin.id }});
-      }, 10000);
-    }
+    var disId = {{ dis_fin.id }};
+    var seconds = 15;
+    var timerEl = document.getElementById('toastTimer' + disId);
+    var interval = setInterval(function () {
+      seconds--;
+      if (timerEl) timerEl.textContent = seconds + 's';
+      if (seconds <= 0) {
+        clearInterval(interval);
+        cerrarToastFin(disId);
+      }
+    }, 1000);
   })();
   {% endfor %}
 });
