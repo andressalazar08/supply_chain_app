@@ -173,6 +173,85 @@ CATALOGO_DISRUPCIONES = [
             },
         },
     },
+    {
+        'key': 'falla_flota',
+        'nombre': 'Reducción de Capacidad Logística por Fallas en Flota',
+        'semana_trigger': 8,
+        'duracion_semanas': 2,
+        'icono': 'fas fa-truck',
+        'color': 'danger',
+        'contexto_html': """
+            <p>El área de <strong>Logística</strong> informa que, tras una revisión técnica inesperada,
+            se detectó que varios vehículos de la flota propia <strong>no cumplían con los
+            mantenimientos preventivos</strong> programados.</p>
+            <div class="alert alert-danger py-2 mt-2 mb-3">
+                <strong><i class="fas fa-exclamation-triangle me-1"></i>Situación actual:</strong>
+                <ul class="mb-0 mt-1">
+                    <li>El <strong>40% de los vehículos</strong> quedan fuera de operación inmediata</li>
+                    <li>Tiempo estimado de reparación: <strong>2 semanas</strong></li>
+                    <li>Contratar transporte tercerizado implica un <strong>costo 30% mayor</strong> por envío</li>
+                </ul>
+            </div>
+            <p>Si no se toman decisiones oportunas, podrían presentarse:</p>
+            <ul>
+                <li>Retrasos en las entregas a regiones</li>
+                <li>Acumulación de inventario en bodega</li>
+                <li>Afectación en el nivel de servicio</li>
+            </ul>
+            <p class="text-muted small mt-2">Todo el equipo debe decidir cómo responder ante esta situación.</p>
+        """,
+        'mensaje_fin': (
+            "✅ La flota propia ha sido reparada y vuelve a operación completa. "
+            "Los costos de transporte retornan a sus valores normales."
+        ),
+        'opciones': {
+            'A': {
+                'titulo': 'Contratar transporte tercerizado (100% del déficit)',
+                'descripcion': (
+                    'Activar operador externo inmediatamente para cubrir el 100% de la capacidad. '
+                    'Mantener todas las promesas de entrega. '
+                    'Incremento del 30% en costo logístico por envío durante 2 semanas.'
+                ),
+                'icono': 'fas fa-shipping-fast',
+                'color': 'success',
+                'efectos': {
+                    'tipo': 'costo_logistico',
+                    'costo_multiplicador': 1.30,
+                    'delay_semanas': 0,
+                },
+            },
+            'B': {
+                'titulo': 'Combinar flota propia con transporte externo parcial',
+                'descripcion': (
+                    'Usar flota disponible para clientes prioritarios y tercerizar el resto. '
+                    'Incremento del 15% en costos logísticos. '
+                    'Capacidad de despacho reducida moderadamente.'
+                ),
+                'icono': 'fas fa-random',
+                'color': 'warning',
+                'efectos': {
+                    'tipo': 'costo_logistico',
+                    'costo_multiplicador': 1.15,
+                    'delay_semanas': 0,
+                },
+            },
+            'C': {
+                'titulo': 'Operar solo con flota disponible (sin contratar externo)',
+                'descripcion': (
+                    'Mantener operación únicamente con el 60% de flota disponible. '
+                    'Sin costos adicionales, pero todos los despachos se retrasan 1 semana '
+                    'mientras se repara la flota.'
+                ),
+                'icono': 'fas fa-pause-circle',
+                'color': 'danger',
+                'efectos': {
+                    'tipo': 'costo_logistico',
+                    'costo_multiplicador': 1.0,
+                    'delay_semanas': 1,
+                },
+            },
+        },
+    },
     # Aquí se agregarán futuras disrupciones
 ]
 

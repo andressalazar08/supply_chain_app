@@ -283,9 +283,41 @@ def responder_disrupcion():
         producto_afectado.precio_actual = nuevo_precio
         dis.datos_extra = {'precio_original': precio_original}
         dis.efecto_inicial_aplicado = True
-        msg_extra = (f' El precio de {producto_afectado.nombre} se ajust\u00f3 a '
+        msg_extra = (f' El precio de {producto_afectado.nombre} se ajustó a '
                      f'${nuevo_precio:,.0f} (era ${precio_original:,.0f}). '
-                     'Volver\u00e1 al precio original al finalizar la disrupci\u00f3n.')
+                     'Volverá al precio original al finalizar la disrupción.')
+
+    # Efecto inmediato disrupcion 3 (falla_flota): retroactivo en despachos en tránsito
+    elif dis.disrupcion_key == 'falla_flota' and not dis.efecto_inicial_aplicado:
+        efectos = definicion['opciones'][opcion]['efectos']
+        mult_costo = efectos.get('costo_multiplicador', 1.0)
+        delay_d = efectos.get('delay_semanas', 0)
+
+        despachos_activos = DespachoRegional.query.filter_by(
+            empresa_id=empresa.id,
+            estado='en_transito'
+        ).all()
+
+        costos_originales = {}
+        for d in despachos_activos:
+            base = d.costo_transporte or 0
+            costos_originales[d.id] = base
+            if mult_costo != 1.0:
+                d.costo_transporte = round(base * mult_costo)
+            if delay_d:
+                d.semana_entrega_estimado += delay_d
+
+        dis.datos_extra = {'costos_originales': costos_originales}
+        dis.efecto_inicial_aplicado = True
+
+        if delay_d:
+            msg_extra = (f' {len(despachos_activos)} despachos en tránsito retrasados '
+                         f'+{delay_d} semana(s). Sin costo adicional.')
+        else:
+            pct = round((mult_costo - 1) * 100)
+            msg_extra = (f' El costo de transporte de los {len(despachos_activos)} despachos '
+                         f'en tránsito aumentó un {pct}%. Los nuevos despachos también '
+                         'tendrán el costo adicional durante 2 semanas.')
 
     else:
         msg_extra = ''
@@ -1925,7 +1957,17 @@ def crear_despacho_regional():
         # Calcular tiempo de entrega
         tiempo_entrega = calcular_tiempo_entrega_region(region)
         semana_entrega = simulacion.semana_actual + tiempo_entrega
-        
+
+        # Efecto disrupcion 3 (falla_flota): ajuste de costo y/o delay
+        from utils.procesamiento_dias import obtener_efecto_logistico_empresa
+        efecto_flota = obtener_efecto_logistico_empresa(simulacion.id, current_user.empresa_id)
+        costo_base_transporte = round(cantidad * 500)
+        if efecto_flota:
+            mult = efecto_flota.get('costo_multiplicador', 1.0)
+            delay_f = efecto_flota.get('delay_semanas', 0)
+            costo_base_transporte = round(costo_base_transporte * mult)
+            semana_entrega += delay_f
+
         # Crear despacho
         despacho = DespachoRegional(
             empresa_id=current_user.empresa_id,
@@ -1935,6 +1977,7 @@ def crear_despacho_regional():
             semana_despacho=simulacion.semana_actual,
             semana_entrega_estimado=semana_entrega,
             cantidad=cantidad,
+            costo_transporte=costo_base_transporte,
             estado='en_transito'
         )
         
@@ -2581,7 +2624,17 @@ def api_logistica_despachar():
     }
     dias_entrega = tiempos_entrega.get(region, 4)
     dia_llegada = simulacion.semana_actual + dias_entrega
-    
+
+    # Efecto disrupcion 3 (falla_flota)
+    from utils.procesamiento_dias import obtener_efecto_logistico_empresa
+    efecto_flota = obtener_efecto_logistico_empresa(simulacion.id, empresa.id)
+    costo_base_transporte = round(cantidad * 500)
+    if efecto_flota:
+        mult = efecto_flota.get('costo_multiplicador', 1.0)
+        delay_f = efecto_flota.get('delay_semanas', 0)
+        costo_base_transporte = round(costo_base_transporte * mult)
+        dia_llegada += delay_f
+
     # Crear despacho
     despacho = DespachoRegional(
         empresa_id=empresa.id,
@@ -2590,6 +2643,7 @@ def api_logistica_despachar():
         cantidad=cantidad,
         semana_despacho=simulacion.semana_actual,
         semana_entrega_estimado=dia_llegada,
+        costo_transporte=costo_base_transporte,
         estado='en_transito',
         usuario_logistica_id=current_user.id
     )
@@ -2704,18 +2758,29 @@ def api_logistica_despachar_multiple():
         }
         
         despachos_creados = []
-        
+
+        # Efecto disrupcion 3 (falla_flota) — se aplica a todos los despachos del lote
+        from utils.procesamiento_dias import obtener_efecto_logistico_empresa
+        efecto_flota = obtener_efecto_logistico_empresa(simulacion.id, empresa.id)
+
         # Crear cada despacho
         for despacho_info in despachos_data:
             region = despacho_info.get('region')
             cantidad = despacho_info.get('cantidad', 0)
-            
+
             if cantidad <= 0:
                 continue
-            
+
             dias_entrega = tiempos_entrega.get(region, 4)
             dia_llegada = simulacion.semana_actual + dias_entrega
-            
+            costo_t = round(cantidad * 500)
+
+            if efecto_flota:
+                mult = efecto_flota.get('costo_multiplicador', 1.0)
+                delay_f = efecto_flota.get('delay_semanas', 0)
+                costo_t = round(costo_t * mult)
+                dia_llegada += delay_f
+
             # Crear despacho
             despacho = DespachoRegional(
                 empresa_id=empresa.id,
@@ -2724,10 +2789,11 @@ def api_logistica_despachar_multiple():
                 cantidad=cantidad,
                 semana_despacho=simulacion.semana_actual,
                 semana_entrega_estimado=dia_llegada,
+                costo_transporte=costo_t,
                 estado='en_transito',
                 usuario_logistica_id=current_user.id
             )
-            
+
             db.session.add(despacho)
             despachos_creados.append({
                 'region': region,

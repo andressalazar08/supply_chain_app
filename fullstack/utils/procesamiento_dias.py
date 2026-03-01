@@ -281,9 +281,31 @@ def obtener_efectos_por_empresa(simulacion_id, empresa_id):
     return efectos
 
 
+def obtener_efecto_logistico_empresa(simulacion_id, empresa_id):
+    """
+    Retorna el efecto de falla_flota activo para la empresa, o None.
+    A diferencia de las otras disrupciones, este aplica a TODOS los despachos
+    (no es específico a un producto).
+    """
+    from utils.catalogo_disrupciones import get_disrupcion
+    dis = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.simulacion_id == simulacion_id,
+        DisrupcionEmpresa.empresa_id == empresa_id,
+        DisrupcionEmpresa.disrupcion_key == 'falla_flota',
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.opcion_elegida != None
+    ).first()
+    if not dis:
+        return None
+    cat = get_disrupcion('falla_flota')
+    if not cat:
+        return None
+    opcion = cat['opciones'].get(dis.opcion_elegida)
+    return opcion['efectos'] if opcion else None
+
+
 # ---------------------------------------------------------------------------
 
-def procesar_ventas_semana(simulacion, empresa):
     """
     Procesa las ventas de la semana para una empresa usando motor de competencia
     La demanda se distribuye entre empresas según precios y disponibilidad
@@ -631,7 +653,14 @@ def calcular_metricas_semana(simulacion, empresa, costos_operativos=None):
     ).all()
     
     costos_compras = sum(c.costo_total for c in compras_dia)
-    
+
+    # Costos de transporte de despachos realizados esta semana
+    despachos_dia = DespachoRegional.query.filter_by(
+        empresa_id=empresa.id,
+        semana_despacho=semana_actual
+    ).all()
+    costos_transporte = sum(d.costo_transporte or 0 for d in despachos_dia)
+
     # Calcular nivel de servicio ACUMULATIVO (todo el historial de la simulación)
     ventas_historicas = Venta.query.filter_by(
         empresa_id=empresa.id
@@ -659,17 +688,17 @@ def calcular_metricas_semana(simulacion, empresa, costos_operativos=None):
     if costos_operativos:
         costos_operativos_total = costos_operativos.get('costo_total', 0)
     
-    # Actualizar capital de la empresa (ingresos - compras)
+    # Actualizar capital de la empresa (ingresos - compras - transporte)
     # Los costos operativos ya fueron descontados en calcular_costos_operativos()
-    empresa.capital_actual += (ingresos - costos_compras)
-    
+    empresa.capital_actual += (ingresos - costos_compras - costos_transporte)
+
     # Crear registro de métrica con todos los costos
     metrica = Metrica(
         empresa_id=empresa.id,
         semana_simulacion=semana_actual,
         ingresos=ingresos,
-        costos=costos_ventas + costos_compras + costos_operativos_total,
-        utilidad=ingresos - costos_ventas - costos_operativos_total,
+        costos=costos_ventas + costos_compras + costos_operativos_total + costos_transporte,
+        utilidad=ingresos - costos_ventas - costos_operativos_total - costos_transporte,
         nivel_servicio=nivel_servicio,
         rotacion_inventario=rotacion_inventario
     )
