@@ -63,7 +63,27 @@
                         </small>
                     </div>
                 </div>
+            </div><!-- /header row -->
+
+            {% if disrupciones_activas %}
+            {% for dis_act in disrupciones_activas %}
+            {% set def_act = get_disrupcion(dis_act.disrupcion_key) %}
+            {% if def_act %}
+            <div class="alert alert-{{ def_act.color }} d-flex align-items-center gap-2 mb-3 py-2" role="alert">
+              <i class="{{ def_act.icono }} fs-5"></i>
+              <div>
+                <strong>Disrupción activa hasta semana {{ dis_act.semana_fin }}:</strong>
+                {{ def_act.nombre }} &mdash;
+                Opción <strong>{{ dis_act.opcion_elegida }}</strong>:
+                {{ def_act.opciones[dis_act.opcion_elegida].titulo }}
+                {% if dis_act.producto_afectado %}
+                (Producto afectado: <em>{{ dis_act.producto_afectado.nombre }}</em>)
+                {% endif %}
+              </div>
             </div>
+            {% endif %}
+            {% endfor %}
+            {% endif %}
 
             <!-- Indicadores Financieros -->
             <div class="card mb-4 border-primary">
@@ -95,7 +115,7 @@
                                 <h4 class="mb-0 text-info">
                                     ${{ "{:,.2f}".format(metrica_hoy.ingresos if metrica_hoy else 0) }}
                                 </h4>
-                                <small class="text-muted">Día {{ simulacion.dia_actual }}</small>
+                                <small class="text-muted">Día {{ simulacion.dia_actual }} (Sem. {{ simulacion.semana_actual }})</small>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -333,22 +353,12 @@
                             <div class="alert alert-info alert-dismissible fade show" role="alert">
                                 <i class="fas fa-truck me-2"></i>
                                 <strong>Compra en Camino:</strong> {{ compra.producto.nombre }}
-                                <br><small>{{ "{:.0f}".format(compra.cantidad) }} unidades • Llega día {{ compra.dia_entrega }}</small>
+                                <br><small>{{ "{:.0f}".format(compra.cantidad) }} unidades • Llega semana {{ compra.semana_entrega }}</small>
                                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                             </div>
                             {% endfor %}
 
-                            <!-- Disrupciones Activas -->
-                            {% for disrupcion in disrupciones_activas %}
-                            <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                                <i class="{{ disrupcion.icono }} me-2"></i>
-                                <strong>{{ disrupcion.nombre }}</strong>
-                                <br><small>{{ disrupcion.descripcion }}</small>
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            </div>
-                            {% endfor %}
-
-                            {% if not (inventarios|selectattr('cantidad_actual', 'le', inventarios[0].punto_reorden if inventarios else 0)|list) and not ordenes_proximas and not disrupciones_activas %}
+                            {% if not (inventarios|selectattr('cantidad_actual', 'le', inventarios[0].punto_reorden if inventarios else 0)|list) and not ordenes_proximas %}
                             <p class="text-muted text-center py-4">
                                 <i class="fas fa-check-circle fa-3x mb-3 d-block text-success"></i>
                                 Todo en orden. No hay alertas activas.
@@ -361,4 +371,6 @@
         </div>
     </div>
 </div>
+
+{% include 'components/modal_disrupcion.html' %}
 {% endblock %}

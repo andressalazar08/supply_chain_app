@@ -1,4 +1,4 @@
-"""
+﻿"""
 Modelos de base de datos para la simulación de cadena de abastecimiento
 """
 
@@ -80,11 +80,12 @@ class Simulacion(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), default='Simulación')  # Nombre descriptivo
-    dia_actual = db.Column(db.Integer, default=1)
+    semana_actual = db.Column(db.Integer, default=1)  # semana derivada: (dia_actual-1)//7 + 1
+    dia_actual = db.Column(db.Integer, default=1)     # día real de simulación
     estado = db.Column(db.String(20), default='pausado')  # pausado, en_curso, finalizado
     fecha_inicio = db.Column(db.DateTime)
     fecha_fin = db.Column(db.DateTime)
-    duracion_dias = db.Column(db.Integer, default=30)
+    duracion_semanas = db.Column(db.Integer, default=12)
     capital_inicial_empresas = db.Column(db.Float, default=50000000.0)  # Capital con el que empiezan todas las empresas
     activa = db.Column(db.Boolean, default=True)  # Solo una simulación activa a la vez
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -94,7 +95,7 @@ class Simulacion(db.Model):
     empresas = db.relationship('Empresa', backref='simulacion', lazy=True)
     
     def __repr__(self):
-        return f'<Simulacion {self.nombre} - Día {self.dia_actual} - {self.estado}>'
+        return f'<Simulacion {self.nombre} - Semana {self.semana_actual} - {self.estado}>'
 
 
 class Producto(db.Model):
@@ -112,7 +113,7 @@ class Producto(db.Model):
     demanda_promedio = db.Column(db.Float, default=100)
     desviacion_demanda = db.Column(db.Float, default=20)
     elasticidad_precio = db.Column(db.Float, default=1.5)  # Factor de sensibilidad al precio
-    tiempo_entrega = db.Column(db.Integer, default=3)  # días
+    tiempo_entrega = db.Column(db.Integer, default=1)  # días
     stock_maximo = db.Column(db.Float, default=500)  # Límite de inventario (sobrestock genera costos adicionales)
     activo = db.Column(db.Boolean, default=True)
     
@@ -142,18 +143,19 @@ class Inventario(db.Model):
 
 
 class Venta(db.Model):
-    """Modelo de ventas - Registro de ventas por día"""
+    """Modelo de ventas - Registro de ventas por semana"""
     __tablename__ = 'ventas'
     
     id = db.Column(db.Integer, primary_key=True)
     empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
     producto_id = db.Column(db.Integer, db.ForeignKey('productos.id'), nullable=False)
-    dia_simulacion = db.Column(db.Integer, nullable=False)
+    semana_simulacion = db.Column(db.Integer, nullable=False)
     region = db.Column(db.String(50))  # Caribe, Pacifica, Orinoquia, Amazonia, Andina
     canal = db.Column(db.String(50), default='retail')  # retail, mayorista, distribuidor
     cantidad_solicitada = db.Column(db.Float, nullable=False)
     cantidad_vendida = db.Column(db.Float, nullable=False)
     cantidad_perdida = db.Column(db.Float, default=0)  # ventas perdidas por falta de stock
+    demanda_mercado_total = db.Column(db.Float, default=0)  # Demanda total del mercado antes de distribución
     precio_unitario = db.Column(db.Float, nullable=False)
     ingreso_total = db.Column(db.Float, nullable=False)
     costo_unitario = db.Column(db.Float, default=0)  # Para calcular margen
@@ -163,7 +165,7 @@ class Venta(db.Model):
     producto = db.relationship('Producto', backref='ventas')
     
     def __repr__(self):
-        return f'<Venta Día {self.dia_simulacion} - Empresa {self.empresa_id} - {self.region}>'
+        return f'<Venta Semana {self.semana_simulacion} - Empresa {self.empresa_id} - {self.region}>'
 
 
 class Compra(db.Model):
@@ -173,8 +175,8 @@ class Compra(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
     producto_id = db.Column(db.Integer, db.ForeignKey('productos.id'), nullable=False)
-    dia_orden = db.Column(db.Integer, nullable=False)
-    dia_entrega = db.Column(db.Integer, nullable=False)
+    semana_orden = db.Column(db.Integer, nullable=False)
+    semana_entrega = db.Column(db.Integer, nullable=False)
     cantidad = db.Column(db.Float, nullable=False)
     costo_unitario = db.Column(db.Float, nullable=False)
     costo_total = db.Column(db.Float, nullable=False)
@@ -184,7 +186,7 @@ class Compra(db.Model):
     producto = db.relationship('Producto', backref='compras')
     
     def __repr__(self):
-        return f'<Compra Día {self.dia_orden} - Empresa {self.empresa_id}>'
+        return f'<Compra Semana {self.semana_orden} - Empresa {self.empresa_id}>'
 
 
 class Decision(db.Model):
@@ -194,7 +196,7 @@ class Decision(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
-    dia_simulacion = db.Column(db.Integer, nullable=False)
+    semana_simulacion = db.Column(db.Integer, nullable=False)
     tipo_decision = db.Column(db.String(50), nullable=False)  # compra, venta, precio, distribucion
     datos_decision = db.Column(db.JSON)  # Almacena detalles específicos de cada decisión
     resultado = db.Column(db.JSON)  # Resultado de la decisión
@@ -206,31 +208,13 @@ class Decision(db.Model):
         return f'<Decision {self.tipo_decision} - Usuario {self.usuario_id}>'
 
 
-class Escenario(db.Model):
-    """Modelo de escenarios - Disrupciones y eventos especiales"""
-    __tablename__ = 'escenarios'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), nullable=False)
-    descripcion = db.Column(db.Text)
-    tipo = db.Column(db.String(50))  # disrupcion, oportunidad, crisis
-    dia_inicio = db.Column(db.Integer)
-    dia_fin = db.Column(db.Integer)
-    activo = db.Column(db.Boolean, default=False)
-    parametros = db.Column(db.JSON)  # Efectos del escenario
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    def __repr__(self):
-        return f'<Escenario {self.nombre}>'
-
-
 class Metrica(db.Model):
     """Modelo de métricas - KPIs y desempeño por empresa"""
     __tablename__ = 'metricas'
     
     id = db.Column(db.Integer, primary_key=True)
     empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
-    dia_simulacion = db.Column(db.Integer, nullable=False)
+    semana_simulacion = db.Column(db.Integer, nullable=False)
     
     # Métricas financieras
     ingresos = db.Column(db.Float, default=0)
@@ -240,6 +224,7 @@ class Metrica(db.Model):
     # Métricas operativas
     nivel_servicio = db.Column(db.Float, default=0)  # % de ventas cumplidas
     rotacion_inventario = db.Column(db.Float, default=0)
+    market_share = db.Column(db.Float, default=0)  # % cuota de mercado sobre ingresos totales
     dias_inventario = db.Column(db.Float, default=0)
     
     # Métricas de eficiencia
@@ -252,7 +237,7 @@ class Metrica(db.Model):
     empresa = db.relationship('Empresa', backref='metricas')
     
     def __repr__(self):
-        return f'<Metrica Día {self.dia_simulacion} - Empresa {self.empresa_id}>'
+        return f'<Metrica Semana {self.semana_simulacion} - Empresa {self.empresa_id}>'
 
 
 class Pronostico(db.Model):
@@ -263,8 +248,8 @@ class Pronostico(db.Model):
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
     producto_id = db.Column(db.Integer, db.ForeignKey('productos.id'), nullable=False)
-    dia_generacion = db.Column(db.Integer, nullable=False)
-    dia_pronostico = db.Column(db.Integer, nullable=False)  # Día para el que se pronostica
+    semana_generacion = db.Column(db.Integer, nullable=False)
+    semana_pronostico = db.Column(db.Integer, nullable=False)  # Semana para la que se pronostica
     
     # Métodos de pronóstico
     metodo_usado = db.Column(db.String(50), nullable=False)  # promedio_movil, exp_simple, holt
@@ -286,7 +271,7 @@ class Pronostico(db.Model):
     producto = db.relationship('Producto', backref='pronosticos')
     
     def __repr__(self):
-        return f'<Pronostico {self.metodo_usado} - Producto {self.producto_id} - Día {self.dia_pronostico}>'
+        return f'<Pronostico {self.metodo_usado} - Producto {self.producto_id} - Semana {self.semana_pronostico}>'
 
 
 class RequerimientoCompra(db.Model):
@@ -299,14 +284,14 @@ class RequerimientoCompra(db.Model):
     usuario_planeacion_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     pronostico_id = db.Column(db.Integer, db.ForeignKey('pronosticos.id'))
     
-    dia_generacion = db.Column(db.Integer, nullable=False)
-    dia_necesidad = db.Column(db.Integer, nullable=False)  # Día en que se necesita el producto
+    semana_generacion = db.Column(db.Integer, nullable=False)
+    semana_necesidad = db.Column(db.Integer, nullable=False)  # Semana en que se necesita el producto
     
     # Cálculos
     demanda_pronosticada = db.Column(db.Float, nullable=False)
     stock_actual = db.Column(db.Float, nullable=False)
     stock_seguridad = db.Column(db.Float, nullable=False)
-    lead_time = db.Column(db.Integer, nullable=False)  # Días de espera
+    lead_time = db.Column(db.Integer, nullable=False)  # Semanas de espera
     cantidad_sugerida = db.Column(db.Float, nullable=False)  # Cuánto pedir
     
     # Estado
@@ -340,7 +325,7 @@ class MovimientoInventario(db.Model):
     producto_id = db.Column(db.Integer, db.ForeignKey('productos.id'), nullable=False)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)  # NULL para procesos automáticos
     
-    dia_simulacion = db.Column(db.Integer, nullable=False)
+    semana_simulacion = db.Column(db.Integer, nullable=False)
     tipo_movimiento = db.Column(db.String(30), nullable=False)  # entrada_compra, salida_venta, salida_despacho, ajuste, transferencia
     cantidad = db.Column(db.Float, nullable=False)
     saldo_anterior = db.Column(db.Float, nullable=False)
@@ -375,9 +360,9 @@ class DespachoRegional(db.Model):
     usuario_logistica_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     
     region = db.Column(db.String(50), nullable=False)  # Andina, Caribe, Pacífica, Orinoquía, Amazonía
-    dia_despacho = db.Column(db.Integer, nullable=False)
-    dia_entrega_estimado = db.Column(db.Integer, nullable=False)
-    dia_entrega_real = db.Column(db.Integer)
+    semana_despacho = db.Column(db.Integer, nullable=False)
+    semana_entrega_estimado = db.Column(db.Integer, nullable=False)
+    semana_entrega_real = db.Column(db.Integer)
     
     cantidad = db.Column(db.Float, nullable=False)
     costo_transporte = db.Column(db.Float, default=0)
@@ -398,86 +383,47 @@ class DespachoRegional(db.Model):
         return f'<DespachoRegional {self.region} - {self.cantidad} unidades - {self.estado}>'
 
 
-class DisrupcionActiva(db.Model):
-    """Modelo de disrupciones activas - Eventos activados por el profesor"""
-    __tablename__ = 'disrupciones_activas'
-    
+class DisrupcionEmpresa(db.Model):
+    """
+    Instancia de una disrupción activa para una empresa específica.
+    Se crea automáticamente cuando la simulación alcanza la semana_trigger del catálogo.
+    """
+    __tablename__ = 'disrupciones_empresa'
+
     id = db.Column(db.Integer, primary_key=True)
     simulacion_id = db.Column(db.Integer, db.ForeignKey('simulacion.id'), nullable=False)
-    profesor_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
-    
-    # Identificación de la disrupción
-    nombre = db.Column(db.String(100), nullable=False)
-    tipo_disrupcion = db.Column(db.String(50), nullable=False)  
-    # Tipos: retraso_proveedor, aumento_demanda, reduccion_capacidad, aumento_costos, region_bloqueada
-    
-    descripcion = db.Column(db.Text, nullable=False)
-    icono = db.Column(db.String(50))  # Icono de Font Awesome
-    
-    # Temporalidad
-    dia_inicio = db.Column(db.Integer, nullable=False)
-    dia_fin = db.Column(db.Integer, nullable=False)
-    activo = db.Column(db.Boolean, default=True)
-    
-    # Parámetros de impacto (JSON flexible para cada tipo)
-    parametros = db.Column(db.JSON, nullable=False)
-    # Ejemplos:
-    # retraso_proveedor: {dias_adicionales: 5, productos_afectados: [1,2], razon: "Derrumbe vía Bogotá-Medellín"}
-    # aumento_demanda: {multiplicador: 2.5, regiones: ["Andina", "Caribe"], productos: [3], razon: "Día de la Madre"}
-    # reduccion_capacidad: {reduccion_porcentaje: 30, regiones: ["Pacífica"], razon: "Paro de transportadores"}
-    # aumento_costos: {incremento_porcentaje: 25, productos: [1,2,3], razon: "Devaluación del dólar"}
-    # region_bloqueada: {regiones: ["Orinoquía"], dias_bloqueo: 3, razon: "Bloqueos viales"}
-    
-    # Severidad y visibilidad
-    severidad = db.Column(db.String(20), default='media')  # baja, media, alta, critica
-    visible_estudiantes = db.Column(db.Boolean, default=True)  # Si los estudiantes ven la alerta
-    
-    # Empresas afectadas (null = todas)
-    empresas_afectadas = db.Column(db.JSON)  # [1, 2] o null para todas
-    
-    # Notificaciones
-    notificacion_enviada = db.Column(db.Boolean, default=False)
-    
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+
+    # Key del catálogo (ej: 'retraso_proveedor')
+    disrupcion_key = db.Column(db.String(50), nullable=False)
+
+    # Producto más demandado al momento de activación
+    producto_afectado_id = db.Column(db.Integer, db.ForeignKey('productos.id'), nullable=True)
+
+    semana_inicio = db.Column(db.Integer, nullable=False)
+    semana_fin = db.Column(db.Integer, nullable=False)
+
+    # Decisión del equipo: 'A', 'B' o 'C' — None = pendiente de respuesta
+    opcion_elegida = db.Column(db.String(1), nullable=True)
+    usuario_decision_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    fecha_decision = db.Column(db.DateTime, nullable=True)
+
+    # Control interno
+    activa = db.Column(db.Boolean, default=True)
+    # Para opción C: marca si ya se aplicó el delay a compras pendientes
+    efecto_inicial_aplicado = db.Column(db.Boolean, default=False)
+    # Para notificación de cierre: ¿ya la vio el equipo estudiante?
+    notificacion_fin_vista = db.Column(db.Boolean, default=False)
+    # Datos extra para reversiones (ej: precio original antes de Opción D)
+    datos_extra = db.Column(db.JSON, nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relaciones
+    empresa = db.relationship('Empresa', backref='disrupciones')
     simulacion = db.relationship('Simulacion', backref='disrupciones')
-    profesor = db.relationship('Usuario', backref='disrupciones_activadas')
-    
+    producto_afectado = db.relationship('Producto', backref='disrupciones')
+    usuario_decision = db.relationship('Usuario', backref='decisiones_disrupcion')
+
     def __repr__(self):
-        return f'<DisrupcionActiva {self.tipo_disrupcion} - {self.nombre}>'
-    
-    def esta_activa(self, dia_actual):
-        """Verifica si la disrupción está activa en el día actual"""
-        return self.activo and self.dia_inicio <= dia_actual <= self.dia_fin
-    
-    def aplicar_efecto(self, contexto):
-        """Aplica los efectos de la disrupción según su tipo"""
-        if not self.activo:
-            return None
-            
-        efectos = {}
-        
-        if self.tipo_disrupcion == 'retraso_proveedor':
-            efectos['lead_time_adicional'] = self.parametros.get('dias_adicionales', 0)
-            efectos['productos_afectados'] = self.parametros.get('productos_afectados', [])
-            
-        elif self.tipo_disrupcion == 'aumento_demanda':
-            efectos['multiplicador_demanda'] = self.parametros.get('multiplicador', 1.0)
-            efectos['regiones_afectadas'] = self.parametros.get('regiones', [])
-            efectos['productos_afectados'] = self.parametros.get('productos', [])
-            
-        elif self.tipo_disrupcion == 'reduccion_capacidad':
-            efectos['reduccion_porcentaje'] = self.parametros.get('reduccion_porcentaje', 0)
-            efectos['regiones_afectadas'] = self.parametros.get('regiones', [])
-            
-        elif self.tipo_disrupcion == 'aumento_costos':
-            efectos['incremento_porcentaje'] = self.parametros.get('incremento_porcentaje', 0)
-            efectos['productos_afectados'] = self.parametros.get('productos', [])
-            
-        elif self.tipo_disrupcion == 'region_bloqueada':
-            efectos['regiones_bloqueadas'] = self.parametros.get('regiones', [])
-            efectos['dias_bloqueo_adicionales'] = self.parametros.get('dias_bloqueo', 0)
-        
-        return efectos
+        return f'<DisrupcionEmpresa {self.disrupcion_key} - Empresa {self.empresa_id} - Opción {self.opcion_elegida}>'

@@ -146,7 +146,7 @@
                 <div>
                     <h1><i class="fas fa-inbox me-2"></i>Recepción de Compras</h1>
                     <p class="text-muted mb-0">
-                        <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }}
+                        <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }} (Sem. {{ simulacion.semana_actual }})
                     </p>
                 </div>
             </div>
@@ -190,7 +190,7 @@
             <div id="tab-transito" class="tab-content active">
                 {% if ordenes_transito %}
                     {% for orden in ordenes_transito %}
-                    {% set dias_faltantes = orden.dia_entrega - simulacion.dia_actual %}
+                    {% set dias_faltantes = orden.semana_entrega - simulacion.dia_actual %}
                     {% set lista_recibir = dias_faltantes <= 0 %}
                     
                     <div class="orden-card {% if lista_recibir %}lista-recibir{% else %}esperando{% endif %}">
@@ -224,13 +224,13 @@
                                     <div class="col-md-3">
                                         <div class="info-box">
                                             <small class="text-muted">Día Orden</small>
-                                            <div><strong>{{ orden.dia_orden }}</strong></div>
+                                            <div><strong>{{ orden.semana_orden }}</strong></div>
                                         </div>
                                     </div>
                                     <div class="col-md-3">
                                         <div class="info-box">
                                             <small class="text-muted">Día Entrega</small>
-                                            <div><strong>{{ orden.dia_entrega }}</strong></div>
+                                            <div><strong>{{ orden.semana_entrega }}</strong></div>
                                         </div>
                                     </div>
                                     <div class="col-md-3">
@@ -288,14 +288,14 @@
                                     </button>
                                     <div class="alert alert-success mb-0">
                                         <strong>Listo para recibir</strong><br>
-                                        <small>Esta orden llegó el día {{ orden.dia_entrega }}</small>
+                                        <small>Esta orden llegó el día {{ orden.semana_entrega }}</small>
                                     </div>
                                 </form>
                                 {% else %}
                                 <div class="alert alert-info">
                                     <i class="fas fa-info-circle me-2"></i>
                                     <strong>En tránsito</strong><br>
-                                    <small>Disponible para recepción el día {{ orden.dia_entrega }}</small>
+                                    <small>Disponible para recepción el día {{ orden.semana_entrega }}</small>
                                 </div>
                                 {% endif %}
                             </div>
@@ -336,8 +336,8 @@
                                     <td><strong>{{ "%.0f"|format(orden.cantidad) }}</strong> unidades</td>
                                     <td>${{ "{:,.0f}".format(orden.costo_unitario) }}</td>
                                     <td><strong>${{ "{:,.0f}".format(orden.costo_total) }}</strong></td>
-                                    <td>{{ orden.dia_orden }}</td>
-                                    <td>{{ orden.dia_entrega }}</td>
+                                    <td>{{ orden.semana_orden }}</td>
+                                    <td>{{ orden.semana_entrega }}</td>
                                     <td>
                                         <span class="badge bg-success">
                                             <i class="fas fa-check me-1"></i>Recibida

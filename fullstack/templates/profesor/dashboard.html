@@ -22,9 +22,7 @@
             <a href="{{ url_for('profesor.gestionar_estudiantes') }}">
                 <i class="fas fa-users me-2"></i>Estudiantes
             </a>
-            <a href="{{ url_for('profesor.gestion_escenarios') }}">
-                <i class="fas fa-bolt me-2"></i>Simulador de Escenarios
-            </a>
+
         </div>
 
         <!-- Main Content -->
@@ -47,6 +45,7 @@
                                 <p class="text-muted mb-1 small">Día Actual</p>
                                 <h2 class="mb-0 text-primary">
                                     <i class="fas fa-calendar-day me-2"></i>{{ simulacion.dia_actual }}
+                                    <small class="fs-6 text-muted">(Sem. {{ simulacion.semana_actual }})</small>
                                 </h2>
                             </div>
                         </div>
@@ -124,7 +123,7 @@
                                     <i class="fas fa-pause me-2"></i>Pausar
                                 </button>
                                 <button type="submit" name="accion" value="avanzar_dia" class="btn btn-primary btn-lg pulse-button">
-                                    <i class="fas fa-forward me-2"></i>Avanzar al Día {{ simulacion.dia_actual + 1 }}
+                                    <i class="fas fa-forward me-2"></i>Avanzar al Día {{ simulacion.dia_actual + 1 }} (Sem. {{ (simulacion.dia_actual // 7) + 1 }})
                                 </button>
                                 {% endif %}
                                 
@@ -153,6 +152,76 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Panel de Disrupciones -->
+            {% if disrupciones_sim %}
+            <div class="card mb-4 border-warning">
+                <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bolt me-2"></i>Estado de Disrupciones – Simulación Activa
+                    </h5>
+                    <span class="badge bg-dark">{{ disrupciones_sim|length }} registro(s)</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Empresa</th>
+                                    <th>Disrupción</th>
+                                    <th>Semanas</th>
+                                    <th>Estado</th>
+                                    <th>Decisión del equipo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for dis in disrupciones_sim %}
+                                {% set def_d = get_disrupcion(dis.disrupcion_key) %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ dis.empresa.nombre }}</strong>
+                                    </td>
+                                    <td>
+                                        {% if def_d %}
+                                        <i class="{{ def_d.icono }} text-{{ def_d.color }} me-1"></i>
+                                        {{ def_d.nombre }}
+                                        {% else %}
+                                        {{ dis.disrupcion_key }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {{ dis.semana_inicio }}–{{ dis.semana_fin }}
+                                    </td>
+                                    <td>
+                                        {% if dis.activa and dis.opcion_elegida is none %}
+                                            <span class="badge bg-danger">⚠️ Sin respuesta</span>
+                                        {% elif dis.activa %}
+                                            <span class="badge bg-success">✅ Activa</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Finalizada</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if dis.opcion_elegida %}
+                                            {% if def_d %}
+                                            <span class="badge bg-{{ def_d.opciones[dis.opcion_elegida].color }}">
+                                                {{ dis.opcion_elegida }} – {{ def_d.opciones[dis.opcion_elegida].titulo }}
+                                            </span>
+                                            {% else %}
+                                            Opción {{ dis.opcion_elegida }}
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="text-muted fst-italic small">Pendiente de decisión</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
 
             <!-- Modal de Historial -->
             <div class="modal fade" id="historialModal" tabindex="-1">
@@ -191,11 +260,11 @@
                                 <div class="alert alert-info">
                                     <h6><i class="fas fa-info-circle me-2"></i>¿Qué sucederá?</h6>
                                     <ul class="mb-0">
-                                        <li>Se creará una <strong>nueva simulación</strong> empezando en el Día 1</li>
+                                        <li>Se creará una <strong>nueva simulación</strong> empezando en la Semana 1</li>
                                         <li>La simulación anterior se mantendrá como <strong>histórico</strong></li>
-                                        <li>Todas las empresas empezarán con <strong>condiciones iguales</strong></li>
-                                        <li>Inventarios iniciales: 300 und (750ml) y 200 und (1L)</li>
-                                        <li>Los precios volverán a sus valores base</li>
+                                        <li>Las <strong>mismas empresas</strong> del profesor se reutilizarán con condiciones iguales</li>
+                                        <li>Capital, inventarios y precios serán reseteados según los valores que configures</li>
+                                        <li>Los estudiantes asignados permanecen en sus empresas</li>
                                     </ul>
                                 </div>
                                 
@@ -222,7 +291,26 @@
                                         Capital con el que empezará cada empresa (mínimo $1,000,000)
                                     </small>
                                 </div>
-                                
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">
+                                            <i class="fas fa-box me-2"></i>Inventario inicial — Productos 750ml
+                                        </label>
+                                        <input type="number" name="inv_750ml" class="form-control"
+                                               value="120" min="0" step="10" required>
+                                        <small class="text-muted">Unidades por empresa</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">
+                                            <i class="fas fa-box me-2"></i>Inventario inicial — Productos 1L
+                                        </label>
+                                        <input type="number" name="inv_1l" class="form-control"
+                                               value="80" min="0" step="10" required>
+                                        <small class="text-muted">Unidades por empresa</small>
+                                    </div>
+                                </div>
+
                                 <div class="alert alert-warning mb-0">
                                     <strong><i class="fas fa-exclamation-triangle me-2"></i>Confirmación:</strong>
                                     <p class="mb-0 mt-2">Esta acción creará una nueva simulación. Los estudiantes verán la nueva simulación activa.</p>
@@ -245,7 +333,7 @@
             <div class="card mb-4">
                 <div class="card-body">
                     <h4 class="card-title mb-4">
-                        <i class="fas fa-chart-bar me-2"></i>Desempeño por Empresa - Día {{ simulacion.dia_actual }}
+                        <i class="fas fa-chart-bar me-2"></i>Desempeño por Empresa - Día {{ simulacion.dia_actual }} (Semana {{ simulacion.semana_actual }})
                     </h4>
                     
                     <div class="table-responsive">
@@ -296,6 +384,45 @@
                 </div>
             </div>
 
+            <!-- Cuota de Mercado por Empresa -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Cuota de Mercado (Market Share)</h5>
+                            <button class="btn btn-sm btn-outline-primary" onclick="cargarMarketShare()">
+                                <i class="fas fa-sync-alt"></i> Actualizar
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <canvas id="chartMarketSharePie" height="200"></canvas>
+                                </div>
+                                <div class="col-md-8">
+                                    <canvas id="chartMarketShareEvol" height="200"></canvas>
+                                </div>
+                            </div>
+                            <div class="table-responsive mt-3">
+                                <table class="table table-sm table-hover" id="tablaMarketShare">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Empresa</th>
+                                            <th class="text-center">Market Share</th>
+                                            <th class="text-center">Capital</th>
+                                            <th class="text-center">Nivel Servicio</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tablaMarketShareBody">
+                                        <tr><td colspan="4" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Actividad Reciente -->
             <div class="row">
                 <div class="col-md-6">
@@ -340,6 +467,11 @@ document.getElementById('historialModal').addEventListener('show.bs.modal', func
     cargarHistorialSimulaciones();
 });
 
+// Cargar market share al inicio
+document.addEventListener('DOMContentLoaded', function() {
+    cargarMarketShare();
+});
+
 async function cargarHistorialSimulaciones() {
     try {
         const response = await fetch('/profesor/api/historial-simulaciones');
@@ -375,7 +507,7 @@ async function cargarHistorialSimulaciones() {
                         <td><strong>#${sim.id}</strong></td>
                         <td>${sim.nombre}</td>
                         <td><span class="badge ${estadoBadge}">${estadoTexto}</span></td>
-                        <td class="text-center">${sim.dia_actual}</td>
+                        <td class="text-center">${sim.dia_actual} (Sem. ${sim.semana_actual})</td>
                         <td>${sim.fecha_inicio || 'N/A'}</td>
                         <td>${sim.fecha_fin || '-'}</td>
                         <td class="text-center">${sim.total_empresas}</td>
@@ -393,6 +525,84 @@ async function cargarHistorialSimulaciones() {
         console.error('Error cargando historial:', error);
         document.getElementById('historialSimulaciones').innerHTML = 
             '<p class="text-danger text-center py-4"><i class="fas fa-exclamation-triangle me-2"></i>Error al cargar el historial</p>';
+    }
+}
+
+// ========== CUOTA DE MERCADO ==========
+let chartPie = null, chartEvol = null;
+async function cargarMarketShare() {
+    try {
+        const response = await fetch('/profesor/api/market-share');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.error) return;
+
+        // Pie chart
+        const ctxPie = document.getElementById('chartMarketSharePie');
+        if (ctxPie) {
+            if (chartPie) chartPie.destroy();
+            const colors = ['#3498db','#e74c3c','#2ecc71','#f39c12','#9b59b6','#1abc9c'];
+            chartPie = new Chart(ctxPie, {
+                type: 'pie',
+                data: {
+                    labels: data.empresas,
+                    datasets: [{ data: data.market_share, backgroundColor: colors }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.toFixed(1)}%` } }
+                    }
+                }
+            });
+        }
+
+        // Evolución líneas
+        const ctxEvol = document.getElementById('chartMarketShareEvol');
+        if (ctxEvol) {
+            if (chartEvol) chartEvol.destroy();
+            const colores = ['#3498db','#e74c3c','#2ecc71','#f39c12','#9b59b6','#1abc9c'];
+            const datasets = data.empresas.map((nombre, i) => ({
+                label: nombre,
+                data: data.evolucion[nombre] || [],
+                borderColor: colores[i % colores.length],
+                backgroundColor: 'transparent',
+                tension: 0.3,
+                borderWidth: 2
+            }));
+            chartEvol = new Chart(ctxEvol, {
+                type: 'line',
+                data: { labels: data.evolucion_dias, datasets },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'top' }, tooltip: { mode: 'index' } },
+                    scales: {
+                        y: { beginAtZero: true, title: { display: true, text: 'Market Share (%)' } },
+                        x: { title: { display: true, text: 'Día' } }
+                    }
+                }
+            });
+        }
+
+        // Tabla
+        const tbody = document.getElementById('tablaMarketShareBody');
+        if (tbody && data.empresas.length > 0) {
+            let html = '';
+            data.empresas.forEach((nombre, i) => {
+                const ns = data.niveles_servicio[i];
+                const nsBadge = ns >= 85 ? 'success' : ns >= 70 ? 'warning' : 'danger';
+                html += `<tr>
+                    <td><strong>${nombre}</strong></td>
+                    <td class="text-center">${data.market_share[i].toFixed(1)}%</td>
+                    <td class="text-center">$${data.capitales[i].toLocaleString()}</td>
+                    <td class="text-center"><span class="badge bg-${nsBadge}">${ns}%</span></td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('Error cargando market share:', error);
     }
 }
 </script>

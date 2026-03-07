@@ -1,18 +1,14 @@
-"""
-Utilidades para procesamiento automático de días de simulación
+﻿"""
+Utilidades para procesamiento automático de semanas de simulación
 """
 
-from models import (Simulacion, Empresa, Producto, Inventario, Venta, Compra, 
-                    DespachoRegional, MovimientoInventario, Metrica, DisrupcionActiva)
+from models import (Simulacion, Empresa, Producto, Inventario, Venta, Compra,
+                    DespachoRegional, MovimientoInventario, Metrica, DisrupcionEmpresa)
 from extensions import db
 from datetime import datetime
 import random
+import math
 from sqlalchemy import func
-from sqlalchemy import func
-from utils.disrupciones import (
-    calcular_impacto_demanda, calcular_impacto_lead_time,
-    obtener_disrupciones_activas_empresa
-)
 
 
 def calcular_precios_mercado(simulacion, producto_id, region):
@@ -47,8 +43,9 @@ def calcular_precios_mercado(simulacion, producto_id, region):
             'stock': stock_disponible
         })
     
-    # Calcular precio promedio (solo de empresas con stock > 0)
-    precios_validos = [p['precio'] for p in precios_mercado if p['stock'] > 0]
+    # Calcular precio promedio de todas las empresas activas (independiente del stock)
+    # Incluir empresas sin stock para que el precio de referencia sea justo
+    precios_validos = [p['precio'] for p in precios_mercado]
     precio_promedio = sum(precios_validos) / len(precios_validos) if precios_validos else 0
     
     return precio_promedio, precios_mercado
@@ -61,11 +58,9 @@ def calcular_market_share(precio_empresa, precio_promedio, stock_disponible, ela
     
     Retorna: porcentaje de 0 a 1
     """
-    if stock_disponible <= 0:
-        return 0.0  # Sin stock = sin ventas
-    
     if precio_promedio <= 0:
-        return 1.0 / max(1, stock_disponible)  # Distribuir equitativamente si no hay referencia
+        # Sin referencia de precio: distribución neutra, penalizada si no hay stock
+        return 0.3 if stock_disponible <= 0 else 1.0
     
     # Calcular ratio de precio
     ratio_precio = precio_empresa / precio_promedio
@@ -91,13 +86,19 @@ def calcular_market_share(precio_empresa, precio_promedio, stock_disponible, ela
     # Agregar factor de aleatoriedad (comportamiento de consumidor)
     market_share += random.uniform(-0.05, 0.05)
     
+    # Sin stock: penalizar al 30% en lugar de bloquear completamente.
+    # El mercado sigue intentando ordenar a esta empresa (demanda registrada como no atendida)
+    # → esto hace que el nivel de servicio caiga visiblemente cuando hay desabastecimiento.
+    if stock_disponible <= 0:
+        market_share *= 0.3
+    
     # Asegurar que esté entre 0 y 1
     market_share = max(0.0, min(1.0, market_share))
     
     return market_share
 
 
-def distribuir_demanda_competitiva(simulacion, producto, region, demanda_total, dia_actual):
+def distribuir_demanda_competitiva(simulacion, producto, region, demanda_total, semana_actual):
     """
     Distribuye la demanda total del mercado entre todas las empresas
     según su competitividad de precios y disponibilidad de stock
@@ -145,11 +146,13 @@ def distribuir_demanda_competitiva(simulacion, producto, region, demanda_total, 
         if demanda_restante <= 0:
             break
             
-        # Calcular demanda asignada a esta empresa
+        # Calcular demanda asignada a esta empresa según market share
         demanda_empresa = round(demanda_total * ms['market_share'])
         
-        # Limitar por stock disponible
-        cantidad_asignada = min(demanda_empresa, ms['stock'], demanda_restante)
+        # No se limita por stock aquí: el stock disponible limita las ventas reales
+        # en procesar_ventas_semana. Esto permite registrar demanda no atendida,
+        # lo que hace que el nivel de servicio baje correctamente cuando hay desabastecimiento.
+        cantidad_asignada = min(demanda_empresa, demanda_restante)
         
         if cantidad_asignada > 0:
             asignaciones.append({
@@ -167,20 +170,180 @@ def distribuir_demanda_competitiva(simulacion, producto, region, demanda_total, 
     return asignaciones, precio_promedio
 
 
-def procesar_ventas_dia(simulacion, empresa):
+# ---------------------------------------------------------------------------
+# SISTEMA DE DISRUPCIONES
+# ---------------------------------------------------------------------------
+
+def obtener_producto_mas_demandado(empresa):
     """
-    Procesa las ventas del día para una empresa usando motor de competencia
+    Retorna el producto con mayor volumen de ventas histórico para la empresa.
+    Si no hay ventas aún, usa el de mayor demanda_promedio en el catálogo.
+    """
+    resultado = db.session.query(
+        Venta.producto_id,
+        func.sum(Venta.cantidad_vendida).label('total')
+    ).filter_by(empresa_id=empresa.id).group_by(Venta.producto_id).order_by(
+        func.sum(Venta.cantidad_vendida).desc()
+    ).first()
+
+    if resultado:
+        return Producto.query.get(resultado.producto_id)
+    return Producto.query.filter_by(activo=True).order_by(Producto.demanda_promedio.desc()).first()
+
+
+def verificar_y_activar_disrupciones(simulacion):
+    """
+    Revisa el catálogo y crea registros DisrupcionEmpresa para las empresas
+    que aún no tienen la disrupción cuyo semana_trigger ya fue alcanzada o pasada.
+    Usar >= permite crear disrupciones para empresas que se unieron tarde a la simulación.
+    """
+    from utils.catalogo_disrupciones import CATALOGO_DISRUPCIONES
+
+    # Comparar semana_trigger (concepto de semana) con la semana derivada del día actual
+    semana_derivada = (simulacion.dia_actual - 1) // 7 + 1
+    dia = simulacion.dia_actual
+    empresas = Empresa.query.filter_by(activa=True, simulacion_id=simulacion.id).all()
+    nuevas = []
+
+    for definicion in CATALOGO_DISRUPCIONES:
+        if definicion['semana_trigger'] > semana_derivada:
+            continue
+        for empresa in empresas:
+            ya_existe = DisrupcionEmpresa.query.filter_by(
+                simulacion_id=simulacion.id,
+                empresa_id=empresa.id,
+                disrupcion_key=definicion['key']
+            ).first()
+            if ya_existe:
+                continue
+
+            producto = obtener_producto_mas_demandado(empresa)
+            nueva = DisrupcionEmpresa(
+                simulacion_id=simulacion.id,
+                empresa_id=empresa.id,
+                disrupcion_key=definicion['key'],
+                producto_afectado_id=producto.id if producto else None,
+                semana_inicio=dia,
+                semana_fin=dia + int(definicion['duracion_semanas'] * 7) - 1,
+                activa=True,
+            )
+            db.session.add(nueva)
+            nuevas.append(nueva)
+
+    return nuevas
+
+
+def verificar_y_expirar_disrupciones(simulacion):
+    """
+    Marca como inactivas las disrupciones cuya semana_fin quedó en el pasado.
+    Revierte efectos permanentes (ej: precio Opción D) antes de desactivarlas.
+    Retorna las disrupciones recién expiradas para que la UI muestre la notificación.
+    """
+    from models import Producto
+    expiradas = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.semana_fin < simulacion.dia_actual
+    ).all()
+
+    for d in expiradas:
+        # Revertir precio si hubo Opción D en disrupcion aumento_demanda
+        if (d.disrupcion_key == 'aumento_demanda'
+                and d.opcion_elegida == 'D'
+                and d.producto_afectado_id
+                and d.datos_extra
+                and 'precio_original' in d.datos_extra):
+            producto = Producto.query.get(d.producto_afectado_id)
+            if producto:
+                producto.precio_actual = d.datos_extra['precio_original']
+
+        # Revertir precio si hubo Opción B en disrupcion aumento_costos_compra
+        if (d.disrupcion_key == 'aumento_costos_compra'
+                and d.opcion_elegida == 'B'
+                and d.producto_afectado_id
+                and d.datos_extra
+                and 'precio_original' in d.datos_extra):
+            producto = Producto.query.get(d.producto_afectado_id)
+            if producto:
+                producto.precio_actual = d.datos_extra['precio_original']
+
+        d.activa = False
+
+    return expiradas
+
+
+def obtener_efectos_por_empresa(simulacion_id, empresa_id):
+    """
+    Retorna un dict {producto_id: efectos} con los efectos de disrupción
+    activos para la empresa (solo disrupciones con opción elegida).
+    """
+    from utils.catalogo_disrupciones import CATALOGO_DISRUPCIONES
+    cat_dict = {d['key']: d for d in CATALOGO_DISRUPCIONES}
+
+    disrupciones = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.simulacion_id == simulacion_id,
+        DisrupcionEmpresa.empresa_id == empresa_id,
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.opcion_elegida != None
+    ).all()
+
+    efectos = {}
+    for dis in disrupciones:
+        cat = cat_dict.get(dis.disrupcion_key)
+        if not cat or not dis.producto_afectado_id:
+            continue
+        opcion = cat['opciones'].get(dis.opcion_elegida)
+        if opcion:
+            efectos[dis.producto_afectado_id] = {
+                'tipo': opcion['efectos']['tipo'],
+                'efectos': opcion['efectos'],
+                'disrupcion_id': dis.id,
+            }
+    return efectos
+
+
+def obtener_efecto_logistico_empresa(simulacion_id, empresa_id):
+    """
+    Retorna el efecto de falla_flota activo para la empresa, o None.
+    A diferencia de las otras disrupciones, este aplica a TODOS los despachos
+    (no es específico a un producto).
+    """
+    from utils.catalogo_disrupciones import get_disrupcion
+    dis = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.simulacion_id == simulacion_id,
+        DisrupcionEmpresa.empresa_id == empresa_id,
+        DisrupcionEmpresa.disrupcion_key == 'falla_flota',
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.opcion_elegida != None
+    ).first()
+    if not dis:
+        return None
+    cat = get_disrupcion('falla_flota')
+    if not cat:
+        return None
+    opcion = cat['opciones'].get(dis.opcion_elegida)
+    return opcion['efectos'] if opcion else None
+
+
+# ---------------------------------------------------------------------------
+
+def procesar_ventas_semana(simulacion, empresa):
+    """
+    Procesa las ventas de la semana para una empresa usando motor de competencia
     La demanda se distribuye entre empresas según precios y disponibilidad
     """
-    dia_actual = simulacion.dia_actual
+    semana_actual = simulacion.dia_actual
     productos = Producto.query.filter_by(activo=True).all()
     regiones = ['Andina', 'Caribe', 'Pacífica', 'Orinoquía', 'Amazonía']
-    
-    # Obtener disrupciones activas
-    disrupciones_activas = obtener_disrupciones_activas_empresa(simulacion, empresa.id, dia_actual)
-    
     ventas_generadas = []
-    
+
+    # Número de empresas activas — escala la demanda total del mercado
+    n_empresas = Empresa.query.filter_by(simulacion_id=simulacion.id, activa=True).count()
+    n_empresas = max(1, n_empresas)
+
+    # Obtener efectos de disrupciones activas una sola vez por empresa
+    efectos_disrupcion = obtener_efectos_por_empresa(simulacion.id, empresa.id)
+
     for producto in productos:
         # Obtener inventario de esta empresa
         inventario = Inventario.query.filter_by(
@@ -192,31 +355,27 @@ def procesar_ventas_dia(simulacion, empresa):
             continue
         
         for region in regiones:
-            # DEMANDA MÍNIMA GARANTIZADA: Cada empresa DEBE atender esta demanda base
-            # Esto garantiza que el nivel de servicio refleje capacidad real
-            demanda_base_empresa = producto.demanda_promedio * 0.6  # 60% de la demanda promedio
-            
-            # Generar demanda TOTAL del mercado (para distribución competitiva)
-            demanda_mercado_base = random.gauss(producto.demanda_promedio, producto.desviacion_demanda)
+            # Demanda TOTAL del mercado: escala por número de empresas activas
+            demanda_diaria_mercado = producto.demanda_promedio / 7.0 * n_empresas
+            desviacion_diaria_mercado = producto.desviacion_demanda / 7.0 * math.sqrt(n_empresas)
+
+            # Generar demanda total del mercado (100% competitiva, sin mínimo garantizado)
+            demanda_mercado_base = random.gauss(demanda_diaria_mercado, desviacion_diaria_mercado)
             demanda_mercado_base = max(0, demanda_mercado_base)
             
-            # Aplicar impacto de disrupciones a la demanda del mercado
-            demanda_mercado_ajustada = calcular_impacto_demanda(
-                producto.id, region, demanda_mercado_base, dia_actual, disrupciones_activas
-            )
-            
-            cantidad_total_mercado = round(demanda_mercado_ajustada)
+            cantidad_total_mercado = round(demanda_mercado_base)
             
             if cantidad_total_mercado <= 0:
                 # Registrar venta con 0 demanda
                 venta = Venta(
                     empresa_id=empresa.id,
                     producto_id=producto.id,
-                    dia_simulacion=dia_actual,
+                    semana_simulacion=semana_actual,
                     region=region,
                     cantidad_solicitada=0,
                     cantidad_vendida=0,
                     cantidad_perdida=0,
+                    demanda_mercado_total=0,
                     precio_unitario=producto.precio_actual,
                     ingreso_total=0,
                     costo_unitario=inventario.costo_promedio or producto.costo_unitario,
@@ -228,7 +387,7 @@ def procesar_ventas_dia(simulacion, empresa):
             
             # DISTRIBUIR LA DEMANDA ENTRE TODAS LAS EMPRESAS COMPETIDORAS
             asignaciones, precio_promedio = distribuir_demanda_competitiva(
-                simulacion, producto, region, cantidad_total_mercado, dia_actual
+                simulacion, producto, region, cantidad_total_mercado, semana_actual
             )
             
             # Buscar la asignación para ESTA empresa
@@ -238,55 +397,63 @@ def procesar_ventas_dia(simulacion, empresa):
                     asignacion_empresa = asig
                     break
             
-            # Determinar cuánta demanda recibió esta empresa
-            # SIEMPRE asignar la demanda mínima garantizada + demanda competitiva
-            cantidad_solicitada_minima = round(demanda_base_empresa)  # Demanda que DEBE atender
-            
+            # Demanda competitiva pura: 100% de la demanda se distribuye según precio y stock
             if asignacion_empresa:
-                # Demanda competitiva adicional basada en precio y disponibilidad
-                cantidad_adicional_competitiva = asignacion_empresa['cantidad']
-                cantidad_solicitada = cantidad_solicitada_minima + cantidad_adicional_competitiva
+                cantidad_solicitada = asignacion_empresa['cantidad']
                 market_share_obtenido = asignacion_empresa['market_share']
             else:
-                # Esta empresa no recibió demanda competitiva, pero SÍ tiene demanda mínima
-                cantidad_solicitada = cantidad_solicitada_minima
+                cantidad_solicitada = 0
                 market_share_obtenido = 0
             
             # Procesar venta según stock disponible
             stock_disponible = inventario.cantidad_actual - inventario.cantidad_reservada
             stock_disponible = max(0, stock_disponible)
+
+            # DISRUPCIÓN - efectos sobre demanda, racionamiento y precio
+            efecto_d = efectos_disrupcion.get(producto.id)
+
+            # Opción B disrupcion 1: Racionamiento del stock disponible
+            if efecto_d and efecto_d['tipo'] == 'racionamiento':
+                factor = efecto_d['efectos'].get('limite_ventas_factor', 0.60)
+                tope_racionamiento = round(inventario.cantidad_actual * factor)
+                stock_disponible = min(stock_disponible, tope_racionamiento)
+
+            # Disrupcion 2 Opciones A y B: multiplicador de demanda
+            if efecto_d and efecto_d['tipo'] == 'aumento_demanda':
+                mult = efecto_d['efectos'].get('demanda_multiplicador', 1.0)
+                cantidad_solicitada = round(cantidad_solicitada * mult)
+
+            # Disrupcion 2 Opcion D: menor demanda por precio alto
+            if efecto_d and efecto_d['tipo'] == 'aumento_precio_demanda':
+                mult_d = efecto_d['efectos'].get('demanda_multiplicador', 0.90)
+                cantidad_solicitada = round(cantidad_solicitada * mult_d)
+
             cantidad_vendida = min(cantidad_solicitada, stock_disponible)
-            
-            # Calcular ventas perdidas por diferentes razones
+
+            # Calcular ventas perdidas
             ventas_perdidas_sin_stock = max(0, cantidad_solicitada - cantidad_vendida)
-            
-            # Ventas perdidas por precio no competitivo
-            # Si no recibimos demanda pero teníamos stock, es porque nuestro precio no era competitivo
             ratio_precio = producto.precio_actual / precio_promedio if precio_promedio > 0 else 1.0
             ventas_perdidas_precio = 0
-            
             if stock_disponible > 0 and cantidad_solicitada == 0 and ratio_precio > 1.2:
-                # Teníamos stock pero precio muy alto - perdimos potencial de venta
-                # Estimar cuánto podríamos haber vendido con precio competitivo
-                ventas_perdidas_precio = round(cantidad_total_mercado * 0.15)  # Asumimos que podríamos haber capturado 15% del mercado
-            
+                ventas_perdidas_precio = round(cantidad_total_mercado * 0.15)
             cantidad_perdida_total = ventas_perdidas_sin_stock + ventas_perdidas_precio
-            
-            # Calcular valores financieros
+
+            # Precio unitario — ya actualizado en DB si el equipo eligió Opción D
             precio_unitario = producto.precio_actual
             ingreso_total = cantidad_vendida * precio_unitario
             costo_unitario = inventario.costo_promedio or producto.costo_unitario
             margen = ingreso_total - (cantidad_vendida * costo_unitario)
-            
+
             # Crear registro de venta con información de competitividad
             venta = Venta(
                 empresa_id=empresa.id,
                 producto_id=producto.id,
-                dia_simulacion=dia_actual,
+                semana_simulacion=semana_actual,
                 region=region,
                 cantidad_solicitada=cantidad_solicitada,
                 cantidad_vendida=cantidad_vendida,
                 cantidad_perdida=cantidad_perdida_total,
+                demanda_mercado_total=cantidad_total_mercado,
                 precio_unitario=precio_unitario,
                 ingreso_total=ingreso_total,
                 costo_unitario=costo_unitario,
@@ -315,13 +482,13 @@ def procesar_ventas_dia(simulacion, empresa):
                     empresa_id=empresa.id,
                     producto_id=producto.id,
                     usuario_id=None,
-                    dia_simulacion=dia_actual,
+                    semana_simulacion=semana_actual,
                     tipo_movimiento='salida_venta',
                     cantidad=cantidad_vendida,
                     saldo_anterior=saldo_anterior,
                     saldo_nuevo=inventario.cantidad_actual,
                     venta_id=None,
-                    observaciones=f'Venta día {dia_actual} - {region} - Market share: {market_share_obtenido*100:.1f}%{competitividad_msg}'
+                    observaciones=f'Venta semana {semana_actual} - {region} - Market share: {market_share_obtenido*100:.1f}%{competitividad_msg}'
                 )
                 
                 db.session.add(movimiento)
@@ -333,14 +500,14 @@ def procesar_ventas_dia(simulacion, empresa):
 
 def procesar_llegadas_compras(simulacion, empresa):
     """
-    Procesa las llegadas de órdenes de compra programadas para hoy
+    Procesa las llegadas de órdenes de compra programadas para esta semana
     """
-    dia_actual = simulacion.dia_actual
+    semana_actual = simulacion.dia_actual
     
-    # Obtener órdenes que llegan hoy
+    # Obtener órdenes que llegan este día
     ordenes_llegan = Compra.query.filter_by(
         empresa_id=empresa.id,
-        dia_entrega=dia_actual,
+        semana_entrega=semana_actual,
         estado='en_transito'
     ).all()
     
@@ -376,13 +543,13 @@ def procesar_llegadas_compras(simulacion, empresa):
                 empresa_id=empresa.id,
                 producto_id=orden.producto_id,
                 usuario_id=None,  # Automático
-                dia_simulacion=dia_actual,
+                semana_simulacion=semana_actual,
                 tipo_movimiento='entrada_compra',
                 cantidad=orden.cantidad,
                 saldo_anterior=saldo_anterior,
                 saldo_nuevo=inventario.cantidad_actual,
                 compra_id=orden.id,
-                observaciones=f'Recepción automática día {dia_actual}'
+                observaciones=f'Recepción automática semana {semana_actual}'
             )
             
             db.session.add(movimiento)
@@ -397,29 +564,22 @@ def procesar_llegadas_compras(simulacion, empresa):
 
 def procesar_despachos_regionales(simulacion, empresa):
     """
-    Procesa despachos que llegan a su destino hoy
+    Procesa despachos que llegan a su destino esta semana
     """
-    dia_actual = simulacion.dia_actual
+    semana_actual = simulacion.dia_actual
     
-    # Obtener despachos que llegan hoy
+    # Obtener despachos que llegan este día
     despachos_llegan = DespachoRegional.query.filter_by(
         empresa_id=empresa.id,
-        dia_entrega_estimado=dia_actual,
+        semana_entrega_estimado=semana_actual,
         estado='en_transito'
     ).all()
     
     for despacho in despachos_llegan:
         despacho.estado = 'entregado'
-        despacho.dia_entrega_real = dia_actual
-        
-        # Liberar cantidad reservada
-        inventario = Inventario.query.filter_by(
-            empresa_id=empresa.id,
-            producto_id=despacho.producto_id
-        ).first()
-        
-        if inventario:
-            inventario.cantidad_reservada = max(0, inventario.cantidad_reservada - despacho.cantidad)
+        despacho.semana_entrega_real = semana_actual
+        # El inventario ya fue reducido en cantidad_actual al crear el despacho;
+        # no hay cantidad_reservada que liberar para despachos.
     
     return despachos_llegan
 
@@ -433,32 +593,32 @@ def calcular_costos_operativos(simulacion, empresa):
     
     Retorna un diccionario con el desglose de costos
     """
-    dia_actual = simulacion.dia_actual
+    semana_actual = simulacion.dia_actual
     
-    # 1. COSTOS FIJOS OPERACIONALES ($800,000/día)
-    costos_fijos = 800000
+    # 1. COSTOS FIJOS OPERACIONALES ($800,000/semana → $114,286/día)
+    costos_fijos = round(800000 / 7)
     
-    # 2. COSTOS DE MANTENIMIENTO DE INVENTARIO (0.3% del valor)
+    # 2. COSTOS DE MANTENIMIENTO DE INVENTARIO (0.3%/semana → 0.0429%/día)
     inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
     valor_inventario = sum(
         inv.cantidad_actual * (inv.costo_promedio or 0) for inv in inventarios
     )
-    costos_mantenimiento = valor_inventario * 0.003  # 0.3%
+    costos_mantenimiento = valor_inventario * (0.003 / 7)  # tasa diaria
     
-    # 2.1 PENALIZACIÓN POR SOBRESTOCK (0.5% adicional sobre el exceso)
+    # 2.1 PENALIZACIÓN POR SOBRESTOCK (0.5%/semana → diaria)
     penalizacion_sobrestock = 0
     for inv in inventarios:
         if inv.producto.stock_maximo and inv.cantidad_actual > inv.producto.stock_maximo:
             exceso = inv.cantidad_actual - inv.producto.stock_maximo
             valor_exceso = exceso * (inv.costo_promedio or 0)
-            penalizacion_sobrestock += valor_exceso * 0.005  # 0.5% adicional
+            penalizacion_sobrestock += valor_exceso * (0.005 / 7)
     
     costos_mantenimiento += penalizacion_sobrestock
     
     # 3. PENALIZACIÓN POR VENTAS PERDIDAS (30% del precio)
     ventas_dia = Venta.query.filter_by(
         empresa_id=empresa.id,
-        dia_simulacion=dia_actual
+        semana_simulacion=semana_actual
     ).all()
     
     penalizacion_ventas_perdidas = 0
@@ -473,28 +633,28 @@ def calcular_costos_operativos(simulacion, empresa):
     # APLICAR COSTOS AL CAPITAL
     costo_total = costos_fijos + costos_mantenimiento + penalizacion_ventas_perdidas
     empresa.capital_actual -= costo_total
-    
+
     # Retornar desglose para métricas
     return {
         'costo_total': costo_total,
         'costos_fijos': costos_fijos,
-        'costos_mantenimiento': costos_mantenimiento - penalizacion_sobrestock,  # Mantenimiento base
+        'costos_mantenimiento': costos_mantenimiento - penalizacion_sobrestock,
         'penalizacion_sobrestock': penalizacion_sobrestock,
         'penalizacion_ventas_perdidas': penalizacion_ventas_perdidas,
         'valor_inventario': valor_inventario
     }
 
 
-def calcular_metricas_dia(simulacion, empresa, costos_operativos=None):
+def calcular_metricas_semana(simulacion, empresa, costos_operativos=None):
     """
-    Calcula las métricas de desempeño del día incluyendo costos operativos
+    Calcula las métricas de desempeño de la semana incluyendo costos operativos
     """
-    dia_actual = simulacion.dia_actual
+    semana_actual = simulacion.dia_actual
     
     # Obtener ventas del día
     ventas_dia = Venta.query.filter_by(
         empresa_id=empresa.id,
-        dia_simulacion=dia_actual
+        semana_simulacion=semana_actual
     ).all()
     
     # Calcular totales
@@ -504,16 +664,23 @@ def calcular_metricas_dia(simulacion, empresa, costos_operativos=None):
     # Obtener compras del día (órdenes creadas hoy)
     compras_dia = Compra.query.filter_by(
         empresa_id=empresa.id,
-        dia_orden=dia_actual
+        semana_orden=semana_actual
     ).all()
     
     costos_compras = sum(c.costo_total for c in compras_dia)
-    
+
+    # Costos de transporte de despachos realizados esta semana
+    despachos_dia = DespachoRegional.query.filter_by(
+        empresa_id=empresa.id,
+        semana_despacho=semana_actual
+    ).all()
+    costos_transporte = sum(d.costo_transporte or 0 for d in despachos_dia)
+
     # Calcular nivel de servicio ACUMULATIVO (todo el historial de la simulación)
     ventas_historicas = Venta.query.filter_by(
         empresa_id=empresa.id
     ).filter(
-        Venta.dia_simulacion <= dia_actual
+        Venta.semana_simulacion <= semana_actual
     ).all()
     
     total_solicitado_historico = sum(v.cantidad_solicitada for v in ventas_historicas)
@@ -528,27 +695,37 @@ def calcular_metricas_dia(simulacion, empresa, costos_operativos=None):
         inv.cantidad_actual * (inv.costo_promedio or 0) for inv in inventarios
     )
     
-    # Calcular rotación de inventario (simplificado)
-    rotacion_inventario = (costos_ventas / valor_inventario) if valor_inventario > 0 else 0
+    # Calcular rotación de inventario (anualizada)
+    rotacion_inventario = (costos_ventas / valor_inventario * 365) if valor_inventario > 0 else 0
     
     # Sumar costos operativos automáticos si existen
     costos_operativos_total = 0
     if costos_operativos:
         costos_operativos_total = costos_operativos.get('costo_total', 0)
-    
-    # Actualizar capital de la empresa (ingresos - compras)
-    # Los costos operativos ya fueron descontados en calcular_costos_operativos()
-    empresa.capital_actual += (ingresos - costos_compras)
-    
-    # Crear registro de métrica con todos los costos
+
+    # Actualizar capital de la empresa:
+    #  + ingresos por ventas
+    #  - costos transporte (despachos de esta semana)
+    # NOTA: costos_compras ya fueron descontados al crear la orden (routes/estudiante.py)
+    #       costos_operativos ya fueron descontados en calcular_costos_operativos()
+    empresa.capital_actual += (ingresos - costos_transporte)
+
+    # Métricas P&L: los costos de compra son movimiento de balance (capital → inventario),
+    # NO gastos del periodo. Solo se registran costos del periodo:
+    #  costos_ventas (COGS) + operativos + transporte
+    costos_periodo = costos_ventas + costos_operativos_total + costos_transporte
+    utilidad_periodo = ingresos - costos_periodo
+
+    # Crear registro de métrica
     metrica = Metrica(
         empresa_id=empresa.id,
-        dia_simulacion=dia_actual,
+        semana_simulacion=semana_actual,
         ingresos=ingresos,
-        costos=costos_ventas + costos_compras + costos_operativos_total,
-        utilidad=ingresos - costos_ventas - costos_operativos_total,
+        costos=costos_periodo,
+        utilidad=utilidad_periodo,
         nivel_servicio=nivel_servicio,
-        rotacion_inventario=rotacion_inventario
+        rotacion_inventario=rotacion_inventario,
+        market_share=0
     )
     
     db.session.add(metrica)
@@ -589,18 +766,38 @@ def verificar_alertas_inventario(empresa):
     return alertas
 
 
-def procesar_dia_completo(simulacion):
+def _actualizar_market_share(simulacion, dia, empresas):
+    """Calcula y persiste la cuota de mercado (%) por ingresos para cada empresa en el día."""
+    ids_empresas = [e.id for e in empresas]
+    total_ingresos = db.session.query(func.sum(Venta.ingreso_total)).filter(
+        Venta.semana_simulacion == dia,
+        Venta.empresa_id.in_(ids_empresas)
+    ).scalar() or 0
+    for empresa in empresas:
+        ingresos_e = db.session.query(func.sum(Venta.ingreso_total)).filter(
+            Venta.empresa_id == empresa.id,
+            Venta.semana_simulacion == dia
+        ).scalar() or 0
+        share = round(ingresos_e / total_ingresos * 100, 2) if total_ingresos > 0 else 0
+        metrica = Metrica.query.filter_by(empresa_id=empresa.id, semana_simulacion=dia).first()
+        if metrica:
+            metrica.market_share = share
+
+
+def procesar_semana_completa(simulacion):
     """
-    Procesa un día completo de la simulación para todas las empresas
+    Procesa una semana completa de la simulación para todas las empresas
     
     Returns:
         dict con resumen del procesamiento
     """
-    dia_actual = simulacion.dia_actual
-    empresas = Empresa.query.filter_by(activa=True).all()
-    
+    semana_actual = simulacion.dia_actual
+    empresas = Empresa.query.filter_by(
+        simulacion_id=simulacion.id, activa=True
+    ).all()
+
     resumen = {
-        'dia': dia_actual,
+        'semana': semana_actual,   # contiene dia_actual
         'empresas_procesadas': 0,
         'total_ventas': 0,
         'total_compras_recibidas': 0,
@@ -609,8 +806,8 @@ def procesar_dia_completo(simulacion):
     }
     
     for empresa in empresas:
-        # 1. Procesar ventas del día
-        ventas = procesar_ventas_dia(simulacion, empresa)
+        # 1. Procesar ventas de la semana
+        ventas = procesar_ventas_semana(simulacion, empresa)
         resumen['total_ventas'] += len(ventas)
         
         # 2. Procesar llegadas de compras
@@ -624,8 +821,8 @@ def procesar_dia_completo(simulacion):
         # 4. APLICAR COSTOS OPERATIVOS AUTOMÁTICOS
         costos_operativos = calcular_costos_operativos(simulacion, empresa)
         
-        # 5. Calcular métricas del día (incluyendo costos operativos)
-        metrica = calcular_metricas_dia(simulacion, empresa, costos_operativos)
+        # 5. Calcular métricas de la semana (incluyendo costos operativos)
+        metrica = calcular_metricas_semana(simulacion, empresa, costos_operativos)
         
         # 6. Verificar alertas de inventario
         alertas_empresa = verificar_alertas_inventario(empresa)
@@ -637,6 +834,9 @@ def procesar_dia_completo(simulacion):
         
         resumen['empresas_procesadas'] += 1
     
+    # Actualizar market share al finalizar el procesamiento de todas las empresas
+    _actualizar_market_share(simulacion, semana_actual, empresas)
+
     # Commit de todos los cambios
     db.session.commit()
     
@@ -645,31 +845,46 @@ def procesar_dia_completo(simulacion):
 
 def avanzar_simulacion():
     """
-    Avanza la simulación al siguiente día y procesa todos los eventos
-    
+    Avanza la simulación a la siguiente semana y procesa todos los eventos
+
     Returns:
         tuple: (success: bool, mensaje: str, resumen: dict)
     """
     try:
         simulacion = Simulacion.query.filter_by(activa=True).first()
-        
+
         if not simulacion:
             return False, "No existe una simulación activa", None
-        
+
         if simulacion.estado != 'en_curso':
             return False, "La simulación debe estar en curso para avanzar", None
-        
-        # Incrementar día
+
+        # Incrementar día y recalcular semana derivada
         dia_anterior = simulacion.dia_actual
         simulacion.dia_actual += 1
-        
-        # Procesar día completo
-        resumen = procesar_dia_completo(simulacion)
-        
-        mensaje = f"✅ Día {dia_anterior} → Día {simulacion.dia_actual} procesado exitosamente"
-        
+        simulacion.semana_actual = (simulacion.dia_actual - 1) // 7 + 1
+
+        # Expirar disrupciones cuya duración ya terminó
+        expiradas = verificar_y_expirar_disrupciones(simulacion)
+
+        # Procesar día completo (los efectos activos se consultan dentro)
+        resumen = procesar_semana_completa(simulacion)
+
+        # Activar nuevas disrupciones que tienen semana_trigger == semana actual
+        nuevas = verificar_y_activar_disrupciones(simulacion)
+
+        resumen['disrupciones_activadas'] = len(nuevas)
+        resumen['disrupciones_expiradas'] = len(expiradas)
+
+        db.session.commit()
+
+        mensaje = (f"✅ Día {dia_anterior} → Día {simulacion.dia_actual} "
+                   f"(Semana {simulacion.semana_actual}) procesado exitosamente")
+        if nuevas:
+            mensaje += f" | ⚠️ {len(nuevas)} nueva(s) disrupción(es) activada(s)"
+
         return True, mensaje, resumen
-        
+
     except Exception as e:
         db.session.rollback()
         return False, f"Error al avanzar simulación: {str(e)}", None
@@ -679,19 +894,20 @@ def obtener_resumen_simulacion(simulacion):
     """
     Obtiene un resumen del estado actual de la simulación
     """
-    empresas = Empresa.query.filter_by(activa=True).all()
-    
+    empresas = Empresa.query.filter_by(activa=True, simulacion_id=simulacion.id).all()
+
     resumen = {
         'dia_actual': simulacion.dia_actual,
+        'semana_actual': simulacion.semana_actual,
         'estado': simulacion.estado,
         'empresas': []
     }
-    
+
     for empresa in empresas:
-        # Métricas del último día
+        # Métricas del día anterior
         metrica_reciente = Metrica.query.filter_by(
             empresa_id=empresa.id,
-            dia_simulacion=simulacion.dia_actual - 1
+            semana_simulacion=simulacion.dia_actual - 1
         ).first()
         
         # Métricas acumuladas

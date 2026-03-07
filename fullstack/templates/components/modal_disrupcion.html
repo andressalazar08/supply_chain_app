@@ -1,0 +1,206 @@
+{# templates/components/modal_disrupcion.html
+   Incluir con: {% include 'components/modal_disrupcion.html' %}
+   Requiere las variables:
+     - disrupcion_pendiente     (DisrupcionEmpresa | None)
+     - disrupciones_finalizadas (list[DisrupcionEmpresa])
+     - get_disrupcion           (callable del catálogo)
+#}
+
+{% if disrupcion_pendiente %}
+{% set def_d = get_disrupcion(disrupcion_pendiente.disrupcion_key) %}
+{% if def_d %}
+
+<!-- ===== MODAL DISRUPCIÓN PENDIENTE ===== -->
+<div class="modal fade" id="modalDisrupcion" tabindex="-1" aria-labelledby="modalDisrupcionLabel"
+     data-bs-backdrop="static" data-bs-keyboard="false" aria-modal="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg">
+
+      <!-- Header con color según tipo -->
+      <div class="modal-header bg-{{ def_d.color }} {% if def_d.color == 'warning' %}text-dark{% else %}text-white{% endif %} py-3">
+        <h5 class="modal-title fw-bold" id="modalDisrupcionLabel">
+          <i class="{{ def_d.icono }} me-2"></i>
+          ⚠️ DISRUPCIÓN – {{ def_d.nombre }}
+        </h5>
+        <span class="badge bg-dark ms-2">Semana {{ disrupcion_pendiente.semana_inicio }}</span>
+      </div>
+
+      <!-- Body: contexto narrativo -->
+      <div class="modal-body px-4 py-3">
+
+        <!-- Producto afectado -->
+        {% if disrupcion_pendiente.producto_afectado %}
+        <div class="alert alert-secondary py-2 mb-3">
+          <i class="fas fa-box me-1"></i>
+          <strong>Producto más demandado de tu empresa (afectado):</strong>
+          {{ disrupcion_pendiente.producto_afectado.nombre }}
+        </div>
+        {% endif %}
+
+        <!-- Contexto narrativo -->
+        <div class="mb-4">
+          {{ def_d.contexto_html | safe }}
+        </div>
+
+        <hr>
+
+        <!-- Opciones de decisión -->
+        <h6 class="fw-bold mb-3">
+          <i class="fas fa-tasks me-1"></i>Selecciona la decisión de tu equipo:
+        </h6>
+
+        <form method="POST" action="{{ url_for('estudiante.responder_disrupcion') }}" id="formDisrupcion">
+          <input type="hidden" name="disrupcion_id" value="{{ disrupcion_pendiente.id }}">
+
+          <div class="row g-3">
+            {% for letra, opcion in def_d.opciones.items() %}
+            <div class="col-12">
+              <label class="d-block cursor-pointer">
+                <input type="radio" name="opcion" value="{{ letra }}"
+                       class="d-none opcion-radio" id="opcion{{ letra }}" required>
+                <div class="card border-2 opcion-card h-100 p-0"
+                     data-opcion="{{ letra }}"
+                     data-color="{{ opcion.color }}"
+                     style="cursor:pointer; transition: all .2s;">
+                  <div class="card-body py-3 px-3">
+                    <div class="d-flex align-items-start gap-3">
+                      <div class="rounded-circle bg-{{ opcion.color }} bg-opacity-15 p-2 flex-shrink-0"
+                           style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
+                        <i class="{{ opcion.icono }} text-{{ opcion.color }} fs-5"></i>
+                      </div>
+                      <div>
+                        <p class="mb-1 fw-semibold">
+                          <span class="badge bg-{{ opcion.color }} me-1">{{ letra }}</span>
+                          {{ opcion.titulo }}
+                        </p>
+                        <p class="mb-0 text-muted small">{{ opcion.descripcion }}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </label>
+            </div>
+            {% endfor %}
+          </div><!-- /row -->
+
+          <div class="mt-4 d-flex justify-content-end gap-2">
+            <button type="submit" id="btnConfirmarDecision"
+                    class="btn btn-primary px-4 py-2 fw-semibold" disabled>
+              <i class="fas fa-check-circle me-1"></i>Confirmar decisión
+            </button>
+          </div>
+        </form>
+
+      </div><!-- /modal-body -->
+    </div>
+  </div>
+</div><!-- /modal -->
+
+<script>
+(function () {
+  // Mostrar el modal automáticamente al cargar la página
+  document.addEventListener('DOMContentLoaded', function () {
+    var modal = new bootstrap.Modal(document.getElementById('modalDisrupcion'));
+    modal.show();
+  });
+
+  // Resaltar la opción seleccionada y habilitar botón
+  document.querySelectorAll('.opcion-card').forEach(function (card) {
+    card.addEventListener('click', function () {
+      var letra = this.dataset.opcion;
+      var color = this.dataset.color;
+
+      // Limpiar selecciones previas
+      document.querySelectorAll('.opcion-card').forEach(function (c) {
+        c.classList.remove('border-success','border-info','border-danger','border-warning',
+                           'border-primary','bg-success','bg-info','bg-danger','bg-warning',
+                           'shadow');
+        c.style.opacity = '1';
+      });
+
+      // Marcar la seleccionada
+      this.classList.add('border-' + color, 'shadow');
+      document.getElementById('opcion' + letra).checked = true;
+
+      // Habilitar botón
+      document.getElementById('btnConfirmarDecision').disabled = false;
+    });
+  });
+})();
+</script>
+
+{% endif %}
+{% endif %}
+
+
+{% if disrupciones_finalizadas %}
+{% for dis_fin in disrupciones_finalizadas %}
+{% set def_fin = get_disrupcion(dis_fin.disrupcion_key) %}
+{% if def_fin %}
+
+<!-- ===== TOAST NOTIFICACIÓN FIN DE DISRUPCIÓN ===== -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:1100;">
+  <div class="toast show border-0 shadow"
+       id="toastFinDisrupcion{{ dis_fin.id }}" role="alert" aria-live="assertive"
+       style="min-width:360px; max-width:480px; background:#1a7a3f; color:#fff;">
+    <div class="toast-header" style="background:#155f30; color:#fff; border-bottom:1px solid rgba(255,255,255,.2);">
+      <i class="fas fa-check-circle me-2"></i>
+      <strong class="me-auto">Disrupción finalizada</strong>
+      <small class="ms-2 opacity-75" id="toastTimer{{ dis_fin.id }}">15s</small>
+    </div>
+    <div class="toast-body py-3 px-3">
+      <p class="mb-1 fw-semibold">{{ def_fin.nombre }}</p>
+      <p class="mb-3 small opacity-90">{{ def_fin.mensaje_fin }}</p>
+      <button type="button" class="btn btn-light btn-sm fw-semibold w-100"
+              onclick="cerrarToastFin({{ dis_fin.id }})">
+        <i class="fas fa-times me-1"></i>Cerrar notificación
+      </button>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+{% endfor %}
+
+<script>
+function marcarFinVisto(disId) {
+  var fd = new FormData();
+  fd.append('disrupcion_ids[]', disId);
+  fetch('{{ url_for("estudiante.marcar_disrupcion_fin_vista") }}', {
+    method: 'POST',
+    body: fd,
+    headers: {'X-Requested-With': 'XMLHttpRequest'}
+  });
+}
+
+function cerrarToastFin(disId) {
+  var t = document.getElementById('toastFinDisrupcion' + disId);
+  if (t) {
+    t.style.transition = 'opacity .4s';
+    t.style.opacity = '0';
+    setTimeout(function () { t.closest('.toast-container').remove(); }, 400);
+  }
+  marcarFinVisto(disId);
+}
+
+// Auto-dismiss after 15s con cuenta regresiva visible
+document.addEventListener('DOMContentLoaded', function () {
+  {% for dis_fin in disrupciones_finalizadas %}
+  (function () {
+    var disId = {{ dis_fin.id }};
+    var seconds = 15;
+    var timerEl = document.getElementById('toastTimer' + disId);
+    var interval = setInterval(function () {
+      seconds--;
+      if (timerEl) timerEl.textContent = seconds + 's';
+      if (seconds <= 0) {
+        clearInterval(interval);
+        cerrarToastFin(disId);
+      }
+    }, 1000);
+  })();
+  {% endfor %}
+});
+</script>
+
+{% endif %}

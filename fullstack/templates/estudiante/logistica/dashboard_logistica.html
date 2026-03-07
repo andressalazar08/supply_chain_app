@@ -177,7 +177,7 @@
                 </div>
                 <div class="text-end">
                     <div class="badge bg-primary fs-6 px-3 py-2">
-                        <i class="fas fa-calendar"></i> Día {{ simulacion.dia_actual }}
+                        <i class="fas fa-calendar"></i> Día {{ simulacion.dia_actual }} (Sem. {{ simulacion.semana_actual }})
                     </div>
                 </div>
             </div>
@@ -197,6 +197,11 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="transito-tab" data-bs-toggle="tab" data-bs-target="#transito" type="button" role="tab">
                         <i class="fas fa-route"></i> Stock en Tránsito
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="fillrate-tab" data-bs-toggle="tab" data-bs-target="#fillrate" type="button" role="tab">
+                        <i class="fas fa-chart-bar"></i> Fill Rate por Región
                     </button>
                 </li>
             </ul>
@@ -323,6 +328,45 @@
                     </div>
                 </div>
 
+                <!-- TAB 4: Fill Rate por Región -->
+                <div class="tab-pane fade" id="fillrate" role="tabpanel">
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <h4><i class="fas fa-chart-bar"></i> Fill Rate por Región</h4>
+                            <p class="text-muted">Porcentaje de demanda atendida en cada región (histórico acumulado)</p>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-7 mb-4">
+                            <div class="card">
+                                <div class="card-header bg-white">
+                                    <h5><i class="fas fa-percentage"></i> Fill Rate (%)</h5>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="chartFillRate" height="120"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-5 mb-4">
+                            <div class="card">
+                                <div class="card-header bg-white">
+                                    <h5><i class="fas fa-table"></i> Detalle por Región</h5>
+                                </div>
+                                <div class="card-body p-0">
+                                    <table class="table table-sm mb-0" id="tablaFillRate">
+                                        <thead class="table-light">
+                                            <tr><th>Región</th><th class="text-center">Fill Rate</th><th class="text-center">Vendidas</th><th class="text-center">Perdidas</th></tr>
+                                        </thead>
+                                        <tbody id="tablaFillRateBody">
+                                            <tr><td colspan="4" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -336,6 +380,11 @@ document.addEventListener('DOMContentLoaded', function() {
     cargarStock();
     cargarMatrizDespachos();
     cargarTransito();
+
+    // Cargar fill rate cuando se abre ese tab
+    document.getElementById('fillrate-tab').addEventListener('shown.bs.tab', function() {
+        cargarFillRate();
+    });
     
     // Configurar submit del formulario
     const form = document.getElementById('despachoForm');
@@ -709,7 +758,7 @@ function mostrarComprasTransito(compras) {
                     </div>
                     <div class="col-md-3 text-center">
                         <div class="badge bg-info px-3 py-2">
-                            <i class="fas fa-calendar-check"></i> Día ${compra.dia_entrega}
+                            <i class="fas fa-calendar-check"></i> Semana ${compra.semana_entrega}
                         </div>
                     </div>
                 </div>
@@ -746,7 +795,7 @@ function mostrarDespachosTransito(despachos) {
                     </div>
                     <div class="col-md-4 text-center">
                         <div class="badge bg-purple px-3 py-2">
-                            <i class="fas fa-truck"></i> Llegada: Día ${despacho.dia_llegada}
+                            <i class="fas fa-truck"></i> Llegada: Semana ${despacho.semana_llegada}
                         </div>
                     </div>
                 </div>
@@ -755,6 +804,60 @@ function mostrarDespachosTransito(despachos) {
     });
     
     container.innerHTML = html;
+}
+
+// ========== TAB 4: FILL RATE POR REGIÓN ==========
+let chartFillRate = null;
+async function cargarFillRate() {
+    try {
+        const response = await fetch('/estudiante/api/logistica/fill-rate-region');
+        const data = await response.json();
+
+        // Gráfica de barras
+        const ctx = document.getElementById('chartFillRate');
+        if (ctx) {
+            if (chartFillRate) chartFillRate.destroy();
+            const bgColors = data.fill_rates.map(r => r >= 90 ? '#2ecc71' : r >= 70 ? '#f39c12' : '#e74c3c');
+            chartFillRate = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.regiones,
+                    datasets: [{
+                        label: 'Fill Rate (%)',
+                        data: data.fill_rates,
+                        backgroundColor: bgColors,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, max: 100, title: { display: true, text: 'Fill Rate (%)' } }
+                    }
+                }
+            });
+        }
+
+        // Tabla detalle
+        const tbody = document.getElementById('tablaFillRateBody');
+        if (tbody) {
+            let html = '';
+            data.regiones.forEach((region, i) => {
+                const fr = data.fill_rates[i];
+                const badge = fr >= 90 ? 'success' : fr >= 70 ? 'warning' : 'danger';
+                html += `<tr>
+                    <td>${region}</td>
+                    <td class="text-center"><span class="badge bg-${badge}">${fr}%</span></td>
+                    <td class="text-center">${data.ventas_totales[i].toLocaleString()}</td>
+                    <td class="text-center text-danger">${data.ventas_perdidas[i].toLocaleString()}</td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('Error cargando fill rate:', error);
+    }
 }
 </script>
 {% endblock %}

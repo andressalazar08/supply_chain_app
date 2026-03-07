@@ -1,4 +1,4 @@
-"""
+﻿"""
 Utilidades para el módulo de Logística
 Funciones para gestión de recepciones, despachos y distribución regional
 """
@@ -174,7 +174,7 @@ def analizar_cobertura_regional(inventario_regional: Dict[str, float],
         
         # Calcular demanda diaria promedio
         total_vendido = sum(v.cantidad_vendida for v in ventas)
-        dias_historico = len(set(v.dia_simulacion for v in ventas))
+        dias_historico = len(set(v.semana_simulacion for v in ventas))
         demanda_diaria = total_vendido / dias_historico if dias_historico > 0 else 0
         
         # Calcular días de cobertura
@@ -302,8 +302,8 @@ def calcular_eficiencia_despacho(despachos_realizados: List,
     entregas_a_tiempo = 0
     
     for despacho in despachos_realizados:
-        if hasattr(despacho, 'dia_entrega') and hasattr(despacho, 'dia_despacho'):
-            tiempo = despacho.dia_entrega - despacho.dia_despacho
+        if hasattr(despacho, 'semana_entrega') and hasattr(despacho, 'semana_despacho'):
+            tiempo = despacho.semana_entrega - despacho.semana_despacho
             tiempos.append(tiempo)
             
             tiempo_esperado_region = calcular_tiempo_entrega_region(despacho.region)

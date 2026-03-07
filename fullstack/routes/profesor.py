@@ -1,22 +1,16 @@
-"""
+﻿"""
 Rutas para el rol Profesor (Administrador)
 """
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
-from models import (Usuario, Empresa, Simulacion, Inventario, Venta, Compra, Decision, Escenario, 
-                    Metrica, Producto, DisrupcionActiva, MovimientoInventario, DespachoRegional, 
-                    RequerimientoCompra, Pronostico)
+from models import (Usuario, Empresa, Simulacion, Inventario, Venta, Compra, Decision,
+                    Metrica, Producto, MovimientoInventario, DespachoRegional,
+                    RequerimientoCompra, Pronostico, DisrupcionEmpresa)
 from extensions import db
 from datetime import datetime
 import random
-from utils.disrupciones import (
-    obtener_disrupciones_disponibles,
-    crear_disrupcion_parametros,
-    obtener_disrupciones_activas_empresa,
-    REGIONES_COLOMBIA
-)
 from utils.procesamiento_dias import (
     avanzar_simulacion,
     obtener_resumen_simulacion
@@ -64,7 +58,8 @@ def dashboard():
         # Crear simulación por defecto si no existe ninguna activa
         simulacion = Simulacion(
             nombre='Simulación 1',
-            dia_actual=1, 
+            semana_actual=1,
+            dia_actual=1,
             estado='pausado',
             activa=True,
             capital_inicial_empresas=50000000.0
@@ -77,13 +72,21 @@ def dashboard():
     total_estudiantes = Usuario.query.filter(Usuario.rol != 'admin').count()
     
     # Obtener métricas del día actual
-    metricas_dia = Metrica.query.filter_by(dia_simulacion=simulacion.dia_actual).all()
+    metricas_dia = Metrica.query.filter_by(semana_simulacion=simulacion.dia_actual).all()
     
+    # Disrupciones de la simulacion activa para panel de seguimiento
+    from utils.catalogo_disrupciones import get_disrupcion
+    disrupciones_sim = DisrupcionEmpresa.query.filter_by(
+        simulacion_id=simulacion.id
+    ).order_by(DisrupcionEmpresa.empresa_id, DisrupcionEmpresa.semana_inicio).all()
+
     return render_template('profesor/dashboard.html',
                          simulacion=simulacion,
                          empresas=empresas,
                          total_estudiantes=total_estudiantes,
-                         metricas_dia=metricas_dia)
+                         metricas_dia=metricas_dia,
+                         disrupciones_sim=disrupciones_sim,
+                         get_disrupcion=get_disrupcion)
 
 
 @bp.route('/control-simulacion', methods=['POST'])
@@ -131,12 +134,7 @@ def control_simulacion():
                 if resumen:
                     flash(f"📊 Procesadas {resumen['total_ventas']} ventas, {resumen['total_compras_recibidas']} compras recibidas, {resumen['total_despachos_entregados']} despachos entregados", 'info')
                     
-                    # Mostrar alertas críticas
-                    if resumen['alertas']:
-                        for empresa_alertas in resumen['alertas']:
-                            alertas_criticas = [a for a in empresa_alertas['alertas'] if a['tipo'] == 'critico']
-                            if alertas_criticas:
-                                flash(f"⚠️ {empresa_alertas['empresa']}: {len(alertas_criticas)} alertas críticas de inventario", 'warning')
+
             else:
                 flash(mensaje, 'error')
     
@@ -164,8 +162,14 @@ def reiniciar_simulacion_endpoint():
             flash('⚠️ El capital inicial debe ser al menos $1,000,000', 'warning')
             return redirect(url_for('profesor.dashboard'))
         
+        # Parámetros de inventario inicial
+        inv_750ml = int(request.form.get('inv_750ml', 120))
+        inv_1l = int(request.form.get('inv_1l', 80))
+
         # Ejecutar reinicio
-        nueva_sim, mensaje = reiniciar_simulacion(capital_inicial, nombre_simulacion)
+        nueva_sim, mensaje = reiniciar_simulacion(
+            capital_inicial, nombre_simulacion, inv_750ml, inv_1l
+        )
         
         if nueva_sim:
             flash(f'✅ {mensaje}', 'success')
@@ -194,6 +198,7 @@ def api_historial_simulaciones():
             simulaciones_data.append({
                 'id': sim.id,
                 'nombre': sim.nombre,
+                'semana_actual': sim.semana_actual,
                 'dia_actual': sim.dia_actual,
                 'estado': sim.estado,
                 'activa': sim.activa,
@@ -391,8 +396,11 @@ def eliminar_empresa(id):
         
         # 9. Inventarios
         Inventario.query.filter_by(empresa_id=id).delete()
-        
-        # 10. Finalmente eliminar la empresa
+
+        # 10. Disrupciones
+        DisrupcionEmpresa.query.filter_by(empresa_id=id).delete()
+
+        # 11. Finalmente eliminar la empresa
         db.session.delete(empresa)
         db.session.commit()
         
@@ -418,14 +426,14 @@ def reportes_empresa(id):
     estudiantes = empresa.estudiantes
     
     # Obtener todas las decisiones de la empresa
-    decisiones = Decision.query.filter_by(empresa_id=id).order_by(Decision.dia_simulacion.desc(), Decision.created_at.desc()).all()
+    decisiones = Decision.query.filter_by(empresa_id=id).order_by(Decision.semana_simulacion.desc(), Decision.created_at.desc()).all()
     
     # Obtener métricas por día
-    metricas_dias = Metrica.query.filter_by(empresa_id=id).order_by(Metrica.dia_simulacion.asc()).all()
+    metricas_dias = Metrica.query.filter_by(empresa_id=id).order_by(Metrica.semana_simulacion.asc()).all()
     
     # Calcular estadísticas generales
     total_decisiones = len(decisiones)
-    dias_activos = len(set(d.dia_simulacion for d in decisiones)) if decisiones else 0
+    dias_activos = len(set(d.semana_simulacion for d in decisiones)) if decisiones else 0
     
     # Agrupar decisiones por rol
     decisiones_por_rol = {}
@@ -446,7 +454,7 @@ def reportes_empresa(id):
             decisiones_por_rol[estudiante.rol]['total_decisiones'] += len(decisiones_est)
             
             if decisiones_est:
-                ultimo_dia = max(d.dia_simulacion for d in decisiones_est)
+                ultimo_dia = max(d.semana_simulacion for d in decisiones_est)
                 if ultimo_dia > decisiones_por_rol[estudiante.rol]['ultimo_dia']:
                     decisiones_por_rol[estudiante.rol]['ultimo_dia'] = ultimo_dia
     
@@ -461,8 +469,41 @@ def reportes_empresa(id):
         decisiones_estudiantes[estudiante.id] = [d for d in decisiones if d.usuario_id == estudiante.id]
     
     # Decisiones para timeline (ordenadas por fecha)
-    decisiones_timeline = sorted(decisiones, key=lambda x: (x.dia_simulacion, x.created_at), reverse=True)[:100]  # Últimas 100
-    
+    decisiones_timeline = sorted(decisiones, key=lambda x: (x.semana_simulacion, x.created_at), reverse=True)[:100]
+
+    # --- Datos operativos enriquecidos ---
+    # Inventario actual
+    inventarios = Inventario.query.filter_by(empresa_id=id).all()
+
+    # Ventas agrupadas por producto
+    ventas_todas = Venta.query.filter_by(empresa_id=id).all()
+    ventas_por_producto = {}
+    for v in ventas_todas:
+        pid = v.producto_id
+        if pid not in ventas_por_producto:
+            ventas_por_producto[pid] = {
+                'nombre': v.producto.nombre if v.producto else f'Producto {pid}',
+                'unidades_vendidas': 0,
+                'unidades_perdidas': 0,
+                'ingresos': 0.0,
+            }
+        ventas_por_producto[pid]['unidades_vendidas'] += v.cantidad_vendida
+        ventas_por_producto[pid]['unidades_perdidas'] += v.cantidad_perdida
+        ventas_por_producto[pid]['ingresos'] += v.ingreso_total
+
+    # Resumen financiero acumulado
+    total_ingresos = sum(m.ingresos for m in metricas_dias)
+    total_costos   = sum(m.costos   for m in metricas_dias)
+    total_utilidad = sum(m.utilidad for m in metricas_dias)
+    # nivel_servicio en Metrica ya es el acumulado hasta esa semana.
+    # El valor correcto es el de la ÚLTIMA semana registrada (ya acumula todo el historial).
+    nivel_servicio_promedio = metricas_dias[-1].nivel_servicio if metricas_dias else 0
+
+    # Compras activas (en tránsito)
+    compras_activas = Compra.query.filter_by(
+        empresa_id=id, estado='en_transito'
+    ).order_by(Compra.semana_entrega.asc()).all()
+
     return render_template('profesor/reportes_empresa.html',
                          empresa=empresa,
                          estudiantes=estudiantes,
@@ -471,15 +512,14 @@ def reportes_empresa(id):
                          decisiones_por_rol=decisiones_por_rol,
                          decisiones_estudiantes=decisiones_estudiantes,
                          decisiones_timeline=decisiones_timeline,
-                         metricas_dias=metricas_dias)
-
-
-@bp.route('/escenarios/activar/<int:escenario_id>', methods=['POST'])
-@login_required
-@admin_required
-def activar_escenario(escenario_id):
-    """Activar o desactivar un escenario (DEPRECATED - usa nueva API)"""
-    return redirect(url_for('profesor.gestion_escenarios'))
+                         metricas_dias=metricas_dias,
+                         inventarios=inventarios,
+                         ventas_por_producto=ventas_por_producto,
+                         total_ingresos=total_ingresos,
+                         total_costos=total_costos,
+                         total_utilidad=total_utilidad,
+                         nivel_servicio_promedio=nivel_servicio_promedio,
+                         compras_activas=compras_activas)
 
 
 @bp.route('/reportes')
@@ -495,7 +535,7 @@ def ver_reportes():
     for empresa in empresas:
         metricas = Metrica.query.filter_by(
             empresa_id=empresa.id,
-            dia_simulacion=simulacion.dia_actual
+            semana_simulacion=simulacion.dia_actual
         ).first()
         
         metricas_empresas.append({
@@ -513,12 +553,12 @@ def ver_reportes():
 @admin_required
 def api_metricas_empresa(empresa_id):
     """API para obtener métricas de una empresa"""
-    metricas = Metrica.query.filter_by(empresa_id=empresa_id).order_by(Metrica.dia_simulacion).all()
+    metricas = Metrica.query.filter_by(empresa_id=empresa_id).order_by(Metrica.semana_simulacion).all()
     
     datos = []
     for metrica in metricas:
         datos.append({
-            'dia': metrica.dia_simulacion,
+            'dia': metrica.semana_simulacion,
             'ingresos': metrica.ingresos,
             'costos': metrica.costos,
             'utilidad': metrica.utilidad,
@@ -527,305 +567,6 @@ def api_metricas_empresa(empresa_id):
         })
     
     return jsonify(datos)
-
-
-def procesar_dia(dia_actual):
-    """
-    Procesa todos los eventos del día:
-    - Genera demanda
-    - Procesa ventas
-    - Actualiza inventarios
-    - Recibe órdenes de compra
-    - Calcula métricas
-    """
-    empresas = Empresa.query.filter_by(activa=True).all()
-    productos = Producto.query.filter_by(activo=True).all()
-    
-    # Regiones de Colombia
-    regiones = ['Caribe', 'Pacifica', 'Orinoquia', 'Amazonia', 'Andina']
-    canales = ['retail', 'mayorista', 'distribuidor']
-    
-    # Factores de demanda por región (población relativa)
-    factor_regional = {
-        'Caribe': 0.9,
-        'Pacifica': 0.85,
-        'Orinoquia': 0.7,
-        'Amazonia': 0.6,
-        'Andina': 1.2  # Región más poblada
-    }
-    
-    for empresa in empresas:
-        for producto in productos:
-            # Generar ventas en múltiples regiones
-            num_regiones = random.randint(2, 4)  # Vende en 2-4 regiones por día
-            regiones_activas = random.sample(regiones, num_regiones)
-            
-            for region in regiones_activas:
-                # Generar demanda regional con factor de ajuste
-                demanda_base = producto.demanda_promedio * factor_regional[region]
-                
-                # Aplicar elasticidad del precio
-                factor_precio = 1.0
-                if hasattr(producto, 'precio_actual') and hasattr(producto, 'precio_base'):
-                    variacion_precio = (producto.precio_actual - producto.precio_base) / producto.precio_base
-                    factor_precio = 1 - (variacion_precio * producto.elasticidad_precio)
-                
-                demanda_ajustada = demanda_base * factor_precio
-                demanda = max(1, int(random.gauss(demanda_ajustada, producto.desviacion_demanda)))
-                
-                # Verificar inventario
-                inventario = Inventario.query.filter_by(
-                    empresa_id=empresa.id,
-                    producto_id=producto.id
-                ).first()
-                
-                if inventario:
-                    cantidad_vendida = min(demanda, inventario.cantidad_actual)
-                    cantidad_perdida = demanda - cantidad_vendida
-                    
-                    # Precio con pequeña variación por canal
-                    precio_base = producto.precio_actual if hasattr(producto, 'precio_actual') else producto.precio_base
-                    canal = random.choice(canales)
-                    factor_canal = {'retail': 1.0, 'mayorista': 0.9, 'distribuidor': 0.85}
-                    precio_unitario = precio_base * factor_canal[canal]
-                    
-                    ingreso_total = cantidad_vendida * precio_unitario
-                    margen = ((precio_unitario - producto.costo_unitario) / precio_unitario * 100) if precio_unitario > 0 else 0
-                    
-                    # Registrar venta
-                    venta = Venta(
-                        empresa_id=empresa.id,
-                        producto_id=producto.id,
-                        dia_simulacion=dia_actual,
-                        region=region,
-                        canal=canal,
-                        cantidad_solicitada=demanda,
-                        cantidad_vendida=cantidad_vendida,
-                        cantidad_perdida=cantidad_perdida,
-                        precio_unitario=precio_unitario,
-                        ingreso_total=ingreso_total,
-                        costo_unitario=producto.costo_unitario,
-                        margen=margen
-                    )
-                    db.session.add(venta)
-                    
-                    # Actualizar inventario
-                    inventario.cantidad_actual -= cantidad_vendida
-        
-        # Procesar órdenes de compra que llegan este día
-        compras_pendientes = Compra.query.filter_by(
-            empresa_id=empresa.id,
-            dia_entrega=dia_actual,
-            estado='en_transito'
-        ).all()
-        
-        for compra in compras_pendientes:
-            inventario = Inventario.query.filter_by(
-                empresa_id=empresa.id,
-                producto_id=compra.producto_id
-            ).first()
-            
-            if inventario:
-                inventario.cantidad_actual += compra.cantidad
-            
-            compra.estado = 'entregado'
-    
-    db.session.commit()
-    
-    # Calcular métricas del día
-    calcular_metricas(dia_actual)
-
-
-def calcular_metricas(dia_actual):
-    """Calcula las métricas de desempeño para todas las empresas"""
-    empresas = Empresa.query.filter_by(activa=True).all()
-    
-    for empresa in empresas:
-        # Calcular ingresos del día
-        ventas_dia = Venta.query.filter_by(
-            empresa_id=empresa.id,
-            dia_simulacion=dia_actual
-        ).all()
-        
-        ingresos = sum([v.ingreso_total for v in ventas_dia])
-        
-        # Calcular costos del día
-        compras_dia = Compra.query.filter_by(
-            empresa_id=empresa.id,
-            dia_orden=dia_actual
-        ).all()
-        
-        costos = sum([c.costo_total for c in compras_dia])
-        
-        # Calcular nivel de servicio
-        total_solicitado = sum([v.cantidad_solicitada for v in ventas_dia])
-        total_vendido = sum([v.cantidad_vendida for v in ventas_dia])
-        nivel_servicio = (total_vendido / total_solicitado * 100) if total_solicitado > 0 else 100
-        
-        # Crear registro de métrica
-        metrica = Metrica(
-            empresa_id=empresa.id,
-            dia_simulacion=dia_actual,
-            ingresos=ingresos,
-            costos=costos,
-            utilidad=ingresos - costos,
-            nivel_servicio=nivel_servicio
-        )
-        
-        db.session.add(metrica)
-    
-    db.session.commit()
-
-
-@bp.route('/escenarios')
-@login_required
-@admin_required
-def gestion_escenarios():
-    """Panel de gestión de disrupciones y escenarios"""
-    simulacion = Simulacion.query.filter_by(activa=True).first()
-    
-    # Obtener disrupciones activas
-    disrupciones_activas = DisrupcionActiva.query.filter_by(
-        simulacion_id=simulacion.id,
-        activo=True
-    ).filter(
-        DisrupcionActiva.dia_fin >= simulacion.dia_actual
-    ).order_by(DisrupcionActiva.dia_inicio.desc()).all()
-    
-    # Obtener histórico de disrupciones
-    disrupciones_historico = DisrupcionActiva.query.filter_by(
-        simulacion_id=simulacion.id
-    ).filter(
-        DisrupcionActiva.dia_fin < simulacion.dia_actual
-    ).order_by(DisrupcionActiva.created_at.desc()).limit(20).all()
-    
-    # Obtener catálogo de disrupciones disponibles
-    catalogo = obtener_disrupciones_disponibles()
-    
-    # Obtener productos y empresas para los filtros
-    productos = Producto.query.all()
-    empresas = Empresa.query.filter_by(activa=True).all()
-    
-    return render_template('profesor/escenarios.html',
-                         simulacion=simulacion,
-                         disrupciones_activas=disrupciones_activas,
-                         disrupciones_historico=disrupciones_historico,
-                         catalogo=catalogo,
-                         productos=productos,
-                         empresas=empresas,
-                         regiones=REGIONES_COLOMBIA)
-
-
-@bp.route('/escenarios/activar', methods=['POST'])
-@login_required
-@admin_required
-def activar_disrupcion():
-    """Activa una nueva disrupción en la simulación"""
-    simulacion = Simulacion.query.filter_by(activa=True).first()
-    
-    tipo_disrupcion = request.form.get('tipo_disrupcion')
-    severidad = request.form.get('severidad')
-    nombre_custom = request.form.get('nombre_custom')
-    razon_custom = request.form.get('razon_custom')
-    duracion_dias = int(request.form.get('duracion_dias', 7))
-    visible = request.form.get('visible_estudiantes') == 'on'
-    
-    # Productos afectados (opcional)
-    productos_ids = request.form.getlist('productos[]')
-    productos_ids = [int(p) for p in productos_ids if p]
-    
-    # Regiones afectadas (opcional)
-    regiones = request.form.getlist('regiones[]')
-    
-    # Empresas afectadas (opcional - null = todas)
-    empresas_ids = request.form.getlist('empresas[]')
-    empresas_ids = [int(e) for e in empresas_ids if e] if empresas_ids else None
-    
-    try:
-        # Crear parámetros de la disrupción
-        config = crear_disrupcion_parametros(
-            tipo_disrupcion=tipo_disrupcion,
-            severidad=severidad,
-            productos=productos_ids if productos_ids else None,
-            regiones=regiones if regiones else None,
-            razon=razon_custom
-        )
-        
-        # Crear la disrupción
-        disrupcion = DisrupcionActiva(
-            simulacion_id=simulacion.id,
-            profesor_id=current_user.id,
-            nombre=nombre_custom if nombre_custom else config['nombre'],
-            tipo_disrupcion=tipo_disrupcion,
-            descripcion=config['descripcion'],
-            icono=config['icono'],
-            dia_inicio=simulacion.dia_actual,
-            dia_fin=simulacion.dia_actual + duracion_dias,
-            activo=True,
-            parametros=config['parametros'],
-            severidad=severidad,
-            visible_estudiantes=visible,
-            empresas_afectadas=empresas_ids
-        )
-        
-        db.session.add(disrupcion)
-        db.session.commit()
-        
-        flash(f'✅ Disrupción "{disrupcion.nombre}" activada exitosamente desde el día {simulacion.dia_actual} hasta el día {disrupcion.dia_fin}', 'success')
-        
-    except Exception as e:
-        db.session.rollback()
-        flash(f'❌ Error al activar disrupción: {str(e)}', 'error')
-    
-    return redirect(url_for('profesor.gestion_escenarios'))
-
-
-@bp.route('/escenarios/desactivar/<int:disrupcion_id>', methods=['POST'])
-@login_required
-@admin_required
-def desactivar_disrupcion(disrupcion_id):
-    """Desactiva una disrupción activa"""
-    disrupcion = DisrupcionActiva.query.get_or_404(disrupcion_id)
-    
-    disrupcion.activo = False
-    disrupcion.dia_fin = Simulacion.query.first().dia_actual - 1
-    
-    db.session.commit()
-    
-    flash(f'🔴 Disrupción "{disrupcion.nombre}" desactivada', 'info')
-    return redirect(url_for('profesor.gestion_escenarios'))
-
-
-@bp.route('/escenarios/eliminar/<int:disrupcion_id>', methods=['POST'])
-@login_required
-@admin_required
-def eliminar_disrupcion(disrupcion_id):
-    """Elimina una disrupción del histórico"""
-    disrupcion = DisrupcionActiva.query.get_or_404(disrupcion_id)
-    
-    db.session.delete(disrupcion)
-    db.session.commit()
-    
-    flash(f'🗑️ Disrupción "{disrupcion.nombre}" eliminada del histórico', 'info')
-    return redirect(url_for('profesor.gestion_escenarios'))
-
-
-@bp.route('/escenarios/plantilla/<tipo>/<severidad>')
-@login_required
-@admin_required
-def obtener_plantilla_disrupcion(tipo, severidad):
-    """API para obtener la plantilla de una disrupción"""
-    try:
-        config = crear_disrupcion_parametros(tipo, severidad)
-        return jsonify({
-            'success': True,
-            'config': config
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
 
 
 @bp.route('/resumen-simulacion')
@@ -1234,4 +975,58 @@ def eliminar_profesor(id):
     
     flash(f'Profesor eliminado. {len(estudiantes)} estudiantes y {len(empresas)} empresas reasignados', 'info')
     return jsonify({'success': True})
+
+
+@bp.route('/api/market-share')
+@login_required
+@admin_required
+def api_market_share():
+    """API: Cuota de mercado por empresa (para el administrador/profesor)"""
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    if not simulacion:
+        return jsonify({'error': 'No hay simulación activa'}), 404
+
+    empresas = Empresa.query.filter_by(simulacion_id=simulacion.id, activa=True).all()
+    dia_actual = simulacion.dia_actual
+
+    nombres = []
+    market_shares = []
+    capitales = []
+    niveles_servicio = []
+
+    for empresa in empresas:
+        metrica = Metrica.query.filter_by(
+            empresa_id=empresa.id,
+            semana_simulacion=dia_actual - 1
+        ).first()
+        if not metrica:
+            metrica = Metrica.query.filter_by(
+                empresa_id=empresa.id
+            ).order_by(Metrica.semana_simulacion.desc()).first()
+
+        nombres.append(empresa.nombre)
+        market_shares.append(metrica.market_share if metrica else 0)
+        capitales.append(round(empresa.capital_actual, 0))
+        niveles_servicio.append(round(metrica.nivel_servicio, 1) if metrica else 0)
+
+    # Evolución de market share: últimos 30 días
+    ultimo_dia = dia_actual - 1
+    primer_dia = max(1, ultimo_dia - 29)
+    dias_evolucion = list(range(primer_dia, ultimo_dia + 1))
+    evolucion = {}
+    for empresa in empresas:
+        shares_evol = []
+        for dia in dias_evolucion:
+            m = Metrica.query.filter_by(empresa_id=empresa.id, semana_simulacion=dia).first()
+            shares_evol.append(m.market_share if m else 0)
+        evolucion[empresa.nombre] = shares_evol
+
+    return jsonify({
+        'empresas': nombres,
+        'market_share': market_shares,
+        'capitales': capitales,
+        'niveles_servicio': niveles_servicio,
+        'evolucion_dias': dias_evolucion,
+        'evolucion': evolucion
+    })
 

@@ -14,21 +14,29 @@
     
     <hr class="bg-light mx-3">
     
+    {% if current_user.rol == 'ventas' %}
     <a href="{{ url_for('estudiante.dashboard_ventas') }}" class="{{ 'active' if 'ventas' in request.endpoint else '' }}">
         <i class="fas fa-chart-line me-2"></i>Ventas
     </a>
+    {% endif %}
     
+    {% if current_user.rol == 'planeacion' %}
     <a href="{{ url_for('estudiante.dashboard_planeacion') }}" class="{{ 'active' if 'planeacion' in request.endpoint else '' }}">
         <i class="fas fa-calendar-alt me-2"></i>Planeación
     </a>
+    {% endif %}
     
+    {% if current_user.rol == 'compras' %}
     <a href="{{ url_for('estudiante.dashboard_compras') }}" class="{{ 'active' if 'compras' in request.endpoint else '' }}">
         <i class="fas fa-shopping-cart me-2"></i>Compras
     </a>
+    {% endif %}
     
+    {% if current_user.rol == 'logistica' %}
     <a href="{{ url_for('estudiante.dashboard_logistica') }}" class="{{ 'active' if 'logistica' in request.endpoint else '' }}">
         <i class="fas fa-warehouse me-2"></i>Logística
     </a>
+    {% endif %}
     
     <hr class="bg-light mx-3">
     

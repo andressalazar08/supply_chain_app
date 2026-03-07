@@ -1,4 +1,4 @@
-"""
+﻿"""
 Funciones para cálculos de inventario y gestión de compras
 """
 
@@ -17,16 +17,11 @@ def calcular_consumo_diario(ventas: List, dias: int = 7) -> float:
     Returns:
         Consumo promedio por día
     """
-    if not ventas:
+    if not ventas or dias <= 0:
         return 0.0
     
-    total_vendido = sum([v.cantidad_vendida for v in ventas])
-    dias_unicos = len(set([v.dia_simulacion for v in ventas]))
-    
-    if dias_unicos == 0:
-        return 0.0
-    
-    return total_vendido / dias_unicos
+    total_vendido = sum(v.cantidad_vendida for v in ventas)
+    return total_vendido / dias
 
 
 def calcular_dias_cobertura(stock_actual: float, consumo_diario: float) -> float:

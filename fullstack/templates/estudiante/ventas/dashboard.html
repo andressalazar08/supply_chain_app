@@ -138,7 +138,7 @@
                 </div>
                 <div class="text-end">
                     <div class="badge bg-primary fs-6 px-3 py-2">
-                        <i class="fas fa-calendar"></i> Día {{ simulacion.dia_actual }}
+                        <i class="fas fa-calendar"></i> Día {{ simulacion.dia_actual }} (Sem. {{ simulacion.semana_actual }})
                     </div>
                 </div>
             </div>
@@ -242,6 +242,28 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Demanda de Mercado vs Ventas -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h5><i class="fas fa-chart-line"></i> Demanda de Mercado vs Ventas Reales</h5>
+                                        <small class="text-muted">Demanda total del mercado, cuota asignada a tu empresa y ventas efectivas</small>
+                                    </div>
+                                    <select id="diasDemandaMercado" class="form-select form-select-sm" style="width:120px;" onchange="cargarDemandaMercado()">
+                                        <option value="14">14 días</option>
+                                        <option value="30" selected>30 días</option>
+                                        <option value="60">60 días</option>
+                                    </select>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="chartDemandaMercado" height="90"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- TAB 2: Configuración de Precios -->
@@ -325,6 +347,7 @@ document.addEventListener('DOMContentLoaded', function() {
     cargarMatrizPrecios();
     cargarAnalisisRegional();
     cargarCompetitividad();
+    cargarDemandaMercado();
     
     // Submit form de precios
     document.getElementById('preciosForm').addEventListener('submit', function(e) {
@@ -641,6 +664,70 @@ async function cargarAnalisisRegional() {
         }
     } catch (error) {
         console.error('Error cargando análisis regional:', error);
+    }
+}
+
+// ========== DEMANDA DE MERCADO ==========
+let chartDemandaMercado = null;
+async function cargarDemandaMercado() {
+    try {
+        const dias = document.getElementById('diasDemandaMercado')?.value || 30;
+        const response = await fetch(`/estudiante/api/ventas/demanda-mercado?dias=${dias}`);
+        const data = await response.json();
+
+        const ctx = document.getElementById('chartDemandaMercado');
+        if (!ctx) return;
+
+        if (chartDemandaMercado) chartDemandaMercado.destroy();
+
+        chartDemandaMercado = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.dias,
+                datasets: [
+                    {
+                        label: 'Demanda Total Mercado',
+                        data: data.demanda_mercado,
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231,76,60,0.08)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Cuota Asignada a tu Empresa',
+                        data: data.cantidad_asignada,
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52,152,219,0.08)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Ventas Efectivas',
+                        data: data.cantidad_vendida,
+                        borderColor: '#2ecc71',
+                        backgroundColor: 'rgba(46,204,113,0.15)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: { mode: 'index', intersect: false }
+                },
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Unidades' } },
+                    x: { title: { display: true, text: 'Día de simulación' } }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error cargando demanda de mercado:', error);
     }
 }
 </script>
