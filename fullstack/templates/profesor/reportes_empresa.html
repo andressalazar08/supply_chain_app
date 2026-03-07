@@ -216,11 +216,44 @@
             </div>
         </div>
     </div>
-    
-    <!-- Tabs de Navegación -->
+
+    <!-- Resumen Financiero y Operativo -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="fas fa-arrow-up fa-2x text-success mb-2"></i>
+                <h3 class="text-success">${{ '{:,.0f}'.format(total_ingresos) }}</h3>
+                <p class="text-muted mb-0">Ingresos Acumulados</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="fas fa-arrow-down fa-2x text-danger mb-2"></i>
+                <h3 class="text-danger">${{ '{:,.0f}'.format(total_costos) }}</h3>
+                <p class="text-muted mb-0">Costos Acumulados</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="fas fa-balance-scale fa-2x {% if total_utilidad >= 0 %}text-success{% else %}text-danger{% endif %} mb-2"></i>
+                <h3 class="{% if total_utilidad >= 0 %}text-success{% else %}text-danger{% endif %}">${{ '{:,.0f}'.format(total_utilidad) }}</h3>
+                <p class="text-muted mb-0">Utilidad Acumulada</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="fas fa-percentage fa-2x text-warning mb-2"></i>
+                <h3 class="text-warning">{{ '%.1f'|format(nivel_servicio_promedio) }}%</h3>
+                <p class="text-muted mb-0">Nivel de Servicio Prom.</p>
+            </div>
+        </div>
+    </div>
     <div class="tabs-nav">
         <button class="tab-button active" onclick="cambiarTab('resumen')">
             <i class="fas fa-chart-pie me-2"></i>Resumen por Rol
+        </button>
+        <button class="tab-button" onclick="cambiarTab('operativo')">
+            <i class="fas fa-boxes me-2"></i>Estado Operativo
         </button>
         <button class="tab-button" onclick="cambiarTab('estudiantes')">
             <i class="fas fa-users me-2"></i>Por Estudiante
@@ -233,6 +266,135 @@
         </button>
     </div>
     
+    <!-- Tab: Estado Operativo -->
+    <div id="tab-operativo" class="tab-content">
+
+        <!-- Inventario actual -->
+        <div class="chart-container mb-4">
+            <h5><i class="fas fa-warehouse me-2"></i>Inventario Actual por Producto</h5>
+            {% if inventarios %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Producto</th>
+                            <th>Stock Actual</th>
+                            <th>Reservado</th>
+                            <th>Disponible</th>
+                            <th>Punto de Reorden</th>
+                            <th>Stock Seguridad</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for inv in inventarios %}
+                        {% set disponible = inv.cantidad_actual - inv.cantidad_reservada %}
+                        <tr>
+                            <td><strong>{{ inv.producto.nombre }}</strong></td>
+                            <td>{{ '{:,.0f}'.format(inv.cantidad_actual) }}</td>
+                            <td class="text-warning">{{ '{:,.0f}'.format(inv.cantidad_reservada) }}</td>
+                            <td class="{% if disponible <= inv.stock_seguridad %}text-danger fw-bold{% elif disponible <= inv.punto_reorden %}text-warning fw-bold{% else %}text-success{% endif %}">
+                                {{ '{:,.0f}'.format(disponible) }}
+                            </td>
+                            <td>{{ '{:,.0f}'.format(inv.punto_reorden) }}</td>
+                            <td>{{ '{:,.0f}'.format(inv.stock_seguridad) }}</td>
+                            <td>
+                                {% if disponible <= inv.stock_seguridad %}
+                                <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>Crítico</span>
+                                {% elif disponible <= inv.punto_reorden %}
+                                <span class="badge bg-warning text-dark"><i class="fas fa-exclamation me-1"></i>Bajo</span>
+                                {% else %}
+                                <span class="badge bg-success"><i class="fas fa-check me-1"></i>Normal</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">Sin datos de inventario.</p>
+            {% endif %}
+        </div>
+
+        <!-- Ventas por producto -->
+        <div class="chart-container mb-4">
+            <h5><i class="fas fa-shopping-cart me-2"></i>Ventas Acumuladas por Producto</h5>
+            {% if ventas_por_producto %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Producto</th>
+                            <th>Unidades Vendidas</th>
+                            <th>Unidades Perdidas</th>
+                            <th>Nivel de Cumplimiento</th>
+                            <th>Ingresos Generados</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pid, datos in ventas_por_producto.items() %}
+                        {% set total_demanda = datos.unidades_vendidas + datos.unidades_perdidas %}
+                        {% set cumplimiento = (datos.unidades_vendidas / total_demanda * 100) if total_demanda > 0 else 0 %}
+                        <tr>
+                            <td><strong>{{ datos.nombre }}</strong></td>
+                            <td class="text-success">{{ '{:,.0f}'.format(datos.unidades_vendidas) }}</td>
+                            <td class="text-danger">{{ '{:,.0f}'.format(datos.unidades_perdidas) }}</td>
+                            <td>
+                                <div class="progress" style="height: 22px;">
+                                    <div class="progress-bar bg-{{ 'success' if cumplimiento >= 90 else 'warning' if cumplimiento >= 70 else 'danger' }}"
+                                         style="width: {{ cumplimiento }}%">
+                                        {{ '%.1f'|format(cumplimiento) }}%
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="text-success">${{ '{:,.0f}'.format(datos.ingresos) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">Aún no hay ventas registradas.</p>
+            {% endif %}
+        </div>
+
+        <!-- Compras en tránsito -->
+        <div class="chart-container">
+            <h5><i class="fas fa-truck me-2"></i>Compras en Tránsito</h5>
+            {% if compras_activas %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Producto</th>
+                            <th>Cantidad</th>
+                            <th>Costo Unitario</th>
+                            <th>Costo Total</th>
+                            <th>Semana Orden</th>
+                            <th>Semana Entrega</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for compra in compras_activas %}
+                        <tr>
+                            <td><strong>{{ compra.producto.nombre if compra.producto else 'N/A' }}</strong></td>
+                            <td>{{ '{:,.0f}'.format(compra.cantidad) }}</td>
+                            <td>${{ '{:,.0f}'.format(compra.costo_unitario) }}</td>
+                            <td class="text-danger">${{ '{:,.0f}'.format(compra.costo_total) }}</td>
+                            <td>Semana {{ compra.semana_orden }}</td>
+                            <td><span class="badge bg-info">Semana {{ compra.semana_entrega }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">No hay compras en tránsito actualmente.</p>
+            {% endif %}
+        </div>
+    </div>
+
     <!-- Tab: Resumen por Rol -->
     <div id="tab-resumen" class="tab-content active">
         <div class="row">
@@ -565,7 +727,7 @@
     
     // Gráficos con Chart.js
     {% if metricas_dias %}
-    const dias = {{ metricas_dias|map(attribute='dia_simulacion')|list|tojson }};
+    const dias = {{ metricas_dias|map(attribute='semana_simulacion')|list|tojson }};
     const ingresos = {{ metricas_dias|map(attribute='ingresos')|list|tojson }};
     const costos = {{ metricas_dias|map(attribute='costos')|list|tojson }};
     const utilidades = {{ metricas_dias|map(attribute='utilidad')|list|tojson }};

@@ -40,7 +40,7 @@ CATALOGO_DISRUPCIONES = [
             'A': {
                 'titulo': 'Activar proveedor alterno inmediato',
                 'descripcion': (
-                    'Buscar un proveedor secundario que puede abastecer en 1 semana, '
+                    'Buscar un proveedor secundario que puede abastecer en 7 días, '
                     'pero con 20% mayor costo por unidad y pedido mínimo de 200 unidades.'
                 ),
                 'icono': 'fas fa-handshake',
@@ -48,7 +48,7 @@ CATALOGO_DISRUPCIONES = [
                 'efectos': {
                     'tipo': 'proveedor_alterno',
                     'costo_multiplicador': 1.20,
-                    'tiempo_entrega_override': 1,
+                    'tiempo_entrega_override': 7,
                     'pedido_minimo': 200,
                 },
             },
@@ -71,13 +71,13 @@ CATALOGO_DISRUPCIONES = [
                 'descripcion': (
                     'No realizar ajustes. '
                     'Las órdenes de compra pendientes del producto afectado '
-                    'se entregarán con 2 semanas adicionales de retraso.'
+                    'se entregarán con 14 días adicionales de retraso.'
                 ),
                 'icono': 'fas fa-clock',
                 'color': 'danger',
                 'efectos': {
                     'tipo': 'esperar',
-                    'delay_compras_pendientes': 2,
+                    'delay_compras_pendientes': 14,
                 },
             },
         },
@@ -177,7 +177,7 @@ CATALOGO_DISRUPCIONES = [
         'key': 'falla_flota',
         'nombre': 'Reducción de Capacidad Logística por Fallas en Flota',
         'semana_trigger': 8,
-        'duracion_semanas': 3,
+        'duracion_semanas': 2,
         'icono': 'fas fa-truck',
         'color': 'danger',
         'contexto_html': """
@@ -188,7 +188,7 @@ CATALOGO_DISRUPCIONES = [
                 <strong><i class="fas fa-exclamation-triangle me-1"></i>Situación actual:</strong>
                 <ul class="mb-0 mt-1">
                     <li>El <strong>40% de los vehículos</strong> quedan fuera de operación inmediata</li>
-                    <li>Tiempo estimado de reparación: <strong>2 semanas</strong></li>
+                    <li>Tiempo estimado de reparación: <strong>14 días</strong></li>
                     <li>Contratar transporte tercerizado implica un <strong>costo 30% mayor</strong> por envío</li>
                 </ul>
             </div>
@@ -210,7 +210,7 @@ CATALOGO_DISRUPCIONES = [
                 'descripcion': (
                     'Activar operador externo inmediatamente para cubrir el 100% de la capacidad. '
                     'Mantener todas las promesas de entrega. '
-                    'Incremento del 30% en costo logístico por envío durante 2 semanas.'
+                    'Incremento del 30% en costo logístico por envío durante 14 días.'
                 ),
                 'icono': 'fas fa-shipping-fast',
                 'color': 'success',
@@ -239,7 +239,7 @@ CATALOGO_DISRUPCIONES = [
                 'titulo': 'Operar solo con flota disponible (sin contratar externo)',
                 'descripcion': (
                     'Mantener operación únicamente con el 60% de flota disponible. '
-                    'Sin costos adicionales, pero todos los despachos se retrasan 1 semana '
+                    'Sin costos adicionales, pero todos los despachos se retrasan 7 días '
                     'mientras se repara la flota.'
                 ),
                 'icono': 'fas fa-pause-circle',
@@ -247,7 +247,85 @@ CATALOGO_DISRUPCIONES = [
                 'efectos': {
                     'tipo': 'costo_logistico',
                     'costo_multiplicador': 1.0,
-                    'delay_semanas': 1,
+                    'delay_semanas': 7,
+                },
+            },
+        },
+    },
+    {
+        'key': 'aumento_costos_compra',
+        'nombre': 'Aumento Repentino en Costos de Compra',
+        'semana_trigger': 11,
+        'duracion_semanas': 2,
+        'icono': 'fas fa-dollar-sign',
+        'color': 'danger',
+        'contexto_html': """
+            <p>El área de <strong>Compras</strong> recibe una comunicación urgente del proveedor principal:</p>
+            <blockquote class="fst-italic border-start border-4 border-danger ps-3 my-3 text-muted">
+                &ldquo;Debido al alza en costos de materias primas e insumos de producción,
+                nos vemos obligados a incrementar el precio de venta de nuestros productos
+                en un <strong>18%</strong> con vigencia inmediata. Esta medida aplica a todos
+                los nuevos pedidos a partir de la fecha.&rdquo;
+            </blockquote>
+            <p>Este proveedor suministra el <strong>producto más demandado</strong> del portafolio.</p>
+            <div class="alert alert-danger py-2 mt-2 mb-1">
+                <strong><i class="fas fa-exclamation-triangle me-1"></i>Impacto potencial:</strong>
+                <ul class="mb-0 mt-1">
+                    <li>Reducción directa del <strong>margen bruto</strong> si se absorbe el costo</li>
+                    <li>Riesgo de perder clientes si se traslada el aumento al precio de venta</li>
+                    <li>Posibilidad de buscar proveedor alterno con condiciones diferentes</li>
+                </ul>
+            </div>
+            <p class="text-muted small mt-2">Todo el equipo debe decidir cómo gestionar este incremento
+            de costos manteniendo la rentabilidad y el nivel de servicio.</p>
+        """,
+        'mensaje_fin': (
+            "✅ El proveedor ha informado que los costos de materias primas se han estabilizado. "
+            "Los precios de compra retornan a sus valores anteriores."
+        ),
+        'opciones': {
+            'A': {
+                'titulo': 'Absorber el aumento (mantener precio de venta)',
+                'descripcion': (
+                    'Asumir internamente el incremento del 18% en el costo de compra. '
+                    'El precio de venta al cliente se mantiene sin cambios. '
+                    'El margen por unidad se reduce durante la duración de la disrupción.'
+                ),
+                'icono': 'fas fa-hand-holding-usd',
+                'color': 'warning',
+                'efectos': {
+                    'tipo': 'costo_compra',
+                    'costo_multiplicador': 1.18,
+                },
+            },
+            'B': {
+                'titulo': 'Trasladar el aumento al precio de venta',
+                'descripcion': (
+                    'Ajustar el precio de venta del producto afectado en un +18% '
+                    'para mantener el margen. La demanda puede caer por elasticidad. '
+                    'El precio regresará a su valor original al finalizar la disrupción.'
+                ),
+                'icono': 'fas fa-tags',
+                'color': 'info',
+                'efectos': {
+                    'tipo': 'costo_compra_precio_venta',
+                    'precio_multiplicador': 1.18,
+                },
+            },
+            'C': {
+                'titulo': 'Activar proveedor alterno (menor costo, mayor plazo)',
+                'descripcion': (
+                    'Contratar un proveedor secundario con un costo 17.4% menor al original. '
+                    'Condiciones: pedido mínimo de 150 unidades y tiempo de entrega '
+                    '+7 días adicionales. El margen se protege a cambio de mayor inventario requerido.'
+                ),
+                'icono': 'fas fa-exchange-alt',
+                'color': 'success',
+                'efectos': {
+                    'tipo': 'costo_compra',
+                    'costo_multiplicador': 0.826,
+                    'delay_entrega': 7,
+                    'pedido_minimo': 150,
                 },
             },
         },

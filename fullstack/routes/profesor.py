@@ -58,7 +58,8 @@ def dashboard():
         # Crear simulación por defecto si no existe ninguna activa
         simulacion = Simulacion(
             nombre='Simulación 1',
-            semana_actual=1, 
+            semana_actual=1,
+            dia_actual=1,
             estado='pausado',
             activa=True,
             capital_inicial_empresas=50000000.0
@@ -71,7 +72,7 @@ def dashboard():
     total_estudiantes = Usuario.query.filter(Usuario.rol != 'admin').count()
     
     # Obtener métricas del día actual
-    metricas_dia = Metrica.query.filter_by(semana_simulacion=simulacion.semana_actual).all()
+    metricas_dia = Metrica.query.filter_by(semana_simulacion=simulacion.dia_actual).all()
     
     # Disrupciones de la simulacion activa para panel de seguimiento
     from utils.catalogo_disrupciones import get_disrupcion
@@ -133,12 +134,7 @@ def control_simulacion():
                 if resumen:
                     flash(f"📊 Procesadas {resumen['total_ventas']} ventas, {resumen['total_compras_recibidas']} compras recibidas, {resumen['total_despachos_entregados']} despachos entregados", 'info')
                     
-                    # Mostrar alertas críticas
-                    if resumen['alertas']:
-                        for empresa_alertas in resumen['alertas']:
-                            alertas_criticas = [a for a in empresa_alertas['alertas'] if a['tipo'] == 'critico']
-                            if alertas_criticas:
-                                flash(f"⚠️ {empresa_alertas['empresa']}: {len(alertas_criticas)} alertas críticas de inventario", 'warning')
+
             else:
                 flash(mensaje, 'error')
     
@@ -166,8 +162,14 @@ def reiniciar_simulacion_endpoint():
             flash('⚠️ El capital inicial debe ser al menos $1,000,000', 'warning')
             return redirect(url_for('profesor.dashboard'))
         
+        # Parámetros de inventario inicial
+        inv_750ml = int(request.form.get('inv_750ml', 120))
+        inv_1l = int(request.form.get('inv_1l', 80))
+
         # Ejecutar reinicio
-        nueva_sim, mensaje = reiniciar_simulacion(capital_inicial, nombre_simulacion)
+        nueva_sim, mensaje = reiniciar_simulacion(
+            capital_inicial, nombre_simulacion, inv_750ml, inv_1l
+        )
         
         if nueva_sim:
             flash(f'✅ {mensaje}', 'success')
@@ -197,6 +199,7 @@ def api_historial_simulaciones():
                 'id': sim.id,
                 'nombre': sim.nombre,
                 'semana_actual': sim.semana_actual,
+                'dia_actual': sim.dia_actual,
                 'estado': sim.estado,
                 'activa': sim.activa,
                 'fecha_inicio': sim.fecha_inicio.strftime('%Y-%m-%d %H:%M') if sim.fecha_inicio else None,
@@ -393,8 +396,11 @@ def eliminar_empresa(id):
         
         # 9. Inventarios
         Inventario.query.filter_by(empresa_id=id).delete()
-        
-        # 10. Finalmente eliminar la empresa
+
+        # 10. Disrupciones
+        DisrupcionEmpresa.query.filter_by(empresa_id=id).delete()
+
+        # 11. Finalmente eliminar la empresa
         db.session.delete(empresa)
         db.session.commit()
         
@@ -463,8 +469,41 @@ def reportes_empresa(id):
         decisiones_estudiantes[estudiante.id] = [d for d in decisiones if d.usuario_id == estudiante.id]
     
     # Decisiones para timeline (ordenadas por fecha)
-    decisiones_timeline = sorted(decisiones, key=lambda x: (x.semana_simulacion, x.created_at), reverse=True)[:100]  # Últimas 100
-    
+    decisiones_timeline = sorted(decisiones, key=lambda x: (x.semana_simulacion, x.created_at), reverse=True)[:100]
+
+    # --- Datos operativos enriquecidos ---
+    # Inventario actual
+    inventarios = Inventario.query.filter_by(empresa_id=id).all()
+
+    # Ventas agrupadas por producto
+    ventas_todas = Venta.query.filter_by(empresa_id=id).all()
+    ventas_por_producto = {}
+    for v in ventas_todas:
+        pid = v.producto_id
+        if pid not in ventas_por_producto:
+            ventas_por_producto[pid] = {
+                'nombre': v.producto.nombre if v.producto else f'Producto {pid}',
+                'unidades_vendidas': 0,
+                'unidades_perdidas': 0,
+                'ingresos': 0.0,
+            }
+        ventas_por_producto[pid]['unidades_vendidas'] += v.cantidad_vendida
+        ventas_por_producto[pid]['unidades_perdidas'] += v.cantidad_perdida
+        ventas_por_producto[pid]['ingresos'] += v.ingreso_total
+
+    # Resumen financiero acumulado
+    total_ingresos = sum(m.ingresos for m in metricas_dias)
+    total_costos   = sum(m.costos   for m in metricas_dias)
+    total_utilidad = sum(m.utilidad for m in metricas_dias)
+    # nivel_servicio en Metrica ya es el acumulado hasta esa semana.
+    # El valor correcto es el de la ÚLTIMA semana registrada (ya acumula todo el historial).
+    nivel_servicio_promedio = metricas_dias[-1].nivel_servicio if metricas_dias else 0
+
+    # Compras activas (en tránsito)
+    compras_activas = Compra.query.filter_by(
+        empresa_id=id, estado='en_transito'
+    ).order_by(Compra.semana_entrega.asc()).all()
+
     return render_template('profesor/reportes_empresa.html',
                          empresa=empresa,
                          estudiantes=estudiantes,
@@ -473,7 +512,14 @@ def reportes_empresa(id):
                          decisiones_por_rol=decisiones_por_rol,
                          decisiones_estudiantes=decisiones_estudiantes,
                          decisiones_timeline=decisiones_timeline,
-                         metricas_dias=metricas_dias)
+                         metricas_dias=metricas_dias,
+                         inventarios=inventarios,
+                         ventas_por_producto=ventas_por_producto,
+                         total_ingresos=total_ingresos,
+                         total_costos=total_costos,
+                         total_utilidad=total_utilidad,
+                         nivel_servicio_promedio=nivel_servicio_promedio,
+                         compras_activas=compras_activas)
 
 
 @bp.route('/reportes')
@@ -489,7 +535,7 @@ def ver_reportes():
     for empresa in empresas:
         metricas = Metrica.query.filter_by(
             empresa_id=empresa.id,
-            semana_simulacion=simulacion.semana_actual
+            semana_simulacion=simulacion.dia_actual
         ).first()
         
         metricas_empresas.append({
@@ -929,4 +975,58 @@ def eliminar_profesor(id):
     
     flash(f'Profesor eliminado. {len(estudiantes)} estudiantes y {len(empresas)} empresas reasignados', 'info')
     return jsonify({'success': True})
+
+
+@bp.route('/api/market-share')
+@login_required
+@admin_required
+def api_market_share():
+    """API: Cuota de mercado por empresa (para el administrador/profesor)"""
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    if not simulacion:
+        return jsonify({'error': 'No hay simulación activa'}), 404
+
+    empresas = Empresa.query.filter_by(simulacion_id=simulacion.id, activa=True).all()
+    dia_actual = simulacion.dia_actual
+
+    nombres = []
+    market_shares = []
+    capitales = []
+    niveles_servicio = []
+
+    for empresa in empresas:
+        metrica = Metrica.query.filter_by(
+            empresa_id=empresa.id,
+            semana_simulacion=dia_actual - 1
+        ).first()
+        if not metrica:
+            metrica = Metrica.query.filter_by(
+                empresa_id=empresa.id
+            ).order_by(Metrica.semana_simulacion.desc()).first()
+
+        nombres.append(empresa.nombre)
+        market_shares.append(metrica.market_share if metrica else 0)
+        capitales.append(round(empresa.capital_actual, 0))
+        niveles_servicio.append(round(metrica.nivel_servicio, 1) if metrica else 0)
+
+    # Evolución de market share: últimos 30 días
+    ultimo_dia = dia_actual - 1
+    primer_dia = max(1, ultimo_dia - 29)
+    dias_evolucion = list(range(primer_dia, ultimo_dia + 1))
+    evolucion = {}
+    for empresa in empresas:
+        shares_evol = []
+        for dia in dias_evolucion:
+            m = Metrica.query.filter_by(empresa_id=empresa.id, semana_simulacion=dia).first()
+            shares_evol.append(m.market_share if m else 0)
+        evolucion[empresa.nombre] = shares_evol
+
+    return jsonify({
+        'empresas': nombres,
+        'market_share': market_shares,
+        'capitales': capitales,
+        'niveles_servicio': niveles_servicio,
+        'evolucion_dias': dias_evolucion,
+        'evolucion': evolucion
+    })
 

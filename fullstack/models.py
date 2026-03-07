@@ -80,7 +80,8 @@ class Simulacion(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), default='Simulación')  # Nombre descriptivo
-    semana_actual = db.Column(db.Integer, default=1)
+    semana_actual = db.Column(db.Integer, default=1)  # semana derivada: (dia_actual-1)//7 + 1
+    dia_actual = db.Column(db.Integer, default=1)     # día real de simulación
     estado = db.Column(db.String(20), default='pausado')  # pausado, en_curso, finalizado
     fecha_inicio = db.Column(db.DateTime)
     fecha_fin = db.Column(db.DateTime)
@@ -112,7 +113,7 @@ class Producto(db.Model):
     demanda_promedio = db.Column(db.Float, default=100)
     desviacion_demanda = db.Column(db.Float, default=20)
     elasticidad_precio = db.Column(db.Float, default=1.5)  # Factor de sensibilidad al precio
-    tiempo_entrega = db.Column(db.Integer, default=1)  # semanas
+    tiempo_entrega = db.Column(db.Integer, default=1)  # días
     stock_maximo = db.Column(db.Float, default=500)  # Límite de inventario (sobrestock genera costos adicionales)
     activo = db.Column(db.Boolean, default=True)
     
@@ -154,6 +155,7 @@ class Venta(db.Model):
     cantidad_solicitada = db.Column(db.Float, nullable=False)
     cantidad_vendida = db.Column(db.Float, nullable=False)
     cantidad_perdida = db.Column(db.Float, default=0)  # ventas perdidas por falta de stock
+    demanda_mercado_total = db.Column(db.Float, default=0)  # Demanda total del mercado antes de distribución
     precio_unitario = db.Column(db.Float, nullable=False)
     ingreso_total = db.Column(db.Float, nullable=False)
     costo_unitario = db.Column(db.Float, default=0)  # Para calcular margen
@@ -222,6 +224,7 @@ class Metrica(db.Model):
     # Métricas operativas
     nivel_servicio = db.Column(db.Float, default=0)  # % de ventas cumplidas
     rotacion_inventario = db.Column(db.Float, default=0)
+    market_share = db.Column(db.Float, default=0)  # % cuota de mercado sobre ingresos totales
     dias_inventario = db.Column(db.Float, default=0)
     
     # Métricas de eficiencia

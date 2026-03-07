@@ -53,7 +53,7 @@
                     <div class="p-3 bg-primary bg-opacity-10 rounded">
                         <p class="mb-1 small text-muted">Día de Simulación</p>
                         <h2 class="mb-0 text-primary">
-                            <i class="fas fa-calendar-day me-2"></i>{{ simulacion.semana_actual }}
+                            <i class="fas fa-calendar-day me-2"></i>{{ simulacion.dia_actual }}
                         </h2>
                         <small class="text-muted">
                             Estado: 
@@ -115,7 +115,7 @@
                                 <h4 class="mb-0 text-info">
                                     ${{ "{:,.2f}".format(metrica_hoy.ingresos if metrica_hoy else 0) }}
                                 </h4>
-                                <small class="text-muted">Semana {{ simulacion.semana_actual }}</small>
+                                <small class="text-muted">Día {{ simulacion.dia_actual }} (Sem. {{ simulacion.semana_actual }})</small>
                             </div>
                         </div>
                         <div class="col-md-3">
