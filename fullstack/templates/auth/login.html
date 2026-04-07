@@ -1,78 +1,140 @@
 {% extends "base.html" %}
 
-{% block title %}Iniciar Sesión - ERP Educativo{% endblock %}
+{% block title %}Iniciar Sesión - Wine Supply{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="row justify-content-center align-items-center" style="min-height: 90vh;">
-        <div class="col-md-5">
-            <div class="card shadow-lg">
-                <div class="card-body p-5">
-                    <div class="text-center mb-4">
-                        <i class="fas fa-industry fa-4x text-primary mb-3"></i>
-                        <h2 class="fw-bold">Simulación de Cadena de Abastecimiento</h2>
-                        <p class="text-muted">Sistema ERP Educativo</p>
+<div class="login-container">
+    <!-- Botellas en lado izquierdo -->
+    <div class="bottles-left">
+        <svg viewBox="0 0 200 400" xmlns="http://www.w3.org/2000/svg" class="bottle-group">
+            <!-- Botella 1 (trasera, rojo tinto) -->
+            <g transform="translate(20, 80)">
+                <rect x="8" y="0" width="14" height="20" fill="#8B4513" rx="2"/><!-- Tapón -->
+                <rect x="5" y="20" width="20" height="80" fill="#722f37" rx="3"/><!-- Cuerpo -->
+                <ellipse cx="15" cy="20" rx="10" ry="5" fill="#6b2a31"/><!-- Cuello -->
+                <path d="M 8 95 Q 5 105 8 115" stroke="#722f37" stroke-width="0.5" fill="none"/>
+            </g>
+            <!-- Botella 2 (blanco) -->
+            <g transform="translate(50, 100)">
+                <rect x="8" y="0" width="14" height="20" fill="#8B4513" rx="2"/>
+                <rect x="5" y="20" width="20" height="80" fill="#f4e4c1" rx="3"/>
+                <ellipse cx="15" cy="20" rx="10" ry="5" fill="#e8d4a8"/>
+                <path d="M 8 95 Q 5 105 8 115" stroke="#f4e4c1" stroke-width="0.5" fill="none"/>
+            </g>
+            <!-- Botella 3 (rosado) -->
+            <g transform="translate(80, 120)">
+                <rect x="8" y="0" width="14" height="20" fill="#8B4513" rx="2"/>
+                <rect x="5" y="20" width="20" height="80" fill="#F1A5C4" rx="3"/>
+                <ellipse cx="15" cy="20" rx="10" ry="5" fill="#E591B5"/>
+                <path d="M 8 95 Q 5 105 8 115" stroke="#F1A5C4" stroke-width="0.5" fill="none"/>
+            </g>
+            <!-- Botella 4 (tinto oscuro, adelante) -->
+            <g transform="translate(35, 140)">
+                <rect x="8" y="0" width="14" height="20" fill="#8B4513" rx="2"/>
+                <rect x="5" y="20" width="20" height="80" fill="#8B0000" rx="3"/>
+                <ellipse cx="15" cy="20" rx="10" ry="5" fill="#700000"/>
+                <path d="M 8 95 Q 5 105 8 115" stroke="#8B0000" stroke-width="0.5" fill="none"/>
+            </g>
+        </svg>
+    </div>
+
+    <!-- Botellas en lado derecho (espejo) -->
+    <div class="bottles-right">
+        <svg viewBox="0 0 200 400" xmlns="http://www.w3.org/2000/svg" class="bottle-group" style="transform: scaleX(-1);">
+            <!-- Botella 1 (trasera, rojo tinto) -->
+            <g transform="translate(20, 80)">
+                <rect x="8" y="0" width="14" height="20" fill="#8B4513" rx="2"/>
+                <rect x="5" y="20" width="20" height="80" fill="#722f37" rx="3"/>
+                <ellipse cx="15" cy="20" rx="10" ry="5" fill="#6b2a31"/>
+                <path d="M 8 95 Q 5 105 8 115" stroke="#722f37" stroke-width="0.5" fill="none"/>
+            </g>
+            <!-- Botella 2 (blanco) -->
+            <g transform="translate(50, 100)">
+                <rect x="8" y="0" width="14" height="20" fill="#8B4513" rx="2"/>
+                <rect x="5" y="20" width="20" height="80" fill="#f4e4c1" rx="3"/>
+                <ellipse cx="15" cy="20" rx="10" ry="5" fill="#e8d4a8"/>
+                <path d="M 8 95 Q 5 105 8 115" stroke="#f4e4c1" stroke-width="0.5" fill="none"/>
+            </g>
+            <!-- Botella 3 (rosado) -->
+            <g transform="translate(80, 120)">
+                <rect x="8" y="0" width="14" height="20" fill="#8B4513" rx="2"/>
+                <rect x="5" y="20" width="20" height="80" fill="#F1A5C4" rx="3"/>
+                <ellipse cx="15" cy="20" rx="10" ry="5" fill="#E591B5"/>
+                <path d="M 8 95 Q 5 105 8 115" stroke="#F1A5C4" stroke-width="0.5" fill="none"/>
+            </g>
+            <!-- Botella 4 (tinto oscuro, adelante) -->
+            <g transform="translate(35, 140)">
+                <rect x="8" y="0" width="14" height="20" fill="#8B4513" rx="2"/>
+                <rect x="5" y="20" width="20" height="80" fill="#8B0000" rx="3"/>
+                <ellipse cx="15" cy="20" rx="10" ry="5" fill="#700000"/>
+                <path d="M 8 95 Q 5 105 8 115" stroke="#8B0000" stroke-width="0.5" fill="none"/>
+            </g>
+        </svg>
+    </div>
+
+    <!-- Arco rojo en el centro -->
+    <div class="wine-arch"></div>
+
+    <!-- Card de login centro -->
+    <div class="login-card">
+        <div class="card shadow-lg">
+            <div class="card-body p-5">
+                <div class="text-center mb-4">
+                    <i class="fas fa-wine-bottle fa-4x text-primary mb-3"></i>
+                    <h2 class="fw-bold">Wine Supply</h2>
+                </div>
+
+                <form method="POST" action="{{ url_for('auth.login') }}">
+                    <div class="mb-4">
+                        <label for="username" class="form-label">Usuario o Correo</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-user"></i></span>
+                            <input type="text" class="form-control" id="username" name="username" 
+                                   placeholder="Ingresa tu correo o usuario" required autofocus>
+                        </div>
+                        <small class="form-text text-muted">
+                            <i class="fas fa-info-circle"></i> Usa tu correo institucional o usuario asignado
+                        </small>
                     </div>
 
-                    <form method="POST" action="{{ url_for('auth.login') }}">
-                        <div class="mb-4">
-                            <label for="username" class="form-label">Usuario o Correo</label>
-                            <div class="input-group">
-                                <span class="input-group-text"><i class="fas fa-user"></i></span>
-                                <input type="text" class="form-control" id="username" name="username" 
-                                       placeholder="Ingresa tu correo o usuario" required autofocus>
-                            </div>
-                            <small class="form-text text-muted">
-                                <i class="fas fa-info-circle"></i> Usa tu correo institucional o usuario asignado
-                            </small>
-                        </div>
-
-                        <div class="mb-4">
-                            <label for="password" class="form-label">Contraseña</label>
-                            <div class="input-group">
-                                <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                                <input type="password" class="form-control" id="password" name="password" 
-                                       placeholder="Ingrese su contraseña" required>
-                            </div>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-custom w-100 mb-3">
-                            <i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión
-                        </button>
-                    </form>
-
-                    <div class="row mt-3 mb-3">
-                        <div class="col-6">
-                            <a href="{{ url_for('auth.register') }}" class="btn btn-outline-primary w-100">
-                                <i class="fas fa-user-plus me-1"></i>Crear Cuenta
-                            </a>
-                        </div>
-                        <div class="col-6">
-                            <a href="{{ url_for('auth.forgot_password') }}" class="btn btn-outline-secondary w-100">
-                                <i class="fas fa-key me-1"></i>Recuperar
-                            </a>
+                    <div class="mb-4">
+                        <label for="password" class="form-label">Contraseña</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                            <input type="password" class="form-control" id="password" name="password" 
+                                   placeholder="Ingrese su contraseña" required>
                         </div>
                     </div>
 
-                    <div class="alert alert-info">
-                        <h6 class="alert-heading"><i class="fas fa-info-circle me-2"></i>Información de acceso</h6>
-                        <ul class="mb-0 mt-2 small">
-                            <li><strong>Estudiantes:</strong> Inicia sesión con tu correo institucional y contraseña</li>
-                            <li><strong>Docentes:</strong> Usa tu correo o usuario y contraseña</li>
-                            <li><strong>Admin de prueba:</strong> admin / admin123</li>
-                        </ul>
-                        <p class="mb-0 mt-2 small">
-                            <i class="fas fa-user-plus"></i> ¿Nuevo usuario? <a href="{{ url_for('auth.register') }}">Crea tu cuenta aquí</a>
-                        </p>
+                    <button type="submit" class="btn btn-primary btn-custom w-100 mb-3">
+                        <i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión
+                    </button>
+                </form>
+
+                <div class="row mt-3 mb-3">
+                    <div class="col-6">
+                        <a href="{{ url_for('auth.register') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-user-plus me-1"></i>Crear Cuenta
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ url_for('auth.forgot_password') }}" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-key me-1"></i>Recuperar
+                        </a>
                     </div>
                 </div>
-            </div>
 
-            <div class="text-center mt-3 text-white">
-                <small>
-                    <i class="fas fa-graduation-cap me-1"></i>
-                    Herramienta educativa para gestión de cadena de abastecimiento
-                </small>
+                <div class="alert alert-info">
+                    <h6 class="alert-heading"><i class="fas fa-info-circle me-2"></i>Información de acceso</h6>
+                    <ul class="mb-0 mt-2 small">
+                        <li><strong>Estudiantes:</strong> Inicia sesión con tu correo institucional y contraseña</li>
+                        <li><strong>Docentes:</strong> Usa tu correo o usuario y contraseña</li>
+                        <li><strong>Admin de prueba:</strong> admin / admin123</li>
+                    </ul>
+                    <p class="mb-0 mt-2 small">
+                        <i class="fas fa-user-plus"></i> ¿Nuevo usuario? <a href="{{ url_for('auth.register') }}">Crea tu cuenta aquí</a>
+                    </p>
+                </div>
             </div>
         </div>
     </div>
@@ -81,41 +143,122 @@
 <style>
     body {
         background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden;
     }
-    
+
+    .login-container {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        width: 100%;
+    }
+
+    /* Arco rojo en el centro */
+    .wine-arch {
+        position: absolute;
+        width: 600px;
+        height: 600px;
+        background: #a81729;
+        border-radius: 0 0 600px 600px;
+        clip-path: polygon(0 30%, 100% 30%, 100% 100%, 0 100%);
+        z-index: 1;
+        box-shadow: inset 0 -20px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Botellas lado izquierdo */
+    .bottles-left {
+        position: absolute;
+        left: 5%;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 120px;
+        height: 300px;
+        z-index: 2;
+    }
+
+    .bottle-group {
+        width: 100%;
+        height: 100%;
+        filter: drop-shadow(2px 4px 8px rgba(0, 0, 0, 0.3));
+    }
+
+    /* Botellas lado derecho */
+    .bottles-right {
+        position: absolute;
+        right: 5%;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 120px;
+        height: 300px;
+        z-index: 2;
+    }
+
+    /* Card de login */
+    .login-card {
+        position: relative;
+        z-index: 3;
+        max-width: 450px;
+        width: 90%;
+    }
+
     .card {
         border-radius: 15px;
+        border: none;
     }
-    
+
     .input-group-text {
         background-color: #c41e3a;
         color: white;
         border-color: #c41e3a;
     }
-    
+
     .btn-primary {
         background-color: #c41e3a;
         border-color: #c41e3a;
     }
-    
+
     .btn-primary:hover {
         background-color: #a01729;
         border-color: #a01729;
     }
-    
+
     .btn-outline-primary {
         color: #c41e3a;
         border-color: #c41e3a;
     }
-    
+
     .btn-outline-primary:hover {
         background-color: #c41e3a;
         border-color: #c41e3a;
         color: white;
     }
-    
+
     .text-primary {
         color: #c41e3a !important;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .bottles-left,
+        .bottles-right {
+            opacity: 0.3;
+            width: 80px;
+            height: 200px;
+        }
+
+        .wine-arch {
+            width: 400px;
+            height: 400px;
+        }
+
+        .login-card {
+            max-width: 100%;
+            margin: 0 20px;
+        }
     }
 </style>
 {% endblock %}
