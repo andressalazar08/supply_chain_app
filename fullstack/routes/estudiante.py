@@ -788,39 +788,8 @@ def ajustar_precio():
 @login_required
 @estudiante_required
 def analisis_regional():
-    """Vista detallada de an�lisis por regi�n"""
-    # Acceso permitido para todos los roles - Panel unificado
-    simulacion = Simulacion.query.filter_by(activa=True).first()
-    empresa = current_user.empresa
-    
-    # Datos por regi�n en los �ltimos 14 d�as
-    regiones = ['Caribe', 'Pacifica', 'Orinoquia', 'Amazonia', 'Andina']
-    dias_analisis = 14
-    
-    datos_regionales = {}
-    for region in regiones:
-        ventas = Venta.query.filter_by(
-            empresa_id=empresa.id,
-            region=region
-        ).filter(
-            Venta.semana_simulacion >= max(1, simulacion.dia_actual - dias_analisis)
-        ).all()
-        
-        datos_regionales[region] = {
-            'ventas': ventas,
-            'total_ingresos': sum([v.ingreso_total for v in ventas]),
-            'total_unidades': sum([v.cantidad_vendida for v in ventas]),
-            'ventas_perdidas': sum([v.cantidad_perdida for v in ventas]),
-            'dias_con_ventas': len(set([v.semana_simulacion for v in ventas])),
-            'ingreso_promedio_dia': sum([v.ingreso_total for v in ventas]) / dias_analisis if ventas else 0
-        }
-    
-    return render_template('estudiante/ventas/analisis_regional.html',
-                         simulacion=simulacion,
-                         empresa=empresa,
-                         regiones=regiones,
-                         datos_regionales=datos_regionales,
-                         dias_analisis=dias_analisis)
+    """Mantiene compatibilidad con el enlace legado de análisis regional."""
+    return redirect(url_for('estudiante.dashboard_ventas') + '#regiones')
 
 
 # API Endpoints para gr�ficos din�micos
@@ -1060,56 +1029,9 @@ def dashboard_planeacion():
 @login_required
 @estudiante_required
 def generar_pronostico():
-    """Vista para generar pron�sticos con diferentes m�todos"""
-    # Acceso permitido para todos los roles - Panel unificado
-    simulacion = Simulacion.query.filter_by(activa=True).first()
-    empresa = current_user.empresa
-    productos = Producto.query.filter_by(activo=True).all()
-    
-    # Producto seleccionado (si viene en query params)
-    producto_id = request.args.get('producto_id', type=int)
-    producto_seleccionado = None
-    datos_historicos = []
-    comparacion_metodos = {}
-    mejor_metodo_nombre = None
-    mejor_metodo_datos = {}
-    
-    if producto_id:
-        producto_seleccionado = Producto.query.get(producto_id)
-        
-        if producto_seleccionado:
-            # Obtener ventas hist�ricas
-            ventas = Venta.query.filter_by(
-                empresa_id=empresa.id,
-                producto_id=producto_id
-            ).order_by(Venta.semana_simulacion).all()
-            
-            # Agrupar por d�a y sumar cantidades
-            ventas_por_dia = {}
-            for venta in ventas:
-                dia = venta.semana_simulacion
-                if dia not in ventas_por_dia:
-                    ventas_por_dia[dia] = 0
-                ventas_por_dia[dia] += venta.cantidad_solicitada
-            
-            # Crear lista ordenada
-            dias_ordenados = sorted(ventas_por_dia.keys())
-            datos_historicos = [ventas_por_dia[dia] for dia in dias_ordenados]
-            
-            # Comparar m�todos si hay suficientes datos
-            if len(datos_historicos) >= 3:
-                comparacion_metodos = comparar_metodos(datos_historicos)
-                mejor_metodo_nombre, mejor_metodo_datos = obtener_mejor_metodo(comparacion_metodos, 'mape')
-    
-    return render_template('estudiante/planeacion/generar_pronostico.html',
-                         simulacion=simulacion,
-                         empresa=empresa,
-                         productos=productos,
-                         producto_seleccionado=producto_seleccionado,
-                         datos_historicos=datos_historicos,
-                         comparacion_metodos=comparacion_metodos,
-                         mejor_metodo_nombre=mejor_metodo_nombre,
-                         mejor_metodo_datos=mejor_metodo_datos)
+    """Mantiene compatibilidad con ruta legacy y redirige al panel vigente."""
+    flash('La gestión de pronósticos está integrada en el panel de Planeación.', 'info')
+    return redirect(url_for('estudiante.dashboard_planeacion'))
 
 
 @bp.route('/planeacion/guardar-pronostico', methods=['POST'])
@@ -1191,40 +1113,8 @@ def guardar_pronostico():
 @login_required
 @estudiante_required
 def requerimientos_compra():
-    """Vista para crear requerimientos de compra"""
-    # Acceso permitido para todos los roles - Panel unificado
-    simulacion = Simulacion.query.filter_by(activa=True).first()
-    empresa = current_user.empresa
-    
-    # Obtener productos y sus datos
-    productos = Producto.query.filter_by(activo=True).all()
-    inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
-    inventarios_dict = {inv.producto_id: inv for inv in inventarios}
-    
-    # Pron�sticos m�s recientes por producto
-    pronosticos_recientes = {}
-    for producto in productos:
-        pronostico = Pronostico.query.filter_by(
-            empresa_id=empresa.id,
-            producto_id=producto.id
-        ).order_by(Pronostico.created_at.desc()).first()
-        
-        if pronostico:
-            pronosticos_recientes[producto.id] = pronostico
-    
-    # Requerimientos existentes
-    requerimientos = RequerimientoCompra.query.filter_by(
-        empresa_id=empresa.id,
-        usuario_planeacion_id=current_user.id
-    ).order_by(RequerimientoCompra.created_at.desc()).limit(20).all()
-    
-    return render_template('estudiante/planeacion/requerimientos.html',
-                         simulacion=simulacion,
-                         empresa=empresa,
-                         productos=productos,
-                         inventarios_dict=inventarios_dict,
-                         pronosticos_recientes=pronosticos_recientes,
-                         requerimientos=requerimientos)
+    """Ruta legacy de planeación; redirige al flujo activo de requerimientos."""
+    return redirect(url_for('estudiante.ver_requerimientos'))
 
 
 @bp.route('/planeacion/crear-requerimiento', methods=['POST'])

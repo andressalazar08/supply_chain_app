@@ -526,26 +526,9 @@ def reportes_empresa(id):
 @login_required
 @admin_required
 def ver_reportes():
-    """Ver reportes y análisis de desempeño"""
-    simulacion = Simulacion.query.filter_by(activa=True).first()
-    empresas = Empresa.query.all()
-    
-    # Obtener métricas de todas las empresas
-    metricas_empresas = []
-    for empresa in empresas:
-        metricas = Metrica.query.filter_by(
-            empresa_id=empresa.id,
-            semana_simulacion=simulacion.dia_actual
-        ).first()
-        
-        metricas_empresas.append({
-            'empresa': empresa,
-            'metricas': metricas
-        })
-    
-    return render_template('profesor/reportes.html',
-                         simulacion=simulacion,
-                         metricas_empresas=metricas_empresas)
+    """Redirige al listado de empresas para acceder a reportes activos por empresa."""
+    flash('Selecciona una empresa para ver su reporte detallado.', 'info')
+    return redirect(url_for('profesor.gestionar_empresas'))
 
 
 @bp.route('/api/metricas/<int:empresa_id>')
