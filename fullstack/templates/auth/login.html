@@ -1,121 +1,194 @@
 {% extends "base.html" %}
 
-{% block title %}Iniciar Sesión - ERP Educativo{% endblock %}
+{% block title %}Iniciar Sesión - Wine Supply{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="row justify-content-center align-items-center" style="min-height: 90vh;">
-        <div class="col-md-5">
-            <div class="card shadow-lg">
-                <div class="card-body p-5">
-                    <div class="text-center mb-4">
-                        <i class="fas fa-industry fa-4x text-primary mb-3"></i>
-                        <h2 class="fw-bold">Simulación de Cadena de Abastecimiento</h2>
-                        <p class="text-muted">Sistema ERP Educativo</p>
+<div class="login-container">
+    <!-- Arco rojo en el centro -->
+    <div class="wine-arch"></div>
+
+    <!-- Card de login centro -->
+    <div class="login-card">
+        <div class="card shadow-lg">
+            <div class="card-body p-5">
+                <div class="text-center mb-4">
+                    <i class="fas fa-wine-bottle fa-4x text-primary mb-3"></i>
+                    <h2 class="fw-bold">Wine Supply</h2>
+                </div>
+
+                <form method="POST" action="{{ url_for('auth.login') }}">
+                    <div class="mb-4">
+                        <label for="username" class="form-label">Usuario o Correo</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-user"></i></span>
+                            <input type="text" class="form-control" id="username" name="username" 
+                                   placeholder="Ingresa tu correo o usuario" required autofocus>
+                        </div>
+                        <small class="form-text text-muted">
+                            <i class="fas fa-info-circle"></i> Usa tu correo institucional o usuario asignado
+                        </small>
                     </div>
 
-                    <form method="POST" action="{{ url_for('auth.login') }}">
-                        <div class="mb-4">
-                            <label for="username" class="form-label">Usuario o Correo</label>
-                            <div class="input-group">
-                                <span class="input-group-text"><i class="fas fa-user"></i></span>
-                                <input type="text" class="form-control" id="username" name="username" 
-                                       placeholder="Ingresa tu correo o usuario" required autofocus>
-                            </div>
-                            <small class="form-text text-muted">
-                                <i class="fas fa-info-circle"></i> Usa tu correo institucional o usuario asignado
-                            </small>
-                        </div>
-
-                        <div class="mb-4">
-                            <label for="password" class="form-label">Contraseña</label>
-                            <div class="input-group">
-                                <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                                <input type="password" class="form-control" id="password" name="password" 
-                                       placeholder="Ingrese su contraseña" required>
-                            </div>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-custom w-100 mb-3">
-                            <i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión
-                        </button>
-                    </form>
-
-                    <div class="row mt-3 mb-3">
-                        <div class="col-6">
-                            <a href="{{ url_for('auth.register') }}" class="btn btn-outline-primary w-100">
-                                <i class="fas fa-user-plus me-1"></i>Crear Cuenta
-                            </a>
-                        </div>
-                        <div class="col-6">
-                            <a href="{{ url_for('auth.forgot_password') }}" class="btn btn-outline-secondary w-100">
-                                <i class="fas fa-key me-1"></i>Recuperar
-                            </a>
+                    <div class="mb-4">
+                        <label for="password" class="form-label">Contraseña</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                            <input type="password" class="form-control" id="password" name="password" 
+                                   placeholder="Ingrese su contraseña" required>
                         </div>
                     </div>
 
-                    <div class="alert alert-info">
-                        <h6 class="alert-heading"><i class="fas fa-info-circle me-2"></i>Información de acceso</h6>
-                        <ul class="mb-0 mt-2 small">
-                            <li><strong>Estudiantes:</strong> Inicia sesión con tu correo institucional y contraseña</li>
-                            <li><strong>Docentes:</strong> Usa tu correo o usuario y contraseña</li>
-                            <li><strong>Admin de prueba:</strong> admin / admin123</li>
-                        </ul>
-                        <p class="mb-0 mt-2 small">
-                            <i class="fas fa-user-plus"></i> ¿Nuevo usuario? <a href="{{ url_for('auth.register') }}">Crea tu cuenta aquí</a>
-                        </p>
+                    <button type="submit" class="btn btn-primary btn-custom w-100 mb-3">
+                        <i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión
+                    </button>
+                </form>
+
+                <div class="row mt-3 mb-3">
+                    <div class="col-6">
+                        <a href="{{ url_for('auth.register') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-user-plus me-1"></i>Crear Cuenta
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ url_for('auth.forgot_password') }}" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-key me-1"></i>Recuperar
+                        </a>
                     </div>
                 </div>
-            </div>
 
-            <div class="text-center mt-3 text-white">
-                <small>
-                    <i class="fas fa-graduation-cap me-1"></i>
-                    Herramienta educativa para gestión de cadena de abastecimiento
-                </small>
+                <div class="alert alert-info">
+                    <h6 class="alert-heading"><i class="fas fa-info-circle me-2"></i>Información de acceso</h6>
+                    <ul class="mb-0 mt-2 small">
+                        <li><strong>Estudiantes:</strong> Inicia sesión con tu correo institucional y contraseña</li>
+                        <li><strong>Docentes:</strong> Usa tu correo o usuario y contraseña</li>
+                    </ul>
+                    <p class="mb-0 mt-2 small">
+                        <i class="fas fa-user-plus"></i> ¿Nuevo usuario? <a href="{{ url_for('auth.register') }}">Crea tu cuenta aquí</a>
+                    </p>
+                </div>
             </div>
         </div>
+        <p class="login-authors text-center mt-3 mb-0">By Alejandro Herrera, Laura Sánchez, Andrés Salazar</p>
     </div>
 </div>
 
 <style>
     body {
-        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
+        background:
+            linear-gradient(135deg, rgba(34, 12, 18, 0.78) 0%, rgba(120, 19, 34, 0.72) 100%),
+            url("{{ url_for('static', filename='img/Winsupp.jpeg') }}") center center / cover fixed no-repeat;
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden;
     }
-    
+
+    body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 45%);
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    .login-container {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        width: 100%;
+        padding: 48px 0;
+        z-index: 1;
+    }
+
+    /* Arco rojo en el centro */
+    .wine-arch {
+        position: absolute;
+        width: 600px;
+        height: 600px;
+        background: #a81729;
+        border-radius: 0 0 600px 600px;
+        clip-path: polygon(0 30%, 100% 30%, 100% 100%, 0 100%);
+        z-index: 1;
+        box-shadow: inset 0 -20px 40px rgba(0, 0, 0, 0.2);
+        opacity: 0.82;
+    }
+
+    /* Card de login */
+    .login-card {
+        position: relative;
+        z-index: 3;
+        max-width: 450px;
+        width: 90%;
+    }
+
+    .login-authors {
+        color: rgba(255, 255, 255, 0.92);
+        font-weight: 600;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    }
+
     .card {
         border-radius: 15px;
+        border: none;
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(12px);
+        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.3);
     }
-    
+
+    .card-body {
+        color: #2f2f2f;
+    }
+
+    .card .alert-info {
+        background: rgba(196, 30, 58, 0.08);
+        color: #4b1c27;
+        border: 1px solid rgba(196, 30, 58, 0.15);
+    }
+
     .input-group-text {
         background-color: #c41e3a;
         color: white;
         border-color: #c41e3a;
     }
-    
+
     .btn-primary {
         background-color: #c41e3a;
         border-color: #c41e3a;
     }
-    
+
     .btn-primary:hover {
         background-color: #a01729;
         border-color: #a01729;
     }
-    
+
     .btn-outline-primary {
         color: #c41e3a;
         border-color: #c41e3a;
     }
-    
+
     .btn-outline-primary:hover {
         background-color: #c41e3a;
         border-color: #c41e3a;
         color: white;
     }
-    
+
     .text-primary {
         color: #c41e3a !important;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .wine-arch {
+            width: 400px;
+            height: 400px;
+        }
+
+        .login-card {
+            max-width: 100%;
+            margin: 0 20px;
+        }
     }
 </style>
 {% endblock %}

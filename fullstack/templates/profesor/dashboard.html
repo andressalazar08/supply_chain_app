@@ -2,6 +2,59 @@
 
 {% block title %}Panel de Control - Profesor{% endblock %}
 
+{% block extra_css %}
+<style>
+    .sidebar-home-btn {
+        display: block;
+        background: rgba(255, 255, 255, 0.12) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(255, 255, 255, 0.18) !important;
+        border-radius: 14px;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+        font-weight: 600;
+        text-align: left;
+        padding: 12px 16px;
+    }
+
+    .sidebar-home-btn:hover {
+        background: rgba(255, 255, 255, 0.22) !important;
+        color: #ffffff !important;
+        padding-left: 16px !important;
+        transform: translateX(2px);
+    }
+
+    .status-tile {
+        border-radius: 14px;
+        padding: 16px;
+        min-height: 100%;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06);
+    }
+
+    .status-tile .tile-label {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: rgba(33, 37, 41, 0.7);
+        margin-bottom: 6px;
+    }
+
+    .status-tile .tile-value {
+        margin: 0;
+        font-weight: 800;
+    }
+
+    .status-tile.info {
+        background: linear-gradient(135deg, rgba(13, 202, 240, 0.14), rgba(13, 110, 253, 0.1));
+        border: 1px solid rgba(13, 202, 240, 0.18);
+    }
+
+    .status-tile.primary {
+        background: linear-gradient(135deg, rgba(13, 110, 253, 0.14), rgba(196, 30, 58, 0.08));
+        border: 1px solid rgba(13, 110, 253, 0.18);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row">
@@ -10,7 +63,7 @@
             <h5 class="text-white px-3 mb-4">
                 <i class="fas fa-chalkboard-teacher me-2"></i>Panel Profesor
             </h5>
-            <a href="{{ url_for('profesor.home') }}" class="btn btn-light mb-3 mx-3">
+            <a href="{{ url_for('profesor.home') }}" class="btn btn-light mb-3 mx-3 sidebar-home-btn">
                 <i class="fas fa-arrow-left me-2"></i>Volver al Inicio
             </a>
             <a href="{{ url_for('profesor.dashboard') }}" class="active">
@@ -70,17 +123,17 @@
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <div class="p-3 text-center border rounded bg-info bg-opacity-10">
-                                <p class="text-muted mb-1 small">Empresas Activas</p>
-                                <h3 class="mb-0 text-info">
+                            <div class="status-tile info text-center">
+                                <p class="tile-label">Empresas Activas</p>
+                                <h3 class="tile-value text-info">
                                     <i class="fas fa-building me-1"></i>{{ empresas|length }}
                                 </h3>
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <div class="p-3 text-center border rounded bg-primary bg-opacity-10">
-                                <p class="text-muted mb-1 small">Estudiantes</p>
-                                <h3 class="mb-0 text-primary">
+                            <div class="status-tile primary text-center">
+                                <p class="tile-label">Estudiantes</p>
+                                <h3 class="tile-value text-primary">
                                     <i class="fas fa-users me-1"></i>{{ total_estudiantes }}
                                 </h3>
                             </div>
