@@ -2,6 +2,35 @@
 
 {% block title %}Dashboard General - {{ current_user.nombre }}{% endblock %}
 
+{% block extra_css %}
+<style>
+    .sidebar-home-btn {
+        display: block;
+        background: rgba(255, 255, 255, 0.12) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(255, 255, 255, 0.18) !important;
+        border-radius: 14px;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+        font-weight: 600;
+        text-align: left;
+        padding: 12px 16px;
+    }
+
+    .sidebar-home-btn:hover {
+        background: rgba(255, 255, 255, 0.22) !important;
+        color: #ffffff !important;
+        padding-left: 16px !important;
+        transform: translateX(2px);
+    }
+
+    .status-panel {
+        background: linear-gradient(135deg, rgba(13, 110, 253, 0.12), rgba(13, 202, 240, 0.1));
+        border: 1px solid rgba(13, 110, 253, 0.16);
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row">
@@ -10,6 +39,9 @@
             <h5 class="text-white px-3 mb-4">
                 <i class="fas fa-user-graduate me-2"></i>{{ current_user.empresa.nombre }}
             </h5>
+            <a href="{{ url_for('estudiante.home') }}" class="btn btn-light mb-3 mx-3 sidebar-home-btn">
+                <i class="fas fa-arrow-left me-2"></i>Volver al Inicio
+            </a>
             <a href="{{ url_for('estudiante.dashboard_general') }}" class="active">
                 <i class="fas fa-home me-2"></i>Dashboard General
             </a>
@@ -50,7 +82,7 @@
                     </p>
                 </div>
                 <div class="col-md-4 text-end">
-                    <div class="p-3 bg-primary bg-opacity-10 rounded">
+                        <div class="p-3 rounded status-panel">
                         <p class="mb-1 small text-muted">Día de Simulación</p>
                         <h2 class="mb-0 text-primary">
                             <i class="fas fa-calendar-day me-2"></i>{{ simulacion.dia_actual }}
