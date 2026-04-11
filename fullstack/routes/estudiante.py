@@ -26,6 +26,9 @@ from utils.logistica import (
 )
 bp = Blueprint('estudiante', __name__, url_prefix='/estudiante')
 
+# Costo base de transporte por unidad y por dia de transito.
+COSTO_TRANSPORTE_POR_UNIDAD_DIA = 500
+
 def obtener_simulacion_activa():
     """Helper para obtener la simulaci�n actualmente activa"""
     return Simulacion.query.filter_by(activa=True).first()
@@ -1979,18 +1982,23 @@ def crear_despacho_regional():
             return redirect(url_for('estudiante.vista_despacho'))
         
         # Calcular tiempo de entrega
-        tiempo_entrega = calcular_tiempo_entrega_region(region)
-        semana_entrega = simulacion.dia_actual + tiempo_entrega
+        dias_entrega_region = calcular_tiempo_entrega_region(region)
+        semana_entrega = simulacion.dia_actual + dias_entrega_region
 
         # Efecto disrupcion 3 (falla_flota): ajuste de costo y/o delay
         from utils.procesamiento_dias import obtener_efecto_logistico_empresa
         efecto_flota = obtener_efecto_logistico_empresa(simulacion.id, current_user.empresa_id)
-        costo_base_transporte = round(cantidad * 500)
+        mult = 1.0
+        delay_f = 0
         if efecto_flota:
             mult = efecto_flota.get('costo_multiplicador', 1.0)
             delay_f = efecto_flota.get('delay_semanas', 0)
-            costo_base_transporte = round(costo_base_transporte * mult)
-            semana_entrega += delay_f
+
+        dias_entrega_efectivos = max(1, dias_entrega_region + delay_f)
+        semana_entrega = simulacion.dia_actual + dias_entrega_efectivos
+        costo_base_transporte = round(
+            cantidad * COSTO_TRANSPORTE_POR_UNIDAD_DIA * dias_entrega_efectivos * mult
+        )
 
         # Crear despacho
         despacho = DespachoRegional(
@@ -2638,26 +2646,24 @@ def api_logistica_despachar():
             'message': f'Stock insuficiente. Disponible: {inventario.cantidad_actual}'
         }), 400
     
-    # Calcular tiempo de entrega seg�n regi�n
-    tiempos_entrega = {
-        'Andina': 3,
-        'Caribe': 4,
-        'Pac�fica': 4,
-        'Orinoqu�a': 5,
-        'Amazon�a': 6
-    }
-    dias_entrega = tiempos_entrega.get(region, 4)
-    dia_llegada = simulacion.dia_actual + dias_entrega
+    # Calcular tiempo de entrega segun region
+    dias_entrega_region = calcular_tiempo_entrega_region(region)
+    dia_llegada = simulacion.dia_actual + dias_entrega_region
 
     # Efecto disrupcion 3 (falla_flota)
     from utils.procesamiento_dias import obtener_efecto_logistico_empresa
     efecto_flota = obtener_efecto_logistico_empresa(simulacion.id, empresa.id)
-    costo_base_transporte = round(cantidad * 500)
+    mult = 1.0
+    delay_f = 0
     if efecto_flota:
         mult = efecto_flota.get('costo_multiplicador', 1.0)
         delay_f = efecto_flota.get('delay_semanas', 0)
-        costo_base_transporte = round(costo_base_transporte * mult)
-        dia_llegada += delay_f
+
+    dias_entrega_efectivos = max(1, dias_entrega_region + delay_f)
+    dia_llegada = simulacion.dia_actual + dias_entrega_efectivos
+    costo_base_transporte = round(
+        cantidad * COSTO_TRANSPORTE_POR_UNIDAD_DIA * dias_entrega_efectivos * mult
+    )
 
     # Crear despacho
     despacho = DespachoRegional(
@@ -2773,14 +2779,6 @@ def api_logistica_despachar_multiple():
             }), 400
         
         # Tiempos de entrega seg�n regi�n
-        tiempos_entrega = {
-            'Andina': 3,
-            'Caribe': 4,
-            'Pac�fica': 4,
-            'Orinoqu�a': 5,
-            'Amazon�a': 6
-        }
-        
         despachos_creados = []
 
         # Efecto disrupcion 3 (falla_flota) — se aplica a todos los despachos del lote
@@ -2795,15 +2793,19 @@ def api_logistica_despachar_multiple():
             if cantidad <= 0:
                 continue
 
-            dias_entrega = tiempos_entrega.get(region, 4)
-            dia_llegada = simulacion.dia_actual + dias_entrega
-            costo_t = round(cantidad * 500)
+            dias_entrega_region = calcular_tiempo_entrega_region(region)
+            delay_f = 0
+            mult = 1.0
 
             if efecto_flota:
                 mult = efecto_flota.get('costo_multiplicador', 1.0)
                 delay_f = efecto_flota.get('delay_semanas', 0)
-                costo_t = round(costo_t * mult)
-                dia_llegada += delay_f
+
+            dias_entrega_efectivos = max(1, dias_entrega_region + delay_f)
+            dia_llegada = simulacion.dia_actual + dias_entrega_efectivos
+            costo_t = round(
+                cantidad * COSTO_TRANSPORTE_POR_UNIDAD_DIA * dias_entrega_efectivos * mult
+            )
 
             # Crear despacho
             despacho = DespachoRegional(
