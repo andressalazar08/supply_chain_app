@@ -2913,16 +2913,44 @@ def api_logistica_stock():
     inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
     
     stock_data = []
+    stock_total = 0
+    stock_maximo_total = 0
+    sobrestock_total = 0
+    costo_sobrestock_total = 0
+
     for inv in inventarios:
+        stock_actual = int(round(inv.cantidad_actual or 0))
+        stock_seguridad = int(round(inv.stock_seguridad or 0))
+        stock_maximo = int(round(inv.producto.stock_maximo or 0)) if inv.producto else 0
+        costo_referencia = inv.costo_promedio or (inv.producto.costo_unitario if inv.producto else 0)
+        sobrestock = max(0, stock_actual - stock_maximo)
+
+        stock_total += stock_actual
+        stock_maximo_total += stock_maximo
+        sobrestock_total += sobrestock
+        costo_sobrestock_total += sobrestock * costo_referencia
+
         stock_data.append({
             'producto_id': inv.producto_id,
             'producto_nombre': inv.producto.nombre,
-            'stock_actual': int(round(inv.cantidad_actual or 0)),
-            'stock_seguridad': int(round(inv.stock_seguridad or 0)),
-            'capacidad_maxima': int(round(inv.producto.capacidad_produccion)) if hasattr(inv.producto, 'capacidad_produccion') and inv.producto.capacidad_produccion else 1000
+            'stock_actual': stock_actual,
+            'stock_seguridad': stock_seguridad,
+            'stock_maximo': stock_maximo,
+            'sobrestock': sobrestock,
+            'costo_referencia': round(costo_referencia, 2),
+            'costo_sobrestock': round(sobrestock * costo_referencia, 2)
         })
     
-    return jsonify({'success': True, 'stock': stock_data})
+    return jsonify({
+        'success': True,
+        'stock': stock_data,
+        'resumen': {
+            'stock_total': stock_total,
+            'stock_maximo_total': stock_maximo_total,
+            'sobrestock_total': sobrestock_total,
+            'costo_sobrestock_total': round(costo_sobrestock_total, 2)
+        }
+    })
 
 
 @bp.route('/api/logistica/despachar', methods=['POST'])

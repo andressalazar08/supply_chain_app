@@ -77,6 +77,27 @@
     .stock-card.normal {
         border-left-color: #28a745;
     }
+
+    .summary-card {
+        background: linear-gradient(135deg, rgba(220, 53, 69, 0.08), rgba(255, 255, 255, 0.98));
+        border: 1px solid rgba(220, 53, 69, 0.14);
+        border-radius: 16px;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+        height: 100%;
+    }
+
+    .summary-label {
+        color: #6c757d;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 0.35rem;
+    }
+
+    .summary-value {
+        font-weight: 800;
+        line-height: 1;
+    }
     
     .stock-cantidad {
         font-size: 2rem;
@@ -215,6 +236,30 @@
                         <div class="col-12">
                             <h4><i class="fas fa-box"></i> Inventario Central</h4>
                             <p class="text-muted">Stock disponible para despacho a regiones</p>
+                        </div>
+                    </div>
+
+                    <div class="row mb-4" id="stockResumenContainer">
+                        <div class="col-md-4 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Stock total</div>
+                                <div class="summary-value text-success" style="font-size: 2rem;" id="stockTotalValue">0</div>
+                                <div class="text-muted small">Unidades en inventario central</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Sobrestock</div>
+                                <div class="summary-value text-warning" style="font-size: 2rem;" id="sobrestockTotalValue">0</div>
+                                <div class="text-muted small">Unidades por encima del stock máximo</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Costo del sobrestock</div>
+                                <div class="summary-value text-danger" style="font-size: 2rem;" id="costoSobrestockValue">$0</div>
+                                <div class="text-muted small">Costo inmovilizado por exceso de inventario</div>
+                            </div>
                         </div>
                     </div>
                     
@@ -403,6 +448,7 @@ async function cargarStock() {
         const data = await response.json();
         
         if (data.success) {
+            window.stockResumen = data.resumen || {};
             mostrarStock(data.stock);
         } else {
             console.error('Error:', data.message);
@@ -414,6 +460,15 @@ async function cargarStock() {
 
 function mostrarStock(stock) {
     const container = document.getElementById('stockContainer');
+    const resumen = window.stockResumen || {};
+
+    const totalStock = resumen.stock_total ?? stock.reduce((acc, item) => acc + Math.round(item.stock_actual || 0), 0);
+    const totalSobrestock = resumen.sobrestock_total ?? stock.reduce((acc, item) => acc + Math.round(item.sobrestock || 0), 0);
+    const totalCostoSobrestock = resumen.costo_sobrestock_total ?? stock.reduce((acc, item) => acc + (item.costo_sobrestock || 0), 0);
+
+    document.getElementById('stockTotalValue').textContent = totalStock.toLocaleString('es-CO');
+    document.getElementById('sobrestockTotalValue').textContent = totalSobrestock.toLocaleString('es-CO');
+    document.getElementById('costoSobrestockValue').textContent = '$' + totalCostoSobrestock.toLocaleString('es-CO', {maximumFractionDigits: 0});
     
     if (!stock || stock.length === 0) {
         container.innerHTML = '<div class="col-12"><div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> No hay productos en inventario</div></div>';
@@ -452,9 +507,14 @@ function mostrarStock(stock) {
                             <div class="fw-bold">${Math.round(item.stock_seguridad)}</div>
                         </div>
                         <div class="col-6">
-                            <div class="text-muted">Capacidad</div>
-                            <div class="fw-bold">${Math.round(item.capacidad_maxima)}</div>
+                            <div class="text-muted">Stock Máximo</div>
+                            <div class="fw-bold">${Math.round(item.stock_maximo || 0)}</div>
                         </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-top small text-center">
+                        <span class="text-warning fw-bold">Sobrestock: ${Math.round(item.sobrestock || 0)}</span>
+                        <br>
+                        <span class="text-danger">Costo: $${Number(item.costo_sobrestock || 0).toLocaleString('es-CO', {maximumFractionDigits: 0})}</span>
                     </div>
                 </div>
             </div>
