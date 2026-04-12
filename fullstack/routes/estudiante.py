@@ -1301,12 +1301,6 @@ def dashboard_compras():
         estado='en_transito'
     ).order_by(Compra.semana_entrega.asc()).all()
 
-    # �rdenes listas para recepci�n (llegada hoy o vencidas)
-    ordenes_listas_recepcion = [
-        orden for orden in ordenes_transito
-        if simulacion and orden.semana_entrega <= simulacion.dia_actual
-    ]
-    
     # Capital comprometido
     capital_comprometido = sum([o.costo_total for o in ordenes_transito])
     capital_libre = empresa.capital_actual - capital_comprometido
@@ -1330,7 +1324,6 @@ def dashboard_compras():
                          requerimientos=requerimientos,
                          ordenes_compra=ordenes_compra,
                          ordenes_transito=ordenes_transito,
-                         ordenes_listas_recepcion=ordenes_listas_recepcion,
                          capital_comprometido=capital_comprometido,
                          capital_libre=capital_libre,
                          historico_ventas=historico_ventas,
@@ -1838,7 +1831,7 @@ def crear_pedido_general():
             f'Costo total: ${costo_total_general:,.0f}.',
             'success'
         )
-        return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
+        return redirect(url_for('estudiante.dashboard_compras') + '#ordenes')
 
     except Exception as e:
         db.session.rollback()
@@ -1874,24 +1867,9 @@ def marcar_requerimiento_revisado(requerimiento_id):
 @estudiante_required
 @rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
 def recibir_orden_compra_compras(compra_id):
-    """Recepci�n de compra desde el m�dulo de Planeaci�n y Compras."""
-    try:
-        compra = Compra.query.get_or_404(compra_id)
-        if compra.empresa_id != current_user.empresa_id:
-            flash('No autorizado', 'error')
-            return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
-
-        resultado, mensaje = _procesar_recepcion_compra_individual(compra, current_user.id, current_user.empresa_id)
-        if not resultado:
-            flash(mensaje, 'warning')
-        else:
-            flash(mensaje, 'success')
-
-        return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error al recibir orden: {str(e)}', 'error')
-        return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
+    """Recepción movida al módulo de Logística."""
+    flash('La recepción de pedidos ahora se gestiona desde Logística.', 'info')
+    return redirect(url_for('estudiante.vista_recepcion'))
 
 
 def _procesar_recepcion_compra_individual(compra, usuario_id, empresa_id):
@@ -1961,30 +1939,9 @@ def _procesar_recepcion_compra_individual(compra, usuario_id, empresa_id):
 @estudiante_required
 @rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
 def recibir_todas_ordenes_compras():
-    """Recibe todas las compras en tránsito que ya están listas para entrega."""
-    try:
-        simulacion = Simulacion.query.filter_by(activa=True).first()
-        compras_listas = Compra.query.filter_by(
-            empresa_id=current_user.empresa_id,
-            estado='en_transito'
-        ).filter(Compra.semana_entrega <= simulacion.dia_actual).order_by(Compra.semana_entrega.asc()).all()
-
-        if not compras_listas:
-            flash('No hay órdenes listas para recibir.', 'info')
-            return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
-
-        recibidas = 0
-        for compra in compras_listas:
-            ok, _mensaje = _procesar_recepcion_compra_individual(compra, current_user.id, current_user.empresa_id)
-            if ok:
-                recibidas += 1
-
-        flash(f'Se recibieron {recibidas} órdenes de compra de forma masiva.', 'success')
-        return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error al recibir órdenes masivas: {str(e)}', 'error')
-        return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
+    """Recepción masiva movida al módulo de Logística."""
+    flash('La recepción masiva ahora se gestiona desde Logística.', 'info')
+    return redirect(url_for('estudiante.vista_recepcion'))
 
 
 # APIs para Compras
@@ -2112,6 +2069,7 @@ def dashboard_logistica():
 @bp.route('/logistica/recepcion')
 @login_required
 @estudiante_required
+@rol_required('logistica')
 def vista_recepcion():
     """Vista de recepci�n de �rdenes de compra"""
     # Acceso permitido para todos los roles - Panel unificado
@@ -2140,6 +2098,7 @@ def vista_recepcion():
 @bp.route('/logistica/recibir-orden/<int:compra_id>', methods=['POST'])
 @login_required
 @estudiante_required
+@rol_required('logistica')
 def recibir_orden_compra(compra_id):
     """Procesar recepci�n de una orden de compra"""
     # Acceso permitido para todos los roles - Panel unificado
@@ -2224,6 +2183,37 @@ def recibir_orden_compra(compra_id):
     except Exception as e:
         db.session.rollback()
         flash(f'Error al recibir orden: {str(e)}', 'error')
+        return redirect(url_for('estudiante.vista_recepcion'))
+
+
+@bp.route('/logistica/recibir-todas-ordenes', methods=['POST'])
+@login_required
+@estudiante_required
+@rol_required('logistica')
+def recibir_todas_ordenes_logistica():
+    """Recibe todas las compras en tránsito que ya están listas para entrega."""
+    try:
+        simulacion = Simulacion.query.filter_by(activa=True).first()
+        compras_listas = Compra.query.filter_by(
+            empresa_id=current_user.empresa_id,
+            estado='en_transito'
+        ).filter(Compra.semana_entrega <= simulacion.dia_actual).order_by(Compra.semana_entrega.asc()).all()
+
+        if not compras_listas:
+            flash('No hay órdenes listas para recibir.', 'info')
+            return redirect(url_for('estudiante.vista_recepcion'))
+
+        recibidas = 0
+        for compra in compras_listas:
+            ok, _mensaje = _procesar_recepcion_compra_individual(compra, current_user.id, current_user.empresa_id)
+            if ok:
+                recibidas += 1
+
+        flash(f'Se recibieron {recibidas} órdenes de compra de forma masiva.', 'success')
+        return redirect(url_for('estudiante.vista_recepcion'))
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al recibir órdenes masivas: {str(e)}', 'error')
         return redirect(url_for('estudiante.vista_recepcion'))
 
 
