@@ -46,8 +46,8 @@ def generar_historico_30dias(simulacion, empresas):
                     desviacion = producto.desviacion_demanda / 5
                     
                     # Generar cantidad vendida con distribución normal
-                    cantidad_vendida = max(0, random.gauss(demanda_base, desviacion))
-                    cantidad_solicitada = cantidad_vendida * random.uniform(0.95, 1.15)  # Variación en demanda
+                    cantidad_vendida = max(0, int(round(random.gauss(demanda_base, desviacion))))
+                    cantidad_solicitada = max(cantidad_vendida, int(round(cantidad_vendida * random.uniform(0.95, 1.15))))  # Variación en demanda
                     cantidad_perdida = max(0, cantidad_solicitada - cantidad_vendida)
                     
                     # Si hay venta, registrarla
@@ -63,10 +63,10 @@ def generar_historico_30dias(simulacion, empresas):
                             semana_simulacion=semana_historica,  # Negativo para histórico
                             region=random.choice(REGIONES),
                             canal=random.choice(['retail', 'mayorista', 'distribuidor']),
-                            cantidad_solicitada=round(cantidad_solicitada, 2),
-                            cantidad_vendida=round(cantidad_vendida, 2),
-                            cantidad_perdida=round(cantidad_perdida, 2),
-                            demanda_mercado_total=round(cantidad_solicitada, 2),
+                            cantidad_solicitada=cantidad_solicitada,
+                            cantidad_vendida=cantidad_vendida,
+                            cantidad_perdida=cantidad_perdida,
+                            demanda_mercado_total=cantidad_solicitada,
                             precio_unitario=precio_unitario,
                             ingreso_total=round(ingreso_total, 2),
                             costo_unitario=costo_unitario,
@@ -118,7 +118,7 @@ def generar_ordenes_iniciales(simulacion, empresas):
             # Distribuir proporcionalmente por demanda de cada producto
             for producto in PRODUCTOS:
                 proporcion = (producto.demanda_promedio / sum(p.demanda_promedio for p in PRODUCTOS))
-                cantidad_producto = cantidad_total_a_pedir * proporcion
+                cantidad_producto = int(round(cantidad_total_a_pedir * proporcion))
                 
                 if cantidad_producto > 0:
                     costo_unitario = producto.costo_unitario
@@ -130,7 +130,7 @@ def generar_ordenes_iniciales(simulacion, empresas):
                         producto_id=producto.id,
                         semana_orden=-1,  # "Ordenado" antes de empezar
                         semana_entrega=1,  # Llega día 1
-                        cantidad=round(cantidad_producto, 2),
+                        cantidad=cantidad_producto,
                         costo_unitario=costo_unitario,
                         costo_total=round(costo_total, 2),
                         estado='en_transito'
