@@ -1313,7 +1313,6 @@ def dashboard_compras():
 @bp.route('/compras/exportar-ventas-csv')
 @login_required
 @estudiante_required
-@rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
 def exportar_ventas_csv():
     """Exporta ventas para pronóstico externo (día, producto, unidades vendidas, región)."""
     empresa = current_user.empresa

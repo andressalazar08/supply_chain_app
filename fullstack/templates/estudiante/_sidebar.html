@@ -22,7 +22,7 @@
     
     {% if current_user.rol == 'planeacion_compras' %}
     <a href="{{ url_for('estudiante.dashboard_compras') }}" class="{{ 'active' if 'compras' in request.endpoint else '' }}">
-        <i class="fas fa-shopping-cart me-2"></i>Planeación y Compras
+        <i class="fas fa-shopping-cart me-2"></i>Compras
     </a>
     {% endif %}
     
