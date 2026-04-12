@@ -30,7 +30,7 @@ bp = Blueprint('estudiante', __name__, url_prefix='/estudiante')
 
 # Costo base de transporte por unidad y por dia de transito.
 COSTO_TRANSPORTE_POR_UNIDAD_DIA = 500
-ROL_PLANEACION_COMPRAS = 'planeacion_compras'
+ROL_PLANEACION_COMPRAS = 'compras'
 
 REGIONES_CANONICAS = [
     'Andina',
@@ -1904,7 +1904,7 @@ def recibir_orden_compra_compras(compra_id):
                 'compra_id': compra.id,
                 'producto_id': compra.producto_id,
                 'cantidad': compra.cantidad,
-                'origen': 'planeacion_compras'
+                'origen': 'compras'
             },
             resultado=resultado
         )

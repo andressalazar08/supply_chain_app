@@ -84,14 +84,14 @@ config = {
 ROLES = {
     'ADMIN': 'admin',
     'VENTAS': 'ventas',
-    'PLANEACION_COMPRAS': 'planeacion_compras',
+    'PLANEACION_COMPRAS': 'compras',
     'LOGISTICA': 'logistica'
 }
 
 # Mapeo de número a rol
 ROLES_NUM_MAP = {
     '1': 'ventas',
-    '2': 'planeacion_compras',
+    '2': 'compras',
     '3': 'logistica'
 }
 

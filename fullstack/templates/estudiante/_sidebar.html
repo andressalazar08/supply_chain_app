@@ -20,7 +20,7 @@
     </a>
     {% endif %}
     
-    {% if current_user.rol == 'planeacion_compras' %}
+    {% if current_user.rol == 'compras' %}
     <a href="{{ url_for('estudiante.dashboard_compras') }}" class="{{ 'active' if 'compras' in request.endpoint else '' }}">
         <i class="fas fa-shopping-cart me-2"></i>Compras
     </a>
@@ -37,7 +37,7 @@
     <div class="px-3 py-2">
         <small class="text-white-50 d-block mb-1">Mi Rol</small>
         <span class="badge {{ 'badge-ventas' if current_user.rol == 'ventas' 
-                              else 'badge-planeacion' if current_user.rol == 'planeacion_compras'
+                              else 'badge-planeacion' if current_user.rol == 'compras'
                               else 'badge-logistica' }} badge-rol w-100">
             {{ current_user.rol.replace('_', ' ').upper() }}
         </span>
