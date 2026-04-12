@@ -30,6 +30,9 @@
     <a href="{{ url_for('estudiante.dashboard_logistica') }}" class="{{ 'active' if 'logistica' in request.endpoint else '' }}">
         <i class="fas fa-warehouse me-2"></i>Logística
     </a>
+    <a href="{{ url_for('estudiante.vista_recepcion') }}" class="{{ 'active' if request.endpoint == 'estudiante.vista_recepcion' else '' }}">
+        <i class="fas fa-inbox me-2"></i>Recepción de Pedidos
+    </a>
     {% endif %}
     
     <hr class="bg-light mx-3">
