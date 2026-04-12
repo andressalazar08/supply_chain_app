@@ -45,7 +45,7 @@ def calibrar(inv_750ml: int = 700, inv_1l: int = 500):
             demanda_diaria_empresa = nueva_demanda / 7.0 * REGIONES
             nuevo_punto_reorden    = max(1, round(demanda_diaria_empresa * DIAS_REORDEN))
             nuevo_stock_seguridad  = max(1, round(demanda_diaria_empresa * DIAS_SEGURIDAD))
-            nuevo_stock_maximo     = inv_inicial * 3
+            nuevo_stock_maximo     = 1500
 
             anterior_demanda    = producto.demanda_promedio
             anterior_desviacion = producto.desviacion_demanda

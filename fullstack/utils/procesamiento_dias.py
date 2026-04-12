@@ -605,13 +605,12 @@ def calcular_costos_operativos(simulacion, empresa):
     )
     costos_mantenimiento = valor_inventario * (0.003 / 7)  # tasa diaria
     
-    # 2.1 PENALIZACIÓN POR SOBRESTOCK (0.5%/semana → diaria)
+    # 2.1 PENALIZACIÓN POR SOBRESTOCK ($1000 por unidad excedente)
     penalizacion_sobrestock = 0
     for inv in inventarios:
         if inv.producto.stock_maximo and inv.cantidad_actual > inv.producto.stock_maximo:
             exceso = inv.cantidad_actual - inv.producto.stock_maximo
-            valor_exceso = exceso * (inv.costo_promedio or 0)
-            penalizacion_sobrestock += valor_exceso * (0.005 / 7)
+            penalizacion_sobrestock += exceso * 1000
     
     costos_mantenimiento += penalizacion_sobrestock
     

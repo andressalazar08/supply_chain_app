@@ -29,6 +29,27 @@ bp = Blueprint('estudiante', __name__, url_prefix='/estudiante')
 # Costo base de transporte por unidad y por dia de transito.
 COSTO_TRANSPORTE_POR_UNIDAD_DIA = 500
 
+REGIONES_CANONICAS = [
+    'Andina',
+    'Caribe',
+    'Pac\u00edfica',
+    'Orinoqu\u00eda',
+    'Amazon\u00eda',
+]
+
+REGION_VARIANTES = {
+    'Andina': ['Andina'],
+    'Caribe': ['Caribe'],
+    'Pac\u00edfica': ['Pac\u00edfica', 'Pacifica', 'Pac�fica'],
+    'Orinoqu\u00eda': ['Orinoqu\u00eda', 'Orinoquia', 'Orinoqu�a'],
+    'Amazon\u00eda': ['Amazon\u00eda', 'Amazonia', 'Amazon�a'],
+}
+
+
+def variantes_region(region):
+    """Retorna alias válidos de una región para tolerar datos legados mal codificados."""
+    return REGION_VARIANTES.get(region, [region])
+
 def obtener_simulacion_activa():
     """Helper para obtener la simulaci�n actualmente activa"""
     return Simulacion.query.filter_by(activa=True).first()
@@ -489,7 +510,7 @@ def api_ventas_matriz_precios():
         empresa = current_user.empresa
         productos = Producto.query.filter_by(activo=True).all()
         
-        regiones = ['Andina', 'Caribe', 'Pac�fica', 'Orinoqu�a', 'Amazon�a']
+        regiones = REGIONES_CANONICAS
         
         productos_data = []
         for producto in productos:
@@ -497,10 +518,10 @@ def api_ventas_matriz_precios():
             
             # Obtener precios actuales por regi�n (�ltimas ventas)
             for region in regiones:
-                ultima_venta = Venta.query.filter_by(
-                    empresa_id=empresa.id,
-                    producto_id=producto.id,
-                    region=region
+                ultima_venta = Venta.query.filter(
+                    Venta.empresa_id == empresa.id,
+                    Venta.producto_id == producto.id,
+                    Venta.region.in_(variantes_region(region))
                 ).order_by(Venta.semana_simulacion.desc()).first()
                 
                 precios[region] = ultima_venta.precio_unitario if ultima_venta else producto.precio_actual
@@ -583,23 +604,21 @@ def api_ventas_analisis_regiones():
         empresa = current_user.empresa
         simulacion = Simulacion.query.filter_by(activa=True).first()
         
-        regiones = ['Andina', 'Caribe', 'Pac�fica', 'Orinoqu�a', 'Amazon�a']
+        regiones = REGIONES_CANONICAS
         regiones_data = []
         
         for region in regiones:
             # Ventas �ltimos 7 d�as
-            ventas_recientes = Venta.query.filter_by(
-                empresa_id=empresa.id,
-                region=region
-            ).filter(
+            ventas_recientes = Venta.query.filter(
+                Venta.empresa_id == empresa.id,
+                Venta.region.in_(variantes_region(region)),
                 Venta.semana_simulacion >= max(1, simulacion.dia_actual - 7)
             ).all()
             
             # Ventas 7 d�as anteriores para calcular tendencia
-            ventas_anteriores = Venta.query.filter_by(
-                empresa_id=empresa.id,
-                region=region
-            ).filter(
+            ventas_anteriores = Venta.query.filter(
+                Venta.empresa_id == empresa.id,
+                Venta.region.in_(variantes_region(region)),
                 Venta.semana_simulacion >= max(1, simulacion.dia_actual - 14),
                 Venta.semana_simulacion < max(1, simulacion.dia_actual - 7)
             ).all()
@@ -618,7 +637,7 @@ def api_ventas_analisis_regiones():
                 Producto.nombre
             ).join(Venta).filter(
                 Venta.empresa_id == empresa.id,
-                Venta.region == region,
+                Venta.region.in_(variantes_region(region)),
                 Venta.semana_simulacion >= max(1, simulacion.dia_actual - 7)
             ).group_by(Producto.nombre).order_by(func.sum(Venta.cantidad_vendida).desc()).first()
             
@@ -1717,7 +1736,7 @@ def dashboard_logistica():
     ).count()
     
     # An�lisis de inventario por regi�n
-    regiones = ['Andina', 'Caribe', 'Pac�fica', 'Orinoqu�a', 'Amazon�a']
+    regiones = REGIONES_CANONICAS
     stock_por_region = {}
     
     for region in regiones:
@@ -1900,7 +1919,7 @@ def vista_despacho():
         .order_by(Venta.semana_simulacion.desc()).all()
     
     # An�lisis de demanda por regi�n
-    regiones = ['Andina', 'Caribe', 'Pac�fica', 'Orinoqu�a', 'Amazon�a']
+    regiones = REGIONES_CANONICAS
     analisis_regiones = {}
     
     for region in regiones:
@@ -2939,7 +2958,7 @@ def api_logistica_fill_rate_region():
     if not simulacion:
         return jsonify({'error': 'No hay simulación activa'}), 404
 
-    regiones = ['Andina', 'Caribe', 'Pacífica', 'Orinoquía', 'Amazonía']
+    regiones = REGIONES_CANONICAS
     fill_rates = []
     ventas_totales = []
     ventas_perdidas = []

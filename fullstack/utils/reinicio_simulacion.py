@@ -90,7 +90,7 @@ def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None,
 
             nuevo_punto_reorden   = max(1, round(demanda_diaria_empresa * DIAS_REORDEN))
             nuevo_stock_seguridad = max(1, round(demanda_diaria_empresa * DIAS_SEGURIDAD))
-            nuevo_stock_maximo    = inv_inicial * 3  # techo = 3× inventario inicial
+            nuevo_stock_maximo    = 1500  # techo fijo general para todos los productos
 
             producto.demanda_promedio   = nueva_demanda
             producto.desviacion_demanda = nueva_desviacion

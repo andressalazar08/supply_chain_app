@@ -114,7 +114,7 @@ class Producto(db.Model):
     desviacion_demanda = db.Column(db.Float, default=20)
     elasticidad_precio = db.Column(db.Float, default=1.5)  # Factor de sensibilidad al precio
     tiempo_entrega = db.Column(db.Integer, default=3)  # días
-    stock_maximo = db.Column(db.Float, default=500)  # Límite de inventario (sobrestock genera costos adicionales)
+    stock_maximo = db.Column(db.Float, default=1500)  # Límite de inventario general por producto
     activo = db.Column(db.Boolean, default=True)
     
     # Relaciones
