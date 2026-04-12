@@ -301,12 +301,14 @@
                                         <th>Stock Actual</th>
                                         <th>Costo Unitario</th>
                                         <th>Lead Time</th>
+                                        <th>Mínimo</th>
                                         <th style="min-width: 180px;">Cantidad a Pedir</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for producto in productos %}
                                     {% set inv = inventarios_dict.get(producto.id) %}
+                                    {% set minimo = 50 if '750' in producto.codigo else (40 if '1L' in producto.codigo or 'L' in producto.codigo.upper() else 0) %}
                                     <tr>
                                         <td>
                                             <strong>{{ producto.nombre }}</strong><br>
@@ -315,6 +317,7 @@
                                         <td>{{ "%.0f"|format(inv.cantidad_actual if inv else 0) }}</td>
                                         <td>${{ "{:,.0f}".format(producto.costo_unitario) }}</td>
                                         <td>{{ producto.tiempo_entrega }} días</td>
+                                        <td><strong>{{ minimo }}</strong> {% if minimo > 0 %}u.{% endif %}</td>
                                         <td>
                                             <input
                                                 type="number"
@@ -323,6 +326,8 @@
                                                 name="qty_{{ producto.id }}"
                                                 class="form-control pedido-general-input"
                                                 data-costo="{{ producto.costo_unitario }}"
+                                                data-minimo="{{ minimo }}"
+                                                data-producto="{{ producto.nombre }}"
                                                 placeholder="0"
                                             >
                                         </td>
@@ -333,11 +338,16 @@
                         </div>
 
                         <div class="d-flex justify-content-between align-items-center mt-3">
-                            <div class="text-muted small">
-                                Ítems con cantidad: <strong id="pedidoGeneralItems">0</strong> |
-                                Costo estimado total: <strong id="pedidoGeneralCosto">$0</strong>
+                            <div>
+                                <div class="text-muted small">
+                                    Ítems con cantidad: <strong id="pedidoGeneralItems">0</strong> |
+                                    Costo estimado total: <strong id="pedidoGeneralCosto">$0</strong>
+                                </div>
+                                <div class="text-danger small mt-2" id="pedidoGeneralError" style="display: none;">
+                                    <i class="fas fa-exclamation-circle me-1"></i><span id="pedidoGeneralErrorText"></span>
+                                </div>
                             </div>
-                            <button type="submit" class="btn btn-primary">
+                            <button type="submit" class="btn btn-primary" id="btnCrearPedidoGeneral">
                                 <i class="fas fa-check me-2"></i>Crear Pedido General
                             </button>
                         </div>
@@ -609,18 +619,48 @@
         const inputs = document.querySelectorAll('.pedido-general-input');
         let items = 0;
         let costoTotal = 0;
+        let hayError = false;
+        let errorMsg = '';
 
         inputs.forEach((input) => {
             const cantidad = parseFloat(input.value) || 0;
             const costo = parseFloat(input.dataset.costo) || 0;
+            const minimo = parseFloat(input.dataset.minimo) || 0;
+            const producto = input.dataset.producto || 'Producto';
+            
             if (cantidad > 0) {
-                items += 1;
+                // Validar si está por debajo del mínimo
+                if (minimo > 0 && cantidad < minimo) {
+                    hayError = true;
+                    errorMsg = `${producto} requiere mínimo ${minimo} unidades (ingresaste ${Math.floor(cantidad)})`;
+                    items += 1;  // Contar aunque sea inválido
+                } else {
+                    items += 1;
+                }
                 costoTotal += cantidad * costo;
             }
         });
 
         document.getElementById('pedidoGeneralItems').textContent = items;
         document.getElementById('pedidoGeneralCosto').textContent = '$' + costoTotal.toLocaleString('es-CO', {maximumFractionDigits: 0});
+        
+        const btn = document.getElementById('btnCrearPedidoGeneral');
+        const errorDiv = document.getElementById('pedidoGeneralError');
+        const errorText = document.getElementById('pedidoGeneralErrorText');
+        
+        if (hayError) {
+            btn.disabled = true;
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-danger');
+            errorDiv.style.display = 'block';
+            errorText.textContent = errorMsg;
+        } else {
+            btn.disabled = false;
+            btn.classList.add('btn-primary');
+            btn.classList.remove('btn-danger');
+            errorDiv.style.display = 'none';
+            errorText.textContent = '';
+        }
     }
 
     document.addEventListener('DOMContentLoaded', function() {
