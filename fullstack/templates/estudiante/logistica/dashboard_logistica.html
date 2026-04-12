@@ -478,44 +478,18 @@ function mostrarStock(stock) {
     let html = '';
     stock.forEach(item => {
         let estadoClass = 'normal';
-        let estadoBadge = 'Óptimo';
-        let badgeColor = 'success';
-        
         if (item.stock_actual <= item.stock_seguridad * 0.5) {
             estadoClass = 'critico';
-            estadoBadge = 'Crítico';
-            badgeColor = 'danger';
         } else if (item.stock_actual <= item.stock_seguridad) {
             estadoClass = 'advertencia';
-            estadoBadge = 'Advertencia';
-            badgeColor = 'warning';
         }
         
         html += `
             <div class="col-md-6 col-lg-4 mb-3">
                 <div class="stock-card ${estadoClass}">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <h5 class="mb-0">${item.producto_nombre}</h5>
-                        <span class="badge bg-${badgeColor} badge-estado">${estadoBadge}</span>
-                    </div>
+                    <h5 class="mb-3">${item.producto_nombre}</h5>
                     <div class="stock-cantidad ${estadoClass}">${Math.round(item.stock_actual)}</div>
                     <div class="text-muted small">unidades disponibles</div>
-                    <hr>
-                    <div class="row text-center small">
-                        <div class="col-6">
-                            <div class="text-muted">Stock Seguridad</div>
-                            <div class="fw-bold">${Math.round(item.stock_seguridad)}</div>
-                        </div>
-                        <div class="col-6">
-                            <div class="text-muted">Stock Máximo</div>
-                            <div class="fw-bold">${Math.round(item.stock_maximo || 0)}</div>
-                        </div>
-                    </div>
-                    <div class="mt-3 pt-3 border-top small text-center">
-                        <span class="text-warning fw-bold">Sobrestock: ${Math.round(item.sobrestock || 0)}</span>
-                        <br>
-                        <span class="text-danger">Costo: $${Number(item.costo_sobrestock || 0).toLocaleString('es-CO', {maximumFractionDigits: 0})}</span>
-                    </div>
                 </div>
             </div>
         `;
