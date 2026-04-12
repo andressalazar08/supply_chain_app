@@ -48,11 +48,8 @@
             <a href="{{ url_for('estudiante.dashboard_ventas') }}">
                 <i class="fas fa-chart-line me-2"></i>Ventas
             </a>
-            <a href="{{ url_for('estudiante.dashboard_planeacion') }}">
-                <i class="fas fa-calendar-alt me-2"></i>Planeación
-            </a>
             <a href="{{ url_for('estudiante.dashboard_compras') }}">
-                <i class="fas fa-shopping-cart me-2"></i>Compras
+                <i class="fas fa-shopping-cart me-2"></i>Planeación y Compras
             </a>
             <a href="{{ url_for('estudiante.dashboard_logistica') }}">
                 <i class="fas fa-warehouse me-2"></i>Logística
@@ -74,10 +71,9 @@
                     <p class="text-muted mb-0">
                         <i class="fas fa-user me-2"></i>{{ current_user.nombre }} - 
                         <span class="badge {{ 'badge-ventas' if current_user.rol == 'ventas' 
-                                              else 'badge-planeacion' if current_user.rol == 'planeacion'
-                                              else 'badge-compras' if current_user.rol == 'compras'
+                                              else 'badge-planeacion' if current_user.rol == 'planeacion_compras'
                                               else 'badge-logistica' }} badge-rol">
-                            {{ current_user.rol.upper() }}
+                            {{ current_user.rol.replace('_', ' ').upper() }}
                         </span>
                     </p>
                 </div>
@@ -211,46 +207,16 @@
                     </div>
                 </div>
 
-                <!-- Módulo de Planeación -->
-                <div class="col-md-6 col-lg-3">
-                    <div class="card h-100 border-0 shadow-sm card-hover">
-                        <div class="card-body text-center">
-                            <div class="mb-3">
-                                <i class="fas fa-calendar-alt fa-4x text-success"></i>
-                            </div>
-                            <h5 class="card-title">Planeación</h5>
-                            <p class="card-text text-muted small">
-                                Pronósticos de demanda con métodos estadísticos y planificación de inventarios
-                            </p>
-                            <div class="mb-3">
-                                <div class="row text-center small">
-                                    <div class="col-6 border-end">
-                                        <div class="text-muted">Pronósticos</div>
-                                        <strong class="text-success">{{ pronosticos_activos }}</strong>
-                                    </div>
-                                    <div class="col-6">
-                                        <div class="text-muted">Productos</div>
-                                        <strong class="text-success">{{ productos|length }}</strong>
-                                    </div>
-                                </div>
-                            </div>
-                            <a href="{{ url_for('estudiante.dashboard_planeacion') }}" class="btn btn-success w-100">
-                                <i class="fas fa-arrow-right me-2"></i>Ir a Planeación
-                            </a>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Módulo de Compras -->
-                <div class="col-md-6 col-lg-3">
+                <!-- Módulo de Planeación y Compras -->
+                <div class="col-md-6 col-lg-4">
                     <div class="card h-100 border-0 shadow-sm card-hover">
                         <div class="card-body text-center">
                             <div class="mb-3">
                                 <i class="fas fa-shopping-cart fa-4x text-warning"></i>
                             </div>
-                            <h5 class="card-title">Compras</h5>
+                            <h5 class="card-title">Planeación y Compras</h5>
                             <p class="card-text text-muted small">
-                                Gestión de órdenes de compra, proveedores y control de presupuesto
+                                Planificación de abastecimiento, requerimientos y gestión de órdenes de compra
                             </p>
                             <div class="mb-3">
                                 <div class="row text-center small">
@@ -265,14 +231,14 @@
                                 </div>
                             </div>
                             <a href="{{ url_for('estudiante.dashboard_compras') }}" class="btn btn-warning w-100">
-                                <i class="fas fa-arrow-right me-2"></i>Ir a Compras
+                                <i class="fas fa-arrow-right me-2"></i>Ir a Planeación y Compras
                             </a>
                         </div>
                     </div>
                 </div>
 
                 <!-- Módulo de Logística -->
-                <div class="col-md-6 col-lg-3">
+                <div class="col-md-6 col-lg-4">
                     <div class="card h-100 border-0 shadow-sm card-hover">
                         <div class="card-body text-center">
                             <div class="mb-3">

@@ -3,9 +3,11 @@ Rutas para el rol Estudiante
 Dashboard diferenciado seg�n rol: Ventas, Planeaci�n, Compras, Log�stica
 """
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
 from flask_login import login_required, current_user
 from functools import wraps
+import csv
+import io
 from models import (Usuario, Empresa, Simulacion, Inventario, Venta, Compra, Decision,
                     Producto, Pronostico, RequerimientoCompra, MovimientoInventario, DespachoRegional,
                     DisrupcionEmpresa)
@@ -28,6 +30,7 @@ bp = Blueprint('estudiante', __name__, url_prefix='/estudiante')
 
 # Costo base de transporte por unidad y por dia de transito.
 COSTO_TRANSPORTE_POR_UNIDAD_DIA = 500
+ROL_PLANEACION_COMPRAS = 'planeacion_compras'
 
 REGIONES_CANONICAS = [
     'Andina',
@@ -50,6 +53,17 @@ def variantes_region(region):
     """Retorna alias válidos de una región para tolerar datos legados mal codificados."""
     return REGION_VARIANTES.get(region, [region])
 
+
+def _role_set_for_user(user_role):
+    """Mapea roles legados a su conjunto funcional equivalente."""
+    if user_role in ['planeacion', 'compras', ROL_PLANEACION_COMPRAS]:
+        return {'planeacion', 'compras', ROL_PLANEACION_COMPRAS}
+    return {user_role}
+
+
+def _role_allowed(user_role, allowed_roles):
+    return bool(_role_set_for_user(user_role).intersection(set(allowed_roles)))
+
 def obtener_simulacion_activa():
     """Helper para obtener la simulaci�n actualmente activa"""
     return Simulacion.query.filter_by(activa=True).first()
@@ -70,7 +84,7 @@ def rol_required(*roles):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if current_user.rol not in roles:
+            if not _role_allowed(current_user.rol, roles):
                 flash('No tienes permiso para acceder a este módulo.', 'error')
                 return redirect(url_for('estudiante.dashboard_general'))
             return f(*args, **kwargs)
@@ -985,66 +999,11 @@ def api_ventas_demanda_mercado():
 @bp.route('/planeacion')
 @login_required
 @estudiante_required
-@rol_required('planeacion')
+@rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
 def dashboard_planeacion():
-    """Dashboard espec�fico para el rol de Planeaci�n"""
-    # Acceso permitido para todos los roles - Panel unificado
-    simulacion = Simulacion.query.filter_by(activa=True).first()
-    empresa = current_user.empresa
-    
-    # Obtener productos
-    productos = Producto.query.filter_by(activo=True).all()
-    
-    # Obtener inventarios actuales
-    inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
-    inventarios_dict = {inv.producto_id: inv for inv in inventarios}
-    
-    # Calcular estad�sticas por producto
-    stats_productos = []
-    for producto in productos:
-        # Ventas hist�ricas del producto
-        ventas = Venta.query.filter_by(
-            empresa_id=empresa.id,
-            producto_id=producto.id
-        ).order_by(Venta.semana_simulacion).all()
-        
-        # Datos para an�lisis
-        total_vendido = sum([v.cantidad_vendida for v in ventas])
-        total_perdido = sum([v.cantidad_perdida for v in ventas])
-        demanda_promedio = total_vendido / len(ventas) if ventas else 0
-        
-        inventario = inventarios_dict.get(producto.id)
-        stock_actual = inventario.cantidad_actual if inventario else 0
-        
-        stats_productos.append({
-            'producto': producto,
-            'total_vendido': total_vendido,
-            'total_perdido': total_perdido,
-            'demanda_promedio': demanda_promedio,
-            'stock_actual': stock_actual,
-            'dias_ventas': len(set([v.semana_simulacion for v in ventas]))
-        })
-    
-    # Pron�sticos recientes
-    pronosticos_recientes = Pronostico.query.filter_by(
-        empresa_id=empresa.id,
-        usuario_id=current_user.id
-    ).order_by(Pronostico.created_at.desc()).limit(10).all()
-    
-    # Requerimientos pendientes
-    requerimientos_pendientes = RequerimientoCompra.query.filter_by(
-        empresa_id=empresa.id,
-        usuario_planeacion_id=current_user.id,
-        estado='pendiente'
-    ).count()
-    
-    return render_template('estudiante/planeacion/dashboard_planeacion.html',
-                         simulacion=simulacion,
-                         empresa=empresa,
-                         productos=productos,
-                         stats_productos=stats_productos,
-                         pronosticos_recientes=pronosticos_recientes,
-                         requerimientos_pendientes=requerimientos_pendientes)
+    """La Planeación se integró con Compras en un único módulo operativo."""
+    flash('Planeación y Compras ahora están integradas en un solo módulo.', 'info')
+    return redirect(url_for('estudiante.dashboard_compras'))
 
 
 @bp.route('/planeacion/generar-pronostico')
@@ -1052,8 +1011,8 @@ def dashboard_planeacion():
 @estudiante_required
 def generar_pronostico():
     """Mantiene compatibilidad con ruta legacy y redirige al panel vigente."""
-    flash('La gestión de pronósticos está integrada en el panel de Planeación.', 'info')
-    return redirect(url_for('estudiante.dashboard_planeacion'))
+    flash('La gestión de pronósticos ahora se realiza fuera de la app. Exporta ventas desde Planeación y Compras.', 'info')
+    return redirect(url_for('estudiante.dashboard_compras'))
 
 
 @bp.route('/planeacion/guardar-pronostico', methods=['POST'])
@@ -1219,7 +1178,7 @@ def crear_requerimiento():
 @estudiante_required
 def api_historico_producto(producto_id):
     """API: Datos hist�ricos de demanda de un producto"""
-    if current_user.rol != 'planeacion':
+    if not _role_allowed(current_user.rol, ['planeacion', 'compras', ROL_PLANEACION_COMPRAS]):
         return jsonify({'error': 'No autorizado'}), 403
     
     empresa_id = current_user.empresa_id
@@ -1272,7 +1231,7 @@ def api_historico_producto(producto_id):
 @bp.route('/compras')
 @login_required
 @estudiante_required
-@rol_required('compras')
+@rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
 def dashboard_compras():
     """Dashboard espec�fico para el rol de Compras"""
     # Acceso permitido para todos los roles - Panel unificado
@@ -1342,11 +1301,43 @@ def dashboard_compras():
                          capital_libre=capital_libre)
 
 
+@bp.route('/compras/exportar-ventas-csv')
+@login_required
+@estudiante_required
+@rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
+def exportar_ventas_csv():
+    """Exporta ventas para pronóstico externo (día, producto, unidades vendidas, región)."""
+    empresa = current_user.empresa
+
+    ventas = Venta.query.filter(
+        Venta.empresa_id == empresa.id,
+        Venta.cantidad_vendida > 0
+    ).order_by(Venta.semana_simulacion.asc(), Venta.producto_id.asc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['dia_venta', 'producto', 'unidades_vendidas', 'region'])
+
+    for venta in ventas:
+        writer.writerow([
+            venta.semana_simulacion,
+            venta.producto.nombre if venta.producto else venta.producto_id,
+            int(round(venta.cantidad_vendida or 0)),
+            venta.region,
+        ])
+
+    response = make_response(output.getvalue())
+    output.close()
+    response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+    response.headers['Content-Disposition'] = 'attachment; filename=ventas_para_pronostico.csv'
+    return response
+
+
 @bp.route('/compras/requerimientos')
 @login_required
 @estudiante_required
 def ver_requerimientos():
-    """Vista de requerimientos de Planeaci�n"""
+    """Vista de requerimientos para Planeación y Compras."""
     # Acceso permitido para todos los roles - Panel unificado
     simulacion = Simulacion.query.filter_by(activa=True).first()
     empresa = current_user.empresa
@@ -1660,7 +1651,7 @@ def marcar_requerimiento_revisado(requerimiento_id):
 @estudiante_required
 def api_inventario_status():
     """API: Estado del inventario para gr�ficos"""
-    if current_user.rol != 'compras':
+    if not _role_allowed(current_user.rol, ['planeacion', 'compras', ROL_PLANEACION_COMPRAS]):
         return jsonify({'error': 'No autorizado'}), 403
     
     empresa_id = current_user.empresa_id
