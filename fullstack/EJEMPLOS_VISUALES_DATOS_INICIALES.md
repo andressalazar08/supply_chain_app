@@ -180,9 +180,9 @@ EMPRESA 3 - Distribuidora Gamma
 ╚═══════════════════════════════════════════════════════════╝
 ```
 
-### **Estudiante 3 - ROL PLANEACIÓN (Distribuidora Gamma)**
+### **Estudiante 3 - ROL COMPRAS (Distribuidora Gamma)**
 
-**Pantalla: Dashboard Planeación - Pronóstico**
+**Pantalla: Dashboard Compras - Requerimientos y Pedidos**
 
 ```
 ╔═══════════════════════════════════════════════════════════╗
@@ -253,16 +253,16 @@ EMPRESA 3 - Distribuidora Gamma
 
 ## 🎯 Ejemplo 4: Día 5 - Cómo Divergen los Resultados
 
-### **DÍA 5 - Las datos iniciales son iguales, pero las decisiones varían:**
+### **DÍA 5 - Los datos iniciales son iguales, pero las decisiones varían:**
 
 #### **Escenario Alpha: Estrategia Agresiva en Precio**
 
 ```
 DECISIONES TOMADAS (Días 1-4):
 ├─ Ventas: Bajaron precio 750ml a $40,000 (vs $45,000 original)
-├─ Compras: Hicieron 2 pedidos anticipados
+├─ Compras: Hicieron 2 pedidos anticipados con proveedor B
 ├─ Logística: Distribuyeron más stock a región Caribe
-└─ Planeación: Usaron promedio móvil simple para pronóstico
+└─ Compras: Ajustaron el pedido al proveedor B por mejor tiempo de entrega
 
 RESULTADOS (Día 5):
 ├─ Stock 750ml: 45 und (de 120) ⚠️ Bajo pero con cobertura
@@ -279,7 +279,7 @@ DECISIONES TOMADAS (Días 1-4):
 ├─ Ventas: Subieron precio 750ml a $52,000 (vs $45,000 original)
 ├─ Compras: NO hicieron pedidos aún (esperan datos)
 ├─ Logística: Stock concentrado en centro
-└─ Planeación: Esperan completar semana 1 para analizar
+└─ Compras: Esperan comparar proveedor A vs. B
 
 RESULTADOS (Día 5):
 ├─ Stock 750ml: 85 und (de 120) ✓ Aún alto
@@ -296,7 +296,7 @@ DECISIONES TOMADAS (Días 1-4):
 ├─ Ventas: Mantuvieron precio inicial $45,000
 ├─ Compras: 1 pedido moderado para semana 3
 ├─ Logística: Distribución balanceada por regiones
-└─ Planeación: Analizando datos conforme llegan
+└─ Compras: Analizando requerimientos y nivel de servicio
 
 RESULTADOS (Día 5):
 ├─ Stock 750ml: 62 und (de 120) ✓ Equilibrado

@@ -81,9 +81,9 @@ def calcular_stock_disponible_despacho(inventario, ordenes_pendientes=None) -> f
     # Restar cantidades en órdenes de despacho pendientes
     if ordenes_pendientes:
         for orden in ordenes_pendientes:
-                stock_disponible -= _qty_int(orden.cantidad)
-    
-            return max(0, _qty_int(stock_disponible))
+            stock_disponible -= _qty_int(orden.cantidad)
+
+    return max(0, _qty_int(stock_disponible))
 
 
 def validar_despacho_region(inventario, cantidad_solicitada: float, 
