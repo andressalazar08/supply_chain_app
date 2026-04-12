@@ -293,6 +293,17 @@
                     </p>
 
                     <form method="POST" action="{{ url_for('estudiante.crear_pedido_general') }}">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Proveedor para el pedido general</label>
+                                <select name="proveedor" id="pedidoGeneralProveedor" class="form-select" onchange="actualizarResumenPedidoGeneral()">
+                                    <option value="A">Proveedor A - menor costo, mayor lead time</option>
+                                    <option value="B">Proveedor B - mayor costo, menor lead time</option>
+                                </select>
+                                <small class="text-muted">A: 5% más barato y +2 días | B: 10% más costoso y -1 día</small>
+                            </div>
+                        </div>
+
                         <div class="table-responsive">
                             <table class="table table-sm table-hover align-middle">
                                 <thead class="table-light">
@@ -484,6 +495,15 @@
                         <input type="number" name="cantidad" class="form-control" 
                                min="1" step="1" required onchange="actualizarCostoEstimado()">
                     </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Proveedor</label>
+                        <select name="proveedor" id="ordenManualProveedor" class="form-select" onchange="actualizarCostoEstimado()">
+                            <option value="A">Proveedor A - menor costo, mayor lead time</option>
+                            <option value="B">Proveedor B - mayor costo, menor lead time</option>
+                        </select>
+                        <small class="text-muted">A: 5% más barato y +2 días | B: 10% más costoso y -1 día</small>
+                    </div>
                     
                     <div class="alert alert-info" id="infoOrden" style="display: none;">
                         <div><strong>Costo Estimado:</strong> <span id="costoEstimado">$0</span></div>
@@ -534,6 +554,15 @@
                     <div class="mb-3">
                         <label class="form-label">Notas (Opcional)</label>
                         <textarea name="notas_compras" class="form-control" rows="2"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Proveedor</label>
+                        <select name="proveedor" id="reqProveedor" class="form-select">
+                            <option value="A">Proveedor A - menor costo, mayor lead time</option>
+                            <option value="B">Proveedor B - mayor costo, menor lead time</option>
+                        </select>
+                        <small class="text-muted">A: 5% más barato y +2 días | B: 10% más costoso y -1 día</small>
                     </div>
                     
                     <div class="alert alert-warning">
@@ -626,8 +655,20 @@
 
 {% block extra_js %}
 <script>
+    const PROVEEDOR_CONFIG = {
+        A: { costoMultiplicador: 0.95, leadDelta: 2 },
+        B: { costoMultiplicador: 1.10, leadDelta: -1 }
+    };
+
+    function getProveedorConfig(codigo) {
+        return PROVEEDOR_CONFIG[codigo] || PROVEEDOR_CONFIG.A;
+    }
+
     function actualizarResumenPedidoGeneral() {
         const inputs = document.querySelectorAll('.pedido-general-input');
+        const proveedorSelect = document.getElementById('pedidoGeneralProveedor');
+        const proveedor = proveedorSelect ? proveedorSelect.value : 'A';
+        const proveedorConfig = getProveedorConfig(proveedor);
         let items = 0;
         let costoTotal = 0;
         let hayError = false;
@@ -648,7 +689,7 @@
                 } else {
                     items += 1;
                 }
-                costoTotal += cantidad * costo;
+                costoTotal += cantidad * costo * proveedorConfig.costoMultiplicador;
             }
         });
 
@@ -679,19 +720,30 @@
         inputs.forEach((input) => {
             input.addEventListener('input', actualizarResumenPedidoGeneral);
         });
+
+        const proveedorGeneral = document.getElementById('pedidoGeneralProveedor');
+        if (proveedorGeneral) {
+            proveedorGeneral.addEventListener('change', actualizarResumenPedidoGeneral);
+        }
+
         actualizarResumenPedidoGeneral();
     });
 
     function actualizarCostoEstimado() {
         const selectProducto = document.querySelector('select[name="producto_id"]');
         const inputCantidad = document.querySelector('input[name="cantidad"]');
+        const selectProveedor = document.getElementById('ordenManualProveedor');
         const infoOrden = document.getElementById('infoOrden');
         
-        if (selectProducto.value && inputCantidad.value) {
+        if (selectProducto.value && inputCantidad.value && selectProveedor) {
             const option = selectProducto.options[selectProducto.selectedIndex];
-            const costoUnitario = parseFloat(option.dataset.costo);
-            const leadTime = parseInt(option.dataset.leadTime);
+            const costoUnitarioBase = parseFloat(option.dataset.costo);
+            const leadTimeBase = parseInt(option.dataset.leadTime);
             const cantidad = parseFloat(inputCantidad.value);
+            const proveedorConfig = getProveedorConfig(selectProveedor.value);
+
+            const costoUnitario = costoUnitarioBase * proveedorConfig.costoMultiplicador;
+            const leadTime = Math.max(1, leadTimeBase + proveedorConfig.leadDelta);
             
             const costoTotal = costoUnitario * cantidad;
             const diaLlegada = {{ simulacion.dia_actual }} + leadTime;
@@ -709,20 +761,24 @@
     function procesarRequerimiento(id, producto, cantidad, costoUnitario) {
         document.getElementById('reqProducto').textContent = producto;
         document.getElementById('reqCantidad').textContent = cantidad.toFixed(0);
-        document.getElementById('reqCantidadInput').value = cantidad.toFixed(0);
-        
-        const costoTotal = cantidad * costoUnitario;
-        document.getElementById('reqCostoTotal').textContent = costoTotal.toLocaleString('es-CO', {maximumFractionDigits: 0});
+        const reqCantidadInput = document.getElementById('reqCantidadInput');
+        const reqProveedor = document.getElementById('reqProveedor');
+        reqCantidadInput.value = cantidad.toFixed(0);
+
+        const recalcularCostoRequerimiento = () => {
+            const nuevaCantidad = parseFloat(reqCantidadInput.value) || 0;
+            const proveedorConfig = getProveedorConfig(reqProveedor.value);
+            const nuevoCosto = nuevaCantidad * costoUnitario * proveedorConfig.costoMultiplicador;
+            document.getElementById('reqCostoTotal').textContent = nuevoCosto.toLocaleString('es-CO', {maximumFractionDigits: 0});
+        };
+
+        recalcularCostoRequerimiento();
         
         const form = document.getElementById('formProcesarRequerimiento');
         form.action = "{{ url_for('estudiante.crear_orden_desde_requerimiento', requerimiento_id=0) }}".replace('/0', '/' + id);
-        
-        // Actualizar costo al cambiar cantidad
-        document.getElementById('reqCantidadInput').addEventListener('input', function() {
-            const nuevaCantidad = parseFloat(this.value) || 0;
-            const nuevoCosto = nuevaCantidad * costoUnitario;
-            document.getElementById('reqCostoTotal').textContent = nuevoCosto.toLocaleString('es-CO', {maximumFractionDigits: 0});
-        });
+
+        reqCantidadInput.oninput = recalcularCostoRequerimiento;
+        reqProveedor.onchange = recalcularCostoRequerimiento;
         
         const modal = new bootstrap.Modal(document.getElementById('modalProcesarRequerimiento'));
         modal.show();

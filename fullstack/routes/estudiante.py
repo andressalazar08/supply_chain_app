@@ -64,6 +64,79 @@ def _role_set_for_user(user_role):
 def _role_allowed(user_role, allowed_roles):
     return bool(_role_set_for_user(user_role).intersection(set(allowed_roles)))
 
+
+PROVEEDORES_COMPRA = {
+    'A': {
+        'nombre': 'Proveedor A (económico)',
+        'costo_multiplicador': 0.95,
+        'lead_time_delta': 2,
+    },
+    'B': {
+        'nombre': 'Proveedor B (rápido)',
+        'costo_multiplicador': 1.10,
+        'lead_time_delta': -1,
+    },
+}
+
+
+def _normalizar_proveedor(valor):
+    proveedor = (valor or 'A').strip().upper()
+    return proveedor if proveedor in PROVEEDORES_COMPRA else 'A'
+
+
+def _calcular_condiciones_compra(producto, cantidad, simulacion, empresa_id, proveedor):
+    """Calcula costo/lead time según proveedor elegido y disrupciones activas."""
+    proveedor = _normalizar_proveedor(proveedor)
+    config = PROVEEDORES_COMPRA[proveedor]
+
+    costo_unitario = producto.costo_unitario * config['costo_multiplicador']
+    tiempo_entrega = max(1, int(round(producto.tiempo_entrega + config['lead_time_delta'])))
+
+    # Disrupción 1: retraso en proveedor estratégico.
+    # Si se usa proveedor A sobre producto afectado, se agrega retraso de 10 días.
+    dis_retraso = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.empresa_id == empresa_id,
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.producto_afectado_id == producto.id,
+        DisrupcionEmpresa.disrupcion_key == 'retraso_proveedor',
+        DisrupcionEmpresa.activa == True
+    ).first()
+    if dis_retraso and proveedor == 'A':
+        tiempo_entrega += 10
+
+    # Disrupción de aumento de costos de compra (opción C)
+    delay_extra = 0
+    dis_costos_c = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.empresa_id == empresa_id,
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.producto_afectado_id == producto.id,
+        DisrupcionEmpresa.disrupcion_key == 'aumento_costos_compra',
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.opcion_elegida == 'C'
+    ).first()
+    if dis_costos_c:
+        from utils.catalogo_disrupciones import get_disrupcion as _gd_cc
+        cat_cc = _gd_cc('aumento_costos_compra')
+        if cat_cc:
+            efectos_c = cat_cc['opciones']['C']['efectos']
+            pedido_min_c = int(efectos_c.get('pedido_minimo', 150))
+            if cantidad < pedido_min_c:
+                return {
+                    'ok': False,
+                    'mensaje': f'Con disrupción activa, el pedido mínimo es {pedido_min_c} unidades.'
+                }
+            costo_unitario *= efectos_c.get('costo_multiplicador', 0.826)
+            delay_extra = efectos_c.get('delay_entrega', 1)
+
+    return {
+        'ok': True,
+        'proveedor': proveedor,
+        'proveedor_nombre': config['nombre'],
+        'costo_unitario': costo_unitario,
+        'tiempo_entrega': tiempo_entrega,
+        'delay_extra': delay_extra,
+    }
+
 def obtener_simulacion_activa():
     """Helper para obtener la simulaci�n actualmente activa"""
     return Simulacion.query.filter_by(activa=True).first()
@@ -1406,55 +1479,26 @@ def crear_orden_desde_requerimiento(requerimiento_id):
         
         # Cantidad (puede ser ajustada por Compras)
         cantidad = float(request.form.get('cantidad', requerimiento.cantidad_sugerida))
+        proveedor = _normalizar_proveedor(request.form.get('proveedor', 'A'))
         notas_compras = request.form.get('notas_compras', '')
         
         simulacion = Simulacion.query.filter_by(activa=True).first()
         producto = Producto.query.get(requerimiento.producto_id)
         
-        # Calcular costos (con posible ajuste por disrupci�n Opci�n A)
-        costo_unitario = producto.costo_unitario
-        tiempo_entrega = producto.tiempo_entrega
+        condiciones = _calcular_condiciones_compra(
+            producto=producto,
+            cantidad=cantidad,
+            simulacion=simulacion,
+            empresa_id=current_user.empresa_id,
+            proveedor=proveedor,
+        )
+        if not condiciones['ok']:
+            flash(condiciones['mensaje'], 'error')
+            return redirect(url_for('estudiante.ver_requerimientos'))
 
-        dis_opcion_a = DisrupcionEmpresa.query.filter(
-            DisrupcionEmpresa.empresa_id == current_user.empresa_id,
-            DisrupcionEmpresa.simulacion_id == simulacion.id,
-            DisrupcionEmpresa.producto_afectado_id == requerimiento.producto_id,
-            DisrupcionEmpresa.activa == True,
-            DisrupcionEmpresa.opcion_elegida == 'A'
-        ).first()
-        if dis_opcion_a:
-            from utils.catalogo_disrupciones import get_disrupcion
-            cat = get_disrupcion(dis_opcion_a.disrupcion_key)
-            if cat:
-                efectos_a = cat['opciones']['A']['efectos']
-                costo_unitario *= efectos_a.get('costo_multiplicador', 1.20)
-                tiempo_entrega = efectos_a.get('tiempo_entrega_override', tiempo_entrega)
-                pedido_min = efectos_a.get('pedido_minimo', 0)
-                if cantidad < pedido_min:
-                    flash(f'?? Con el proveedor alterno, el pedido m�nimo es {pedido_min:.0f} unidades.', 'error')
-                    return redirect(url_for('estudiante.ver_requerimientos'))
-
-        # Efecto Opcion C de aumento_costos_compra: proveedor alterno
-        dis_costos_c = DisrupcionEmpresa.query.filter(
-            DisrupcionEmpresa.empresa_id == current_user.empresa_id,
-            DisrupcionEmpresa.simulacion_id == simulacion.id,
-            DisrupcionEmpresa.producto_afectado_id == requerimiento.producto_id,
-            DisrupcionEmpresa.disrupcion_key == 'aumento_costos_compra',
-            DisrupcionEmpresa.activa == True,
-            DisrupcionEmpresa.opcion_elegida == 'C'
-        ).first()
-        delay_extra = 0
-        if dis_costos_c:
-            from utils.catalogo_disrupciones import get_disrupcion as _gd_cc
-            cat_cc = _gd_cc('aumento_costos_compra')
-            if cat_cc:
-                efectos_c = cat_cc['opciones']['C']['efectos']
-                pedido_min_c = int(efectos_c.get('pedido_minimo', 150))
-                if cantidad < pedido_min_c:
-                    flash(f'Con el proveedor alterno, el pedido minimo es {pedido_min_c} unidades.', 'error')
-                    return redirect(url_for('estudiante.ver_requerimientos'))
-                costo_unitario *= efectos_c.get('costo_multiplicador', 0.826)
-                delay_extra = efectos_c.get('delay_entrega', 1)
+        costo_unitario = condiciones['costo_unitario']
+        tiempo_entrega = condiciones['tiempo_entrega']
+        delay_extra = condiciones['delay_extra']
 
         costo_total = cantidad * costo_unitario
 
@@ -1509,16 +1553,19 @@ def crear_orden_desde_requerimiento(requerimiento_id):
             datos_decision={
                 'requerimiento_id': requerimiento_id,
                 'producto_id': requerimiento.producto_id,
+                'proveedor': proveedor,
+                'proveedor_nombre': condiciones['proveedor_nombre'],
                 'cantidad_sugerida': requerimiento.cantidad_sugerida,
                 'cantidad_ordenada': cantidad,
-                'costo_total': costo_total
+                'costo_total': costo_total,
+                'lead_time_aplicado': tiempo_entrega + delay_extra,
             }
         )
         
         db.session.add(decision)
         db.session.commit()
         
-        flash(f'Orden creada: {cantidad:.0f} unidades de {producto.nombre}. Llegar� d�a {semana_entrega}', 'success')
+        flash(f'Orden creada con proveedor {proveedor}: {cantidad:.0f} unidades de {producto.nombre}. Llegará día {semana_entrega}', 'success')
         return redirect(url_for('estudiante.ver_requerimientos'))
     
     except Exception as e:
@@ -1536,6 +1583,7 @@ def crear_orden_manual():
     try:
         producto_id = int(request.form.get('producto_id'))
         cantidad = float(request.form.get('cantidad'))
+        proveedor = _normalizar_proveedor(request.form.get('proveedor', 'A'))
         
         simulacion = Simulacion.query.filter_by(activa=True).first()
         producto = Producto.query.get(producto_id)
@@ -1544,50 +1592,20 @@ def crear_orden_manual():
             flash('Producto no encontrado', 'error')
             return redirect(url_for('estudiante.dashboard_compras'))
         
-        # Calcular costos (con posible ajuste por disrupci�n Opci�n A)
-        costo_unitario = producto.costo_unitario
-        tiempo_entrega = producto.tiempo_entrega
+        condiciones = _calcular_condiciones_compra(
+            producto=producto,
+            cantidad=cantidad,
+            simulacion=simulacion,
+            empresa_id=current_user.empresa_id,
+            proveedor=proveedor,
+        )
+        if not condiciones['ok']:
+            flash(condiciones['mensaje'], 'error')
+            return redirect(url_for('estudiante.dashboard_compras'))
 
-        dis_opcion_a = DisrupcionEmpresa.query.filter(
-            DisrupcionEmpresa.empresa_id == current_user.empresa_id,
-            DisrupcionEmpresa.simulacion_id == simulacion.id,
-            DisrupcionEmpresa.producto_afectado_id == producto_id,
-            DisrupcionEmpresa.activa == True,
-            DisrupcionEmpresa.opcion_elegida == 'A'
-        ).first()
-        if dis_opcion_a:
-            from utils.catalogo_disrupciones import get_disrupcion
-            cat = get_disrupcion(dis_opcion_a.disrupcion_key)
-            if cat:
-                efectos_a = cat['opciones']['A']['efectos']
-                costo_unitario *= efectos_a.get('costo_multiplicador', 1.20)
-                tiempo_entrega = efectos_a.get('tiempo_entrega_override', tiempo_entrega)
-                pedido_min = efectos_a.get('pedido_minimo', 0)
-                if cantidad < pedido_min:
-                    flash(f'?? Con el proveedor alterno, el pedido m�nimo es {pedido_min:.0f} unidades.', 'error')
-                    return redirect(url_for('estudiante.dashboard_compras'))
-
-        # Efecto Opcion C de aumento_costos_compra: proveedor alterno
-        dis_costos_c = DisrupcionEmpresa.query.filter(
-            DisrupcionEmpresa.empresa_id == current_user.empresa_id,
-            DisrupcionEmpresa.simulacion_id == simulacion.id,
-            DisrupcionEmpresa.producto_afectado_id == producto_id,
-            DisrupcionEmpresa.disrupcion_key == 'aumento_costos_compra',
-            DisrupcionEmpresa.activa == True,
-            DisrupcionEmpresa.opcion_elegida == 'C'
-        ).first()
-        delay_extra = 0
-        if dis_costos_c:
-            from utils.catalogo_disrupciones import get_disrupcion as _gd_cc
-            cat_cc = _gd_cc('aumento_costos_compra')
-            if cat_cc:
-                efectos_c = cat_cc['opciones']['C']['efectos']
-                pedido_min_c = int(efectos_c.get('pedido_minimo', 150))
-                if cantidad < pedido_min_c:
-                    flash(f'Con el proveedor alterno, el pedido minimo es {pedido_min_c} unidades.', 'error')
-                    return redirect(url_for('estudiante.dashboard_compras'))
-                costo_unitario *= efectos_c.get('costo_multiplicador', 0.826)
-                delay_extra = efectos_c.get('delay_entrega', 1)
+        costo_unitario = condiciones['costo_unitario']
+        tiempo_entrega = condiciones['tiempo_entrega']
+        delay_extra = condiciones['delay_extra']
 
         costo_total = cantidad * costo_unitario
 
@@ -1633,8 +1651,11 @@ def crear_orden_manual():
             tipo_decision='orden_compra_manual',
             datos_decision={
                 'producto_id': producto_id,
+                'proveedor': proveedor,
+                'proveedor_nombre': condiciones['proveedor_nombre'],
                 'cantidad': cantidad,
-                'costo_total': costo_total
+                'costo_total': costo_total,
+                'lead_time_aplicado': tiempo_entrega + delay_extra,
             }
         )
         
@@ -1642,7 +1663,7 @@ def crear_orden_manual():
         db.session.add(decision)
         db.session.commit()
         
-        flash(f'Orden creada: {cantidad:.0f} unidades. Llegar� d�a {semana_entrega}', 'success')
+        flash(f'Orden creada con proveedor {proveedor}: {cantidad:.0f} unidades. Llegará día {semana_entrega}', 'success')
         return redirect(url_for('estudiante.dashboard_compras'))
     
     except Exception as e:
@@ -1660,6 +1681,7 @@ def crear_pedido_general():
     try:
         simulacion = Simulacion.query.filter_by(activa=True).first()
         empresa = current_user.empresa
+        proveedor = _normalizar_proveedor(request.form.get('proveedor', 'A'))
 
         productos_activos = {
             p.id: p for p in Producto.query.filter_by(activo=True).all()
@@ -1714,54 +1736,20 @@ def crear_pedido_general():
                 flash(f'Producto inválido en pedido general: {producto_id}', 'error')
                 return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
 
-            costo_unitario = producto.costo_unitario
-            tiempo_entrega = producto.tiempo_entrega
-            delay_extra = 0
+            condiciones = _calcular_condiciones_compra(
+                producto=producto,
+                cantidad=cantidad,
+                simulacion=simulacion,
+                empresa_id=current_user.empresa_id,
+                proveedor=proveedor,
+            )
+            if not condiciones['ok']:
+                flash(f"{producto.nombre}: {condiciones['mensaje']}", 'error')
+                return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
 
-            dis_opcion_a = DisrupcionEmpresa.query.filter(
-                DisrupcionEmpresa.empresa_id == current_user.empresa_id,
-                DisrupcionEmpresa.simulacion_id == simulacion.id,
-                DisrupcionEmpresa.producto_afectado_id == producto_id,
-                DisrupcionEmpresa.activa == True,
-                DisrupcionEmpresa.opcion_elegida == 'A'
-            ).first()
-            if dis_opcion_a:
-                from utils.catalogo_disrupciones import get_disrupcion
-                cat = get_disrupcion(dis_opcion_a.disrupcion_key)
-                if cat:
-                    efectos_a = cat['opciones']['A']['efectos']
-                    costo_unitario *= efectos_a.get('costo_multiplicador', 1.20)
-                    tiempo_entrega = efectos_a.get('tiempo_entrega_override', tiempo_entrega)
-                    pedido_min = efectos_a.get('pedido_minimo', 0)
-                    if cantidad < pedido_min:
-                        flash(
-                            f'En {producto.nombre}, con proveedor alterno el pedido mínimo es {pedido_min:.0f} unidades.',
-                            'error'
-                        )
-                        return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
-
-            dis_costos_c = DisrupcionEmpresa.query.filter(
-                DisrupcionEmpresa.empresa_id == current_user.empresa_id,
-                DisrupcionEmpresa.simulacion_id == simulacion.id,
-                DisrupcionEmpresa.producto_afectado_id == producto_id,
-                DisrupcionEmpresa.disrupcion_key == 'aumento_costos_compra',
-                DisrupcionEmpresa.activa == True,
-                DisrupcionEmpresa.opcion_elegida == 'C'
-            ).first()
-            if dis_costos_c:
-                from utils.catalogo_disrupciones import get_disrupcion as _gd_cc
-                cat_cc = _gd_cc('aumento_costos_compra')
-                if cat_cc:
-                    efectos_c = cat_cc['opciones']['C']['efectos']
-                    pedido_min_c = int(efectos_c.get('pedido_minimo', 150))
-                    if cantidad < pedido_min_c:
-                        flash(
-                            f'En {producto.nombre}, con proveedor alterno el pedido mínimo es {pedido_min_c} unidades.',
-                            'error'
-                        )
-                        return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
-                    costo_unitario *= efectos_c.get('costo_multiplicador', 0.826)
-                    delay_extra = efectos_c.get('delay_entrega', 1)
+            costo_unitario = condiciones['costo_unitario']
+            tiempo_entrega = condiciones['tiempo_entrega']
+            delay_extra = condiciones['delay_extra']
 
             costo_total = cantidad * costo_unitario
             semana_entrega = simulacion.dia_actual + tiempo_entrega + delay_extra
@@ -1769,6 +1757,7 @@ def crear_pedido_general():
             ordenes_preparadas.append({
                 'producto': producto,
                 'cantidad': cantidad,
+                'proveedor': proveedor,
                 'costo_unitario': costo_unitario,
                 'costo_total': costo_total,
                 'semana_entrega': semana_entrega
@@ -1814,12 +1803,14 @@ def crear_pedido_general():
                     {
                         'producto_id': item['producto'].id,
                         'producto': item['producto'].nombre,
+                        'proveedor': item['proveedor'],
                         'cantidad': item['cantidad'],
                         'costo_total': item['costo_total'],
                         'semana_entrega': item['semana_entrega']
                     }
                     for item in ordenes_preparadas
                 ],
+                'proveedor_aplicado': proveedor,
                 'costo_total_general': costo_total_general
             }
         )
@@ -1827,7 +1818,7 @@ def crear_pedido_general():
         db.session.commit()
 
         flash(
-            f'Pedido general creado con {len(ordenes_preparadas)} órdenes. '
+            f'Pedido general creado con proveedor {proveedor} y {len(ordenes_preparadas)} órdenes. '
             f'Costo total: ${costo_total_general:,.0f}.',
             'success'
         )
