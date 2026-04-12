@@ -172,8 +172,14 @@
             <a href="{{ url_for('estudiante.ver_requerimientos') }}">
                 <i class="fas fa-clipboard-list me-2"></i>Requerimientos
             </a>
+            <a href="{{ url_for('estudiante.dashboard_compras') }}#pedido-general">
+                <i class="fas fa-layer-group me-2"></i>Pedido General
+            </a>
             <a href="{{ url_for('estudiante.dashboard_compras') }}#inventario">
                 <i class="fas fa-boxes me-2"></i>Inventario
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_compras') }}#recepcion">
+                <i class="fas fa-dolly me-2"></i>Recepción
             </a>
             <a href="{{ url_for('estudiante.dashboard_compras') }}#ordenes">
                 <i class="fas fa-file-invoice me-2"></i>Órdenes
@@ -273,6 +279,72 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Pedido General de Todos los Productos -->
+            <div class="card mb-4" id="pedido-general">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-layer-group me-2"></i>Pedido General de Abastecimiento
+                        </h5>
+                        <span class="badge bg-primary">Todos los productos</span>
+                    </div>
+                    <p class="text-muted small mb-3">
+                        Define cantidades para múltiples productos y crea todas las órdenes en un solo envío.
+                    </p>
+
+                    <form method="POST" action="{{ url_for('estudiante.crear_pedido_general') }}">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Producto</th>
+                                        <th>Stock Actual</th>
+                                        <th>Costo Unitario</th>
+                                        <th>Lead Time</th>
+                                        <th style="min-width: 180px;">Cantidad a Pedir</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for producto in productos %}
+                                    {% set inv = inventarios_dict.get(producto.id) %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ producto.nombre }}</strong><br>
+                                            <small class="text-muted">{{ producto.codigo }}</small>
+                                        </td>
+                                        <td>{{ "%.0f"|format(inv.cantidad_actual if inv else 0) }}</td>
+                                        <td>${{ "{:,.0f}".format(producto.costo_unitario) }}</td>
+                                        <td>{{ producto.tiempo_entrega }} días</td>
+                                        <td>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="1"
+                                                name="qty_{{ producto.id }}"
+                                                class="form-control pedido-general-input"
+                                                data-costo="{{ producto.costo_unitario }}"
+                                                placeholder="0"
+                                            >
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div class="text-muted small">
+                                Ítems con cantidad: <strong id="pedidoGeneralItems">0</strong> |
+                                Costo estimado total: <strong id="pedidoGeneralCosto">$0</strong>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-check me-2"></i>Crear Pedido General
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
 
@@ -385,6 +457,66 @@
                         </div>
                     </div>
                     {% endfor %}
+                </div>
+            </div>
+
+            <!-- Recepción de Pedidos -->
+            <div class="card mb-4" id="recepcion">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-dolly me-2"></i>Recepción de Pedidos
+                        </h5>
+                        <span class="badge bg-success">Listas hoy: {{ ordenes_listas_recepcion|length }}</span>
+                    </div>
+                    <p class="text-muted small">Reciba aquí las órdenes en tránsito que ya cumplieron su día de llegada.</p>
+
+                    {% if ordenes_transito %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Cantidad</th>
+                                    <th>Llegada</th>
+                                    <th>Estado</th>
+                                    <th class="text-end">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for orden in ordenes_transito[:8] %}
+                                <tr>
+                                    <td>{{ orden.producto.nombre }}</td>
+                                    <td>{{ "%.0f"|format(orden.cantidad) }} unidades</td>
+                                    <td>Día {{ orden.semana_entrega }}</td>
+                                    <td>
+                                        {% if orden.semana_entrega <= simulacion.dia_actual %}
+                                        <span class="badge bg-success">Lista para recibir</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">En tránsito</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        {% if orden.semana_entrega <= simulacion.dia_actual %}
+                                        <form method="POST" action="{{ url_for('estudiante.recibir_orden_compra_compras', compra_id=orden.id) }}" class="d-inline">
+                                            <button type="submit" class="btn btn-sm btn-success">
+                                                <i class="fas fa-check me-1"></i>Recibir
+                                            </button>
+                                        </form>
+                                        {% else %}
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled>
+                                            <i class="fas fa-clock me-1"></i>Esperando
+                                        </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">No hay órdenes en tránsito para recibir.</p>
+                    {% endif %}
                 </div>
             </div>
 
@@ -542,6 +674,32 @@
 
 {% block extra_js %}
 <script>
+    function actualizarResumenPedidoGeneral() {
+        const inputs = document.querySelectorAll('.pedido-general-input');
+        let items = 0;
+        let costoTotal = 0;
+
+        inputs.forEach((input) => {
+            const cantidad = parseFloat(input.value) || 0;
+            const costo = parseFloat(input.dataset.costo) || 0;
+            if (cantidad > 0) {
+                items += 1;
+                costoTotal += cantidad * costo;
+            }
+        });
+
+        document.getElementById('pedidoGeneralItems').textContent = items;
+        document.getElementById('pedidoGeneralCosto').textContent = '$' + costoTotal.toLocaleString('es-CO', {maximumFractionDigits: 0});
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const inputs = document.querySelectorAll('.pedido-general-input');
+        inputs.forEach((input) => {
+            input.addEventListener('input', actualizarResumenPedidoGeneral);
+        });
+        actualizarResumenPedidoGeneral();
+    });
+
     function actualizarCostoEstimado() {
         const selectProducto = document.querySelector('select[name="producto_id"]');
         const inputCantidad = document.querySelector('input[name="cantidad"]');

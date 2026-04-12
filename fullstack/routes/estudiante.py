@@ -1284,7 +1284,13 @@ def dashboard_compras():
     ordenes_transito = Compra.query.filter_by(
         empresa_id=empresa.id,
         estado='en_transito'
-    ).all()
+    ).order_by(Compra.semana_entrega.asc()).all()
+
+    # �rdenes listas para recepci�n (llegada hoy o vencidas)
+    ordenes_listas_recepcion = [
+        orden for orden in ordenes_transito
+        if simulacion and orden.semana_entrega <= simulacion.dia_actual
+    ]
     
     # Capital comprometido
     capital_comprometido = sum([o.costo_total for o in ordenes_transito])
@@ -1293,10 +1299,13 @@ def dashboard_compras():
     return render_template('estudiante/compras/dashboard.html',
                          simulacion=simulacion,
                          empresa=empresa,
+                         productos=productos,
+                         inventarios_dict=inventarios_dict,
                          productos_priorizados=productos_priorizados,
                          requerimientos=requerimientos,
                          ordenes_compra=ordenes_compra,
                          ordenes_transito=ordenes_transito,
+                         ordenes_listas_recepcion=ordenes_listas_recepcion,
                          capital_comprometido=capital_comprometido,
                          capital_libre=capital_libre)
 
@@ -1622,6 +1631,170 @@ def crear_orden_manual():
         return redirect(url_for('estudiante.dashboard_compras'))
 
 
+@bp.route('/compras/crear-pedido-general', methods=['POST'])
+@login_required
+@estudiante_required
+@rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
+def crear_pedido_general():
+    """Crear múltiples órdenes de compra en una sola operación."""
+    try:
+        simulacion = Simulacion.query.filter_by(activa=True).first()
+        empresa = current_user.empresa
+
+        productos_activos = {
+            p.id: p for p in Producto.query.filter_by(activo=True).all()
+        }
+
+        solicitudes = []
+        for key, value in request.form.items():
+            if not key.startswith('qty_'):
+                continue
+
+            try:
+                producto_id = int(key.split('_', 1)[1])
+                cantidad = float(value or 0)
+            except (ValueError, TypeError):
+                continue
+
+            if cantidad > 0:
+                solicitudes.append((producto_id, cantidad))
+
+        if not solicitudes:
+            flash('Debes ingresar al menos una cantidad mayor a 0 para crear el pedido general.', 'warning')
+            return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
+        ordenes_preparadas = []
+        for producto_id, cantidad in solicitudes:
+            producto = productos_activos.get(producto_id)
+            if not producto:
+                flash(f'Producto inválido en pedido general: {producto_id}', 'error')
+                return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
+            costo_unitario = producto.costo_unitario
+            tiempo_entrega = producto.tiempo_entrega
+            delay_extra = 0
+
+            dis_opcion_a = DisrupcionEmpresa.query.filter(
+                DisrupcionEmpresa.empresa_id == current_user.empresa_id,
+                DisrupcionEmpresa.simulacion_id == simulacion.id,
+                DisrupcionEmpresa.producto_afectado_id == producto_id,
+                DisrupcionEmpresa.activa == True,
+                DisrupcionEmpresa.opcion_elegida == 'A'
+            ).first()
+            if dis_opcion_a:
+                from utils.catalogo_disrupciones import get_disrupcion
+                cat = get_disrupcion(dis_opcion_a.disrupcion_key)
+                if cat:
+                    efectos_a = cat['opciones']['A']['efectos']
+                    costo_unitario *= efectos_a.get('costo_multiplicador', 1.20)
+                    tiempo_entrega = efectos_a.get('tiempo_entrega_override', tiempo_entrega)
+                    pedido_min = efectos_a.get('pedido_minimo', 0)
+                    if cantidad < pedido_min:
+                        flash(
+                            f'En {producto.nombre}, con proveedor alterno el pedido mínimo es {pedido_min:.0f} unidades.',
+                            'error'
+                        )
+                        return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
+            dis_costos_c = DisrupcionEmpresa.query.filter(
+                DisrupcionEmpresa.empresa_id == current_user.empresa_id,
+                DisrupcionEmpresa.simulacion_id == simulacion.id,
+                DisrupcionEmpresa.producto_afectado_id == producto_id,
+                DisrupcionEmpresa.disrupcion_key == 'aumento_costos_compra',
+                DisrupcionEmpresa.activa == True,
+                DisrupcionEmpresa.opcion_elegida == 'C'
+            ).first()
+            if dis_costos_c:
+                from utils.catalogo_disrupciones import get_disrupcion as _gd_cc
+                cat_cc = _gd_cc('aumento_costos_compra')
+                if cat_cc:
+                    efectos_c = cat_cc['opciones']['C']['efectos']
+                    pedido_min_c = int(efectos_c.get('pedido_minimo', 150))
+                    if cantidad < pedido_min_c:
+                        flash(
+                            f'En {producto.nombre}, con proveedor alterno el pedido mínimo es {pedido_min_c} unidades.',
+                            'error'
+                        )
+                        return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+                    costo_unitario *= efectos_c.get('costo_multiplicador', 0.826)
+                    delay_extra = efectos_c.get('delay_entrega', 1)
+
+            costo_total = cantidad * costo_unitario
+            semana_entrega = simulacion.dia_actual + tiempo_entrega + delay_extra
+
+            ordenes_preparadas.append({
+                'producto': producto,
+                'cantidad': cantidad,
+                'costo_unitario': costo_unitario,
+                'costo_total': costo_total,
+                'semana_entrega': semana_entrega
+            })
+
+        costo_total_general = sum(item['costo_total'] for item in ordenes_preparadas)
+        ordenes_pendientes = Compra.query.filter_by(
+            empresa_id=empresa.id,
+            estado='en_transito'
+        ).all()
+
+        validacion = validar_capacidad_compra(
+            empresa.capital_actual,
+            costo_total_general,
+            ordenes_pendientes
+        )
+        if not validacion['puede_comprar']:
+            flash(f"Capital insuficiente para pedido general. {validacion['sugerencia']}", 'error')
+            return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
+        for item in ordenes_preparadas:
+            compra = Compra(
+                empresa_id=current_user.empresa_id,
+                producto_id=item['producto'].id,
+                semana_orden=simulacion.dia_actual,
+                semana_entrega=item['semana_entrega'],
+                cantidad=item['cantidad'],
+                costo_unitario=item['costo_unitario'],
+                costo_total=item['costo_total'],
+                estado='en_transito'
+            )
+            db.session.add(compra)
+
+        empresa.capital_actual -= costo_total_general
+
+        decision = Decision(
+            usuario_id=current_user.id,
+            empresa_id=current_user.empresa_id,
+            semana_simulacion=simulacion.dia_actual,
+            tipo_decision='orden_compra_general',
+            datos_decision={
+                'ordenes': [
+                    {
+                        'producto_id': item['producto'].id,
+                        'producto': item['producto'].nombre,
+                        'cantidad': item['cantidad'],
+                        'costo_total': item['costo_total'],
+                        'semana_entrega': item['semana_entrega']
+                    }
+                    for item in ordenes_preparadas
+                ],
+                'costo_total_general': costo_total_general
+            }
+        )
+        db.session.add(decision)
+        db.session.commit()
+
+        flash(
+            f'Pedido general creado con {len(ordenes_preparadas)} órdenes. '
+            f'Costo total: ${costo_total_general:,.0f}.',
+            'success'
+        )
+        return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al crear pedido general: {str(e)}', 'error')
+        return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
+
 @bp.route('/compras/marcar-requerimiento-revisado/<int:requerimiento_id>', methods=['POST'])
 @login_required
 @estudiante_required
@@ -1643,6 +1816,87 @@ def marcar_requerimiento_revisado(requerimiento_id):
     
     flash('Requerimiento marcado como revisado', 'info')
     return redirect(url_for('estudiante.ver_requerimientos'))
+
+
+@bp.route('/compras/recibir-orden/<int:compra_id>', methods=['POST'])
+@login_required
+@estudiante_required
+@rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
+def recibir_orden_compra_compras(compra_id):
+    """Recepci�n de compra desde el m�dulo de Planeaci�n y Compras."""
+    try:
+        compra = Compra.query.get_or_404(compra_id)
+
+        if compra.empresa_id != current_user.empresa_id:
+            flash('No autorizado', 'error')
+            return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
+
+        if compra.estado != 'en_transito':
+            flash('Esta orden ya fue recibida o no est� en tr�nsito', 'warning')
+            return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
+
+        simulacion = Simulacion.query.filter_by(activa=True).first()
+        if simulacion.dia_actual < compra.semana_entrega:
+            flash(f'Esta orden llega el d�a {compra.semana_entrega}. A�n no puede ser recibida.', 'warning')
+            return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
+
+        inventario = Inventario.query.filter_by(
+            empresa_id=current_user.empresa_id,
+            producto_id=compra.producto_id
+        ).first()
+
+        if not inventario:
+            inventario = Inventario(
+                empresa_id=current_user.empresa_id,
+                producto_id=compra.producto_id,
+                cantidad_actual=0,
+                costo_promedio=compra.costo_unitario
+            )
+            db.session.add(inventario)
+
+        resultado = procesar_recepcion_compra(compra, inventario)
+        compra.estado = 'entregado'
+
+        movimiento = MovimientoInventario(
+            empresa_id=current_user.empresa_id,
+            producto_id=compra.producto_id,
+            usuario_id=current_user.id,
+            semana_simulacion=simulacion.dia_actual,
+            tipo_movimiento='entrada_compra',
+            cantidad=compra.cantidad,
+            saldo_anterior=resultado['cantidad_anterior'],
+            saldo_nuevo=resultado['cantidad_nueva'],
+            compra_id=compra.id,
+            observaciones=f"Recepci�n desde Planeaci�n y Compras. Costo unitario: ${compra.costo_unitario:,.0f}"
+        )
+
+        db.session.add(movimiento)
+
+        decision = Decision(
+            usuario_id=current_user.id,
+            empresa_id=current_user.empresa_id,
+            semana_simulacion=simulacion.dia_actual,
+            tipo_decision='recepcion_compra',
+            datos_decision={
+                'compra_id': compra.id,
+                'producto_id': compra.producto_id,
+                'cantidad': compra.cantidad,
+                'origen': 'planeacion_compras'
+            },
+            resultado=resultado
+        )
+
+        db.session.add(decision)
+        db.session.commit()
+
+        flash(f'Orden recibida: {compra.cantidad:.0f} unidades de {compra.producto.nombre}. '
+              f'Nuevo stock: {resultado["cantidad_nueva"]:.0f}', 'success')
+        return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al recibir orden: {str(e)}', 'error')
+        return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
 
 
 # APIs para Compras
