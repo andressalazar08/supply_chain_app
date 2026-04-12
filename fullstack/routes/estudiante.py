@@ -197,6 +197,17 @@ def dashboard_general():
         Compra.semana_entrega <= simulacion.dia_actual + 21
     ).order_by(Compra.semana_entrega).limit(5).all()
 
+    # Histórico de 30 días (antes de la simulación activa)
+    historico_ventas = Venta.query.filter_by(
+        empresa_id=empresa.id
+    ).filter(
+        Venta.semana_simulacion < 0
+    ).order_by(Venta.semana_simulacion.desc()).all()
+    
+    total_ventas_historico = sum(v.cantidad_vendida for v in historico_ventas) if historico_ventas else 0
+    ingresos_historico = sum(v.ingreso_total for v in historico_ventas) if historico_ventas else 0
+    promedio_diario_historico = total_ventas_historico / 30 if historico_ventas else 0
+
     # --- DISRUPCIONES ---
     # Garantizar que esta empresa tenga sus disrupciones creadas y expiradas
     # correctamente incluso si el estudiante entra sin que el motor haya corrido.
@@ -246,6 +257,10 @@ def dashboard_general():
                          alertas_inventario=alertas_inventario,
                          movimientos_recientes=movimientos_recientes,
                          ordenes_proximas=ordenes_proximas,
+                         historico_ventas=historico_ventas,
+                         total_ventas_historico=total_ventas_historico,
+                         ingresos_historico=ingresos_historico,
+                         promedio_diario_historico=promedio_diario_historico,
                          disrupcion_pendiente=disrupcion_pendiente,
                          disrupciones_finalizadas=disrupciones_finalizadas,
                          disrupciones_activas=disrupciones_activas,
@@ -1296,6 +1311,16 @@ def dashboard_compras():
     capital_comprometido = sum([o.costo_total for o in ordenes_transito])
     capital_libre = empresa.capital_actual - capital_comprometido
     
+    # Histórico de 30 días (antes de la simulación activa)
+    historico_ventas = Venta.query.filter_by(
+        empresa_id=empresa.id
+    ).filter(
+        Venta.semana_simulacion < 0
+    ).order_by(Venta.semana_simulacion.desc()).all()
+    
+    total_ventas_historico = sum(v.cantidad_vendida for v in historico_ventas) if historico_ventas else 0
+    promedio_diario_historico = total_ventas_historico / 30 if historico_ventas else 0
+    
     return render_template('estudiante/compras/dashboard.html',
                          simulacion=simulacion,
                          empresa=empresa,
@@ -1307,7 +1332,10 @@ def dashboard_compras():
                          ordenes_transito=ordenes_transito,
                          ordenes_listas_recepcion=ordenes_listas_recepcion,
                          capital_comprometido=capital_comprometido,
-                         capital_libre=capital_libre)
+                         capital_libre=capital_libre,
+                         historico_ventas=historico_ventas,
+                         total_ventas_historico=total_ventas_historico,
+                         promedio_diario_historico=promedio_diario_historico)
 
 
 @bp.route('/compras/exportar-ventas-csv')

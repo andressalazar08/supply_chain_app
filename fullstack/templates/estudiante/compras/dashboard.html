@@ -611,6 +611,77 @@
     </div>
 </div>
 
+<!-- Sección de Histórico de 30 Días -->
+{% if historico_ventas %}
+<div class="card mt-4 border-info mb-4">
+    <div class="card-header bg-info text-white">
+        <h5 class="mb-0">
+            <i class="fas fa-history me-2"></i>Histórico de Ventas (30 Días Anteriores)
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="p-3 border rounded bg-light text-center">
+                    <p class="text-muted mb-1 small">Total de Unidades Vendidas</p>
+                    <h4 class="mb-0 text-primary">{{ "{:.0f}".format(total_ventas_historico) }}</h4>
+                    <small class="text-muted">últimos 30 días</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-3 border rounded bg-light text-center">
+                    <p class="text-muted mb-1 small">Promedio Diario</p>
+                    <h4 class="mb-0 text-success">{{ "{:.0f}".format(promedio_diario_historico) }}</h4>
+                    <small class="text-muted">unidades/día (referencia para pedir)</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-3 border rounded bg-light text-center">
+                    <p class="text-muted mb-1 small">Registros de Venta</p>
+                    <h4 class="mb-0 text-secondary">{{ historico_ventas|length }}</h4>
+                    <small class="text-muted">días con actividad</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Día</th>
+                        <th>Producto</th>
+                        <th>Región</th>
+                        <th class="text-end">Unidades</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for venta in historico_ventas[:25] %}
+                    <tr>
+                        <td>
+                            <span class="badge bg-secondary">Día {{ abs(venta.semana_simulacion) }}</span>
+                        </td>
+                        <td>
+                            <strong>{{ venta.producto.nombre }}</strong>
+                        </td>
+                        <td>
+                            <small>{{ venta.region }}</small>
+                        </td>
+                        <td class="text-end">{{ "{:.0f}".format(venta.cantidad_vendida) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if historico_ventas|length > 25 %}
+        <div class="text-center py-2">
+            <small class="text-muted">Mostrando 25 de {{ historico_ventas|length }} registros</small>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block extra_js %}

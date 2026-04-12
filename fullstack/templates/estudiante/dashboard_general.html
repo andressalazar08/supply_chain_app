@@ -371,9 +371,87 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Sección de Histórico de 30 Días -->
+            {% if historico_ventas %}
+            <div class="card mt-4 border-info">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-history me-2"></i>Histórico de Ventas (30 Días Anteriores)
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light text-center">
+                                <p class="text-muted mb-1 small">Total de Unidades</p>
+                                <h4 class="mb-0 text-primary">{{ "{:.0f}".format(total_ventas_historico) }}</h4>
+                                <small class="text-muted">últimos 30 días</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light text-center">
+                                <p class="text-muted mb-1 small">Promedio Diario</p>
+                                <h4 class="mb-0 text-success">{{ "{:.0f}".format(promedio_diario_historico) }}</h4>
+                                <small class="text-muted">unidades/día</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light text-center">
+                                <p class="text-muted mb-1 small">Ingresos Totales</p>
+                                <h4 class="mb-0 text-info">${{ "{:,.0f}".format(ingresos_historico) }}</h4>
+                                <small class="text-muted">últimos 30 días</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light text-center">
+                                <p class="text-muted mb-1 small">Registros</p>
+                                <h4 class="mb-0 text-secondary">{{ historico_ventas|length }}</h4>
+                                <small class="text-muted">días con ventas</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Día</th>
+                                    <th>Producto</th>
+                                    <th>Región</th>
+                                    <th class="text-end">Cantidad</th>
+                                    <th class="text-end">Ingresos</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for venta in historico_ventas[:20] %}
+                                <tr>
+                                    <td>
+                                        <span class="badge bg-secondary">Día {{ abs(venta.semana_simulacion) }}</span>
+                                    </td>
+                                    <td>
+                                        <strong>{{ venta.producto.nombre }}</strong>
+                                    </td>
+                                    <td>
+                                        <small>{{ venta.region }}</small>
+                                    </td>
+                                    <td class="text-end">{{ "{:.0f}".format(venta.cantidad_vendida) }}</td>
+                                    <td class="text-end">${{ "{:,.0f}".format(venta.ingreso_total) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if historico_ventas|length > 20 %}
+                    <div class="text-center py-2">
+                        <small class="text-muted">Mostrando 20 de {{ historico_ventas|length }} registros</small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
         </div>
-    </div>
-</div>
 
 {% include 'components/modal_disrupcion.html' %}
 {% endblock %}
