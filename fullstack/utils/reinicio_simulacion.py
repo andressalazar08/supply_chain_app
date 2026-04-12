@@ -153,12 +153,20 @@ def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None,
 
         db.session.commit()
 
+        # 6. Generar histórico de 30 días y órdenes iniciales
+        from utils.historico_simulacion import generar_historico_30dias, generar_ordenes_iniciales
+        
+        historico_ok, historico_msg = generar_historico_30dias(nueva_simulacion, empresas)
+        ordenes_ok, ordenes_msg = generar_ordenes_iniciales(nueva_simulacion, empresas)
+
         mensaje = (
             f'Simulación reiniciada exitosamente. '
             f'Nueva simulación: {nombre_simulacion} | '
             f'Empresas: {len(empresas)} | '
             f'Capital: ${capital_inicial:,.0f} | '
-            f'Inventario: {inv_750ml} und (750ml) / {inv_1l} und (1L)'
+            f'Inventario: {inv_750ml} und (750ml) / {inv_1l} und (1L) | '
+            f'{historico_msg} | '
+            f'{ordenes_msg}'
         )
 
         return nueva_simulacion, mensaje
