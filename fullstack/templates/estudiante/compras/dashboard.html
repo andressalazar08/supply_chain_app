@@ -408,7 +408,16 @@
                         <h5 class="card-title mb-0">
                             <i class="fas fa-dolly me-2"></i>Recepción de Pedidos
                         </h5>
-                        <span class="badge bg-success">Listas hoy: {{ ordenes_listas_recepcion|length }}</span>
+                        <div class="d-flex gap-2 align-items-center">
+                            <span class="badge bg-success">Listas hoy: {{ ordenes_listas_recepcion|length }}</span>
+                            {% if ordenes_listas_recepcion %}
+                            <form method="POST" action="{{ url_for('estudiante.recibir_todas_ordenes_compras') }}" class="d-inline">
+                                <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('¿Deseas recibir todas las órdenes listas ahora mismo?')">
+                                    <i class="fas fa-check-double me-1"></i>Recibir todas
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
                     </div>
                     <p class="text-muted small">Reciba aquí las órdenes en tránsito que ya cumplieron su día de llegada.</p>
 

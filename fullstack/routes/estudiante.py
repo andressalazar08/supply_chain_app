@@ -1877,76 +1877,113 @@ def recibir_orden_compra_compras(compra_id):
     """Recepci�n de compra desde el m�dulo de Planeaci�n y Compras."""
     try:
         compra = Compra.query.get_or_404(compra_id)
-
         if compra.empresa_id != current_user.empresa_id:
             flash('No autorizado', 'error')
             return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
 
-        if compra.estado != 'en_transito':
-            flash('Esta orden ya fue recibida o no est� en tr�nsito', 'warning')
-            return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
+        resultado, mensaje = _procesar_recepcion_compra_individual(compra, current_user.id, current_user.empresa_id)
+        if not resultado:
+            flash(mensaje, 'warning')
+        else:
+            flash(mensaje, 'success')
 
-        simulacion = Simulacion.query.filter_by(activa=True).first()
-        if simulacion.dia_actual < compra.semana_entrega:
-            flash(f'Esta orden llega el d�a {compra.semana_entrega}. A�n no puede ser recibida.', 'warning')
-            return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
-
-        inventario = Inventario.query.filter_by(
-            empresa_id=current_user.empresa_id,
-            producto_id=compra.producto_id
-        ).first()
-
-        if not inventario:
-            inventario = Inventario(
-                empresa_id=current_user.empresa_id,
-                producto_id=compra.producto_id,
-                cantidad_actual=0,
-                costo_promedio=compra.costo_unitario
-            )
-            db.session.add(inventario)
-
-        resultado = procesar_recepcion_compra(compra, inventario)
-        compra.estado = 'entregado'
-
-        movimiento = MovimientoInventario(
-            empresa_id=current_user.empresa_id,
-            producto_id=compra.producto_id,
-            usuario_id=current_user.id,
-            semana_simulacion=simulacion.dia_actual,
-            tipo_movimiento='entrada_compra',
-            cantidad=compra.cantidad,
-            saldo_anterior=resultado['cantidad_anterior'],
-            saldo_nuevo=resultado['cantidad_nueva'],
-            compra_id=compra.id,
-            observaciones=f"Recepci�n desde Planeaci�n y Compras. Costo unitario: ${compra.costo_unitario:,.0f}"
-        )
-
-        db.session.add(movimiento)
-
-        decision = Decision(
-            usuario_id=current_user.id,
-            empresa_id=current_user.empresa_id,
-            semana_simulacion=simulacion.dia_actual,
-            tipo_decision='recepcion_compra',
-            datos_decision={
-                'compra_id': compra.id,
-                'producto_id': compra.producto_id,
-                'cantidad': compra.cantidad,
-                'origen': 'compras'
-            },
-            resultado=resultado
-        )
-
-        db.session.add(decision)
-        db.session.commit()
-
-        flash(f'Orden recibida: {compra.cantidad:.0f} unidades de {compra.producto.nombre}. '
-              f'Nuevo stock: {resultado["cantidad_nueva"]:.0f}', 'success')
         return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
-
     except Exception as e:
         db.session.rollback()
         flash(f'Error al recibir orden: {str(e)}', 'error')
+        return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
+
+
+def _procesar_recepcion_compra_individual(compra, usuario_id, empresa_id):
+    """Procesa una compra individual y retorna (éxito, mensaje)."""
+    if compra.estado != 'en_transito':
+        return False, 'Esta orden ya fue recibida o no está en tránsito'
+
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    if not simulacion:
+        return False, 'No existe una simulación activa'
+
+    if simulacion.dia_actual < compra.semana_entrega:
+        return False, f'Esta orden llega el día {compra.semana_entrega}. Aún no puede ser recibida.'
+
+    inventario = Inventario.query.filter_by(
+        empresa_id=empresa_id,
+        producto_id=compra.producto_id
+    ).first()
+
+    if not inventario:
+        inventario = Inventario(
+            empresa_id=empresa_id,
+            producto_id=compra.producto_id,
+            cantidad_actual=0,
+            costo_promedio=compra.costo_unitario
+        )
+        db.session.add(inventario)
+
+    resultado = procesar_recepcion_compra(compra, inventario)
+    compra.estado = 'entregado'
+
+    movimiento = MovimientoInventario(
+        empresa_id=empresa_id,
+        producto_id=compra.producto_id,
+        usuario_id=usuario_id,
+        semana_simulacion=simulacion.dia_actual,
+        tipo_movimiento='entrada_compra',
+        cantidad=compra.cantidad,
+        saldo_anterior=resultado['cantidad_anterior'],
+        saldo_nuevo=resultado['cantidad_nueva'],
+        compra_id=compra.id,
+        observaciones=f"Recepción de compra. Costo unitario: ${compra.costo_unitario:,.0f}"
+    )
+
+    decision = Decision(
+        usuario_id=usuario_id,
+        empresa_id=empresa_id,
+        semana_simulacion=simulacion.dia_actual,
+        tipo_decision='recepcion_compra',
+        datos_decision={
+            'compra_id': compra.id,
+            'producto_id': compra.producto_id,
+            'cantidad': compra.cantidad
+        },
+        resultado=resultado
+    )
+
+    db.session.add(movimiento)
+    db.session.add(decision)
+    db.session.commit()
+
+    return True, f'Orden recibida: {compra.cantidad:.0f} unidades de {compra.producto.nombre}. Nuevo stock: {resultado["cantidad_nueva"]:.0f}'
+
+
+@bp.route('/compras/recibir-todas-ordenes', methods=['POST'])
+@login_required
+@estudiante_required
+@rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
+def recibir_todas_ordenes_compras():
+    """Recibe todas las compras en tránsito que ya están listas para entrega."""
+    try:
+        simulacion = Simulacion.query.filter_by(activa=True).first()
+        compras_listas = Compra.query.filter_by(
+            empresa_id=current_user.empresa_id,
+            estado='en_transito'
+        ).filter(Compra.semana_entrega <= simulacion.dia_actual).order_by(Compra.semana_entrega.asc()).all()
+
+        if not compras_listas:
+            flash('No hay órdenes listas para recibir.', 'info')
+            return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
+
+        recibidas = 0
+        for compra in compras_listas:
+            ok, _mensaje = _procesar_recepcion_compra_individual(compra, current_user.id, current_user.empresa_id)
+            if ok:
+                recibidas += 1
+
+        flash(f'Se recibieron {recibidas} órdenes de compra de forma masiva.', 'success')
+        return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al recibir órdenes masivas: {str(e)}', 'error')
         return redirect(url_for('estudiante.dashboard_compras') + '#recepcion')
 
 

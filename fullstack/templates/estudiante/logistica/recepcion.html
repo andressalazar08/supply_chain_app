@@ -149,6 +149,13 @@
                         <strong>{{ empresa.nombre }}</strong> | Día {{ simulacion.dia_actual }} (Sem. {{ simulacion.semana_actual }})
                     </p>
                 </div>
+                {% if ordenes_transito %}
+                <form method="POST" action="{{ url_for('estudiante.recibir_todas_ordenes_compras') }}" class="d-inline">
+                    <button type="submit" class="btn btn-success" onclick="return confirm('¿Deseas recibir todas las órdenes listas ahora mismo?')">
+                        <i class="fas fa-check-double me-2"></i>Recibir todas las listas
+                    </button>
+                </form>
+                {% endif %}
             </div>
 
             <!-- Estadísticas -->
