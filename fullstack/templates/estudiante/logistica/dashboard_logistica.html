@@ -443,17 +443,17 @@ function mostrarStock(stock) {
                         <h5 class="mb-0">${item.producto_nombre}</h5>
                         <span class="badge bg-${badgeColor} badge-estado">${estadoBadge}</span>
                     </div>
-                    <div class="stock-cantidad ${estadoClass}">${item.stock_actual}</div>
+                    <div class="stock-cantidad ${estadoClass}">${Math.round(item.stock_actual)}</div>
                     <div class="text-muted small">unidades disponibles</div>
                     <hr>
                     <div class="row text-center small">
                         <div class="col-6">
                             <div class="text-muted">Stock Seguridad</div>
-                            <div class="fw-bold">${item.stock_seguridad}</div>
+                            <div class="fw-bold">${Math.round(item.stock_seguridad)}</div>
                         </div>
                         <div class="col-6">
                             <div class="text-muted">Capacidad</div>
-                            <div class="fw-bold">${item.capacidad_maxima}</div>
+                            <div class="fw-bold">${Math.round(item.capacidad_maxima)}</div>
                         </div>
                     </div>
                 </div>
@@ -478,41 +478,41 @@ async function cargarMatrizDespachos() {
             
             data.stock.forEach(item => {
                 if (item.stock_actual > 0) {
-                    stockProductos[item.producto_id] = item.stock_actual;
+                    stockProductos[item.producto_id] = Math.round(item.stock_actual);
                     
                     html += `
                         <tr class="producto-row" data-producto-id="${item.producto_id}" data-producto-nombre="${item.producto_nombre}">
                             <td class="fw-bold">${item.producto_nombre}</td>
-                            <td class="text-center stock-value">${item.stock_actual}</td>
+                            <td class="text-center stock-value">${Math.round(item.stock_actual)}</td>
                             <td class="text-center">
                                 <input type="number" class="form-control despacho-input" 
                                        data-producto="${item.producto_id}" 
                                        data-region="Andina" 
-                                       min="0" max="${item.stock_actual}" value="0">
+                                       min="0" max="${Math.round(item.stock_actual)}" value="0">
                             </td>
                             <td class="text-center">
                                 <input type="number" class="form-control despacho-input" 
                                        data-producto="${item.producto_id}" 
                                        data-region="Caribe" 
-                                       min="0" max="${item.stock_actual}" value="0">
+                                       min="0" max="${Math.round(item.stock_actual)}" value="0">
                             </td>
                             <td class="text-center">
                                 <input type="number" class="form-control despacho-input" 
                                        data-producto="${item.producto_id}" 
                                        data-region="Pacífica" 
-                                       min="0" max="${item.stock_actual}" value="0">
+                                       min="0" max="${Math.round(item.stock_actual)}" value="0">
                             </td>
                             <td class="text-center">
                                 <input type="number" class="form-control despacho-input" 
                                        data-producto="${item.producto_id}" 
                                        data-region="Orinoquía" 
-                                       min="0" max="${item.stock_actual}" value="0">
+                                       min="0" max="${Math.round(item.stock_actual)}" value="0">
                             </td>
                             <td class="text-center">
                                 <input type="number" class="form-control despacho-input" 
                                        data-producto="${item.producto_id}" 
                                        data-region="Amazonía" 
-                                       min="0" max="${item.stock_actual}" value="0">
+                                       min="0" max="${Math.round(item.stock_actual)}" value="0">
                             </td>
                             <td class="text-center">
                                 <span class="badge bg-info total-producto" data-producto="${item.producto_id}">0</span>

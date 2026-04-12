@@ -2330,7 +2330,7 @@ def crear_despacho_regional():
         
         # Actualizar inventario: el stock sale físicamente del almacén al despachar
         # NO se toca cantidad_reservada (eso es para stock prometido que aún no salió)
-        inventario.cantidad_actual -= cantidad
+        inventario.cantidad_actual = max(0, int(round((inventario.cantidad_actual or 0) - cantidad)))
         
         # Registrar movimiento
         movimiento = MovimientoInventario(
@@ -2917,9 +2917,9 @@ def api_logistica_stock():
         stock_data.append({
             'producto_id': inv.producto_id,
             'producto_nombre': inv.producto.nombre,
-            'stock_actual': inv.cantidad_actual,
-            'stock_seguridad': inv.stock_seguridad,
-            'capacidad_maxima': inv.producto.capacidad_produccion if hasattr(inv.producto, 'capacidad_produccion') else 1000
+            'stock_actual': int(round(inv.cantidad_actual or 0)),
+            'stock_seguridad': int(round(inv.stock_seguridad or 0)),
+            'capacidad_maxima': int(round(inv.producto.capacidad_produccion)) if hasattr(inv.producto, 'capacidad_produccion') and inv.producto.capacidad_produccion else 1000
         })
     
     return jsonify({'success': True, 'stock': stock_data})
@@ -2994,7 +2994,7 @@ def api_logistica_despachar():
     )
     
     # Actualizar inventario
-    inventario.cantidad_actual -= cantidad
+    inventario.cantidad_actual = max(0, int(round((inventario.cantidad_actual or 0) - cantidad)))
     
     # Registrar movimiento
     movimiento = MovimientoInventario(
@@ -3144,7 +3144,7 @@ def api_logistica_despachar_multiple():
         
         # Actualizar inventario una sola vez con el total
         saldo_anterior = inventario.cantidad_actual
-        inventario.cantidad_actual -= cantidad_total
+        inventario.cantidad_actual = max(0, int(round((inventario.cantidad_actual or 0) - cantidad_total)))
         saldo_nuevo = inventario.cantidad_actual
         
         # Registrar movimiento total
