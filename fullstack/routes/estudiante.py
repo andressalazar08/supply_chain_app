@@ -1663,6 +1663,30 @@ def crear_pedido_general():
             flash('Debes ingresar al menos una cantidad mayor a 0 para crear el pedido general.', 'warning')
             return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
 
+        # Validar mínimos de pedido por tamaño de producto
+        for producto_id, cantidad in solicitudes:
+            producto = productos_activos.get(producto_id)
+            if not producto:
+                continue
+
+            # Determinar si es 750ml o 1L según el código
+            es_750ml = '750' in producto.codigo
+            es_1l = '1L' in producto.codigo or 'L' in producto.codigo.upper()
+
+            pedido_minimo = 0
+            if es_750ml:
+                pedido_minimo = 50
+            elif es_1l:
+                pedido_minimo = 40
+
+            if pedido_minimo > 0 and cantidad < pedido_minimo:
+                flash(
+                    f'El producto {producto.nombre} tiene un pedido mínimo de {pedido_minimo} unidades. '
+                    f'Has ingresado {cantidad:.0f}.',
+                    'error'
+                )
+                return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
         ordenes_preparadas = []
         for producto_id, cantidad in solicitudes:
             producto = productos_activos.get(producto_id)
