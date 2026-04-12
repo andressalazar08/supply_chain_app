@@ -172,8 +172,14 @@
             <a href="{{ url_for('estudiante.ver_requerimientos') }}">
                 <i class="fas fa-clipboard-list me-2"></i>Requerimientos
             </a>
+            <a href="{{ url_for('estudiante.dashboard_compras') }}#pedido-general">
+                <i class="fas fa-layer-group me-2"></i>Pedido General
+            </a>
             <a href="{{ url_for('estudiante.dashboard_compras') }}#inventario">
                 <i class="fas fa-boxes me-2"></i>Inventario
+            </a>
+            <a href="{{ url_for('estudiante.dashboard_compras') }}#recepcion">
+                <i class="fas fa-dolly me-2"></i>Recepción
             </a>
             <a href="{{ url_for('estudiante.dashboard_compras') }}#ordenes">
                 <i class="fas fa-file-invoice me-2"></i>Órdenes
@@ -273,6 +279,93 @@
                 </div>
             </div>
 
+            <!-- Pedido General de Todos los Productos -->
+            <div class="card mb-4" id="pedido-general">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-layer-group me-2"></i>Pedido General de Abastecimiento
+                        </h5>
+                        <span class="badge bg-primary">Todos los productos</span>
+                    </div>
+                    <p class="text-muted small mb-3">
+                        Define cantidades para múltiples productos y crea todas las órdenes en un solo envío.
+                    </p>
+
+                    <form method="POST" action="{{ url_for('estudiante.crear_pedido_general') }}">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Proveedor para el pedido general</label>
+                                <select name="proveedor" id="pedidoGeneralProveedor" class="form-select" onchange="actualizarResumenPedidoGeneral()">
+                                    <option value="A">Proveedor A - menor costo, mayor lead time</option>
+                                    <option value="B">Proveedor B - mayor costo, menor lead time</option>
+                                </select>
+                                <small class="text-muted">A: 5% más barato y +2 días | B: 10% más costoso y -1 día</small>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Producto</th>
+                                        <th>Stock Actual</th>
+                                        <th>Costo Unitario</th>
+                                        <th>Lead Time</th>
+                                        <th>Mínimo</th>
+                                        <th style="min-width: 180px;">Cantidad a Pedir</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for producto in productos %}
+                                    {% set inv = inventarios_dict.get(producto.id) %}
+                                    {% set minimo = 50 if '750' in producto.codigo else (40 if '1L' in producto.codigo or 'L' in producto.codigo.upper() else 0) %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ producto.nombre }}</strong><br>
+                                            <small class="text-muted">{{ producto.codigo }}</small>
+                                        </td>
+                                        <td>{{ "%.0f"|format(inv.cantidad_actual if inv else 0) }}</td>
+                                        <td>${{ "{:,.0f}".format(producto.costo_unitario) }}</td>
+                                        <td>{{ producto.tiempo_entrega }} días</td>
+                                        <td><strong>{{ minimo }}</strong> {% if minimo > 0 %}u.{% endif %}</td>
+                                        <td>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="1"
+                                                name="qty_{{ producto.id }}"
+                                                class="form-control pedido-general-input"
+                                                data-costo="{{ producto.costo_unitario }}"
+                                                data-minimo="{{ minimo }}"
+                                                data-producto="{{ producto.nombre }}"
+                                                placeholder="0"
+                                            >
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div>
+                                <div class="text-muted small">
+                                    Ítems con cantidad: <strong id="pedidoGeneralItems">0</strong> |
+                                    Costo estimado total: <strong id="pedidoGeneralCosto">$0</strong>
+                                </div>
+                                <div class="text-danger small mt-2" id="pedidoGeneralError" style="display: none;">
+                                    <i class="fas fa-exclamation-circle me-1"></i><span id="pedidoGeneralErrorText"></span>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary" id="btnCrearPedidoGeneral">
+                                <i class="fas fa-check me-2"></i>Crear Pedido General
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <!-- Requerimientos de Planeación -->
             {% if requerimientos %}
             <div class="card mb-4">
@@ -318,72 +411,6 @@
                 </div>
             </div>
             {% endif %}
-
-            <!-- Productos Priorizados por Cobertura -->
-            <div class="card mb-4" id="inventario">
-                <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="fas fa-exclamation-triangle me-2"></i>Productos Priorizados por Urgencia
-                    </h5>
-                    <p class="text-muted small">Ordenados por días de cobertura (menor a mayor)</p>
-                    
-                    {% for item in productos_priorizados[:10] %}
-                    <div class="producto-card estado-{{ item.estado }}">
-                        <div class="row align-items-center">
-                            <div class="col-md-1 text-center">
-                                {% if item.estado == 'critico' %}
-                                <span class="badge bg-danger badge-prioridad">URGENTE</span>
-                                {% elif item.estado == 'bajo' %}
-                                <span class="badge bg-warning badge-prioridad">BAJO</span>
-                                {% elif item.estado == 'normal' %}
-                                <span class="badge bg-success badge-prioridad">NORMAL</span>
-                                {% else %}
-                                <span class="badge bg-info badge-prioridad">ALTO</span>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-2">
-                                <h6 class="mb-0"><strong>{{ item.producto.nombre }}</strong></h6>
-                                <small class="text-muted">{{ item.producto.codigo }}</small>
-                            </div>
-                            <div class="col-md-2 text-center">
-                                <small class="text-muted d-block">Días de Cobertura</small>
-                                <div class="dias-cobertura {{ item.estado }}">
-                                    {{ "%.1f"|format(item.dias_cobertura) }}
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <small class="text-muted">Stock Actual</small>
-                                <div><strong>{{ item.inventario.cantidad_actual }}</strong> unidades</div>
-                            </div>
-                            <div class="col-md-2">
-                                <small class="text-muted">Consumo Diario</small>
-                                <div><strong>{{ "%.1f"|format(item.consumo_diario) }}</strong> unid/día</div>
-                            </div>
-                            <div class="col-md-2">
-                                <small class="text-muted">Punto Reorden</small>
-                                <div><strong>{{ item.inventario.punto_reorden }}</strong></div>
-                            </div>
-                            <div class="col-md-1 text-end">
-                                {% if item.alertas %}
-                                <div class="dropdown">
-                                    <button class="btn btn-sm btn-outline-danger" data-bs-toggle="dropdown">
-                                        <i class="fas fa-exclamation-circle"></i>
-                                    </button>
-                                    <ul class="dropdown-menu dropdown-menu-end">
-                                        {% for alerta in item.alertas %}
-                                        <li class="px-3 py-2">
-                                            <small><i class="alert-icon fas fa-{{ alerta.icono }} text-{{ alerta.tipo }}"></i>{{ alerta.mensaje }}</small>
-                                        </li>
-                                        {% endfor %}
-                                    </ul>
-                                </div>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
 
             <!-- Órdenes Recientes -->
             <div class="card" id="ordenes">
@@ -468,6 +495,15 @@
                         <input type="number" name="cantidad" class="form-control" 
                                min="1" step="1" required onchange="actualizarCostoEstimado()">
                     </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Proveedor</label>
+                        <select name="proveedor" id="ordenManualProveedor" class="form-select" onchange="actualizarCostoEstimado()">
+                            <option value="A">Proveedor A - menor costo, mayor lead time</option>
+                            <option value="B">Proveedor B - mayor costo, menor lead time</option>
+                        </select>
+                        <small class="text-muted">A: 5% más barato y +2 días | B: 10% más costoso y -1 día</small>
+                    </div>
                     
                     <div class="alert alert-info" id="infoOrden" style="display: none;">
                         <div><strong>Costo Estimado:</strong> <span id="costoEstimado">$0</span></div>
@@ -519,6 +555,15 @@
                         <label class="form-label">Notas (Opcional)</label>
                         <textarea name="notas_compras" class="form-control" rows="2"></textarea>
                     </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Proveedor</label>
+                        <select name="proveedor" id="reqProveedor" class="form-select">
+                            <option value="A">Proveedor A - menor costo, mayor lead time</option>
+                            <option value="B">Proveedor B - mayor costo, menor lead time</option>
+                        </select>
+                        <small class="text-muted">A: 5% más barato y +2 días | B: 10% más costoso y -1 día</small>
+                    </div>
                     
                     <div class="alert alert-warning">
                         <strong>Costo Total:</strong> $<span id="reqCostoTotal">0</span>
@@ -535,20 +580,170 @@
     </div>
 </div>
 
+<!-- Sección de Histórico de 30 Días -->
+{% if historico_ventas %}
+<div class="card mt-4 border-info mb-4">
+    <div class="card-header bg-info text-white">
+        <h5 class="mb-0">
+            <i class="fas fa-history me-2"></i>Histórico de Ventas (30 Días Anteriores)
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="p-3 border rounded bg-light text-center">
+                    <p class="text-muted mb-1 small">Total de Unidades Vendidas</p>
+                    <h4 class="mb-0 text-primary">{{ "{:.0f}".format(total_ventas_historico) }}</h4>
+                    <small class="text-muted">últimos 30 días</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-3 border rounded bg-light text-center">
+                    <p class="text-muted mb-1 small">Promedio Diario</p>
+                    <h4 class="mb-0 text-success">{{ "{:.0f}".format(promedio_diario_historico) }}</h4>
+                    <small class="text-muted">unidades/día (referencia para pedir)</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-3 border rounded bg-light text-center">
+                    <p class="text-muted mb-1 small">Registros de Venta</p>
+                    <h4 class="mb-0 text-secondary">{{ historico_ventas|length }}</h4>
+                    <small class="text-muted">días con actividad</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Día</th>
+                        <th>Producto</th>
+                        <th>Región</th>
+                        <th class="text-end">Unidades</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for venta in historico_ventas[:25] %}
+                    <tr>
+                        <td>
+                            <span class="badge bg-secondary">Día {{ abs(venta.semana_simulacion) }}</span>
+                        </td>
+                        <td>
+                            <strong>{{ venta.producto.nombre }}</strong>
+                        </td>
+                        <td>
+                            <small>{{ venta.region }}</small>
+                        </td>
+                        <td class="text-end">{{ "{:.0f}".format(venta.cantidad_vendida) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if historico_ventas|length > 25 %}
+        <div class="text-center py-2">
+            <small class="text-muted">Mostrando 25 de {{ historico_ventas|length }} registros</small>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    const PROVEEDOR_CONFIG = {
+        A: { costoMultiplicador: 0.95, leadDelta: 2 },
+        B: { costoMultiplicador: 1.10, leadDelta: -1 }
+    };
+
+    function getProveedorConfig(codigo) {
+        return PROVEEDOR_CONFIG[codigo] || PROVEEDOR_CONFIG.A;
+    }
+
+    function actualizarResumenPedidoGeneral() {
+        const inputs = document.querySelectorAll('.pedido-general-input');
+        const proveedorSelect = document.getElementById('pedidoGeneralProveedor');
+        const proveedor = proveedorSelect ? proveedorSelect.value : 'A';
+        const proveedorConfig = getProveedorConfig(proveedor);
+        let items = 0;
+        let costoTotal = 0;
+        let hayError = false;
+        let errorMsg = '';
+
+        inputs.forEach((input) => {
+            const cantidad = parseFloat(input.value) || 0;
+            const costo = parseFloat(input.dataset.costo) || 0;
+            const minimo = parseFloat(input.dataset.minimo) || 0;
+            const producto = input.dataset.producto || 'Producto';
+            
+            if (cantidad > 0) {
+                // Validar si está por debajo del mínimo
+                if (minimo > 0 && cantidad < minimo) {
+                    hayError = true;
+                    errorMsg = `${producto} requiere mínimo ${minimo} unidades (ingresaste ${Math.floor(cantidad)})`;
+                    items += 1;  // Contar aunque sea inválido
+                } else {
+                    items += 1;
+                }
+                costoTotal += cantidad * costo * proveedorConfig.costoMultiplicador;
+            }
+        });
+
+        document.getElementById('pedidoGeneralItems').textContent = items;
+        document.getElementById('pedidoGeneralCosto').textContent = '$' + costoTotal.toLocaleString('es-CO', {maximumFractionDigits: 0});
+        
+        const btn = document.getElementById('btnCrearPedidoGeneral');
+        const errorDiv = document.getElementById('pedidoGeneralError');
+        const errorText = document.getElementById('pedidoGeneralErrorText');
+        
+        if (hayError) {
+            btn.disabled = true;
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-danger');
+            errorDiv.style.display = 'block';
+            errorText.textContent = errorMsg;
+        } else {
+            btn.disabled = false;
+            btn.classList.add('btn-primary');
+            btn.classList.remove('btn-danger');
+            errorDiv.style.display = 'none';
+            errorText.textContent = '';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const inputs = document.querySelectorAll('.pedido-general-input');
+        inputs.forEach((input) => {
+            input.addEventListener('input', actualizarResumenPedidoGeneral);
+        });
+
+        const proveedorGeneral = document.getElementById('pedidoGeneralProveedor');
+        if (proveedorGeneral) {
+            proveedorGeneral.addEventListener('change', actualizarResumenPedidoGeneral);
+        }
+
+        actualizarResumenPedidoGeneral();
+    });
+
     function actualizarCostoEstimado() {
         const selectProducto = document.querySelector('select[name="producto_id"]');
         const inputCantidad = document.querySelector('input[name="cantidad"]');
+        const selectProveedor = document.getElementById('ordenManualProveedor');
         const infoOrden = document.getElementById('infoOrden');
         
-        if (selectProducto.value && inputCantidad.value) {
+        if (selectProducto.value && inputCantidad.value && selectProveedor) {
             const option = selectProducto.options[selectProducto.selectedIndex];
-            const costoUnitario = parseFloat(option.dataset.costo);
-            const leadTime = parseInt(option.dataset.leadTime);
+            const costoUnitarioBase = parseFloat(option.dataset.costo);
+            const leadTimeBase = parseInt(option.dataset.leadTime);
             const cantidad = parseFloat(inputCantidad.value);
+            const proveedorConfig = getProveedorConfig(selectProveedor.value);
+
+            const costoUnitario = costoUnitarioBase * proveedorConfig.costoMultiplicador;
+            const leadTime = Math.max(1, leadTimeBase + proveedorConfig.leadDelta);
             
             const costoTotal = costoUnitario * cantidad;
             const diaLlegada = {{ simulacion.dia_actual }} + leadTime;
@@ -566,20 +761,24 @@
     function procesarRequerimiento(id, producto, cantidad, costoUnitario) {
         document.getElementById('reqProducto').textContent = producto;
         document.getElementById('reqCantidad').textContent = cantidad.toFixed(0);
-        document.getElementById('reqCantidadInput').value = cantidad.toFixed(0);
-        
-        const costoTotal = cantidad * costoUnitario;
-        document.getElementById('reqCostoTotal').textContent = costoTotal.toLocaleString('es-CO', {maximumFractionDigits: 0});
+        const reqCantidadInput = document.getElementById('reqCantidadInput');
+        const reqProveedor = document.getElementById('reqProveedor');
+        reqCantidadInput.value = cantidad.toFixed(0);
+
+        const recalcularCostoRequerimiento = () => {
+            const nuevaCantidad = parseFloat(reqCantidadInput.value) || 0;
+            const proveedorConfig = getProveedorConfig(reqProveedor.value);
+            const nuevoCosto = nuevaCantidad * costoUnitario * proveedorConfig.costoMultiplicador;
+            document.getElementById('reqCostoTotal').textContent = nuevoCosto.toLocaleString('es-CO', {maximumFractionDigits: 0});
+        };
+
+        recalcularCostoRequerimiento();
         
         const form = document.getElementById('formProcesarRequerimiento');
         form.action = "{{ url_for('estudiante.crear_orden_desde_requerimiento', requerimiento_id=0) }}".replace('/0', '/' + id);
-        
-        // Actualizar costo al cambiar cantidad
-        document.getElementById('reqCantidadInput').addEventListener('input', function() {
-            const nuevaCantidad = parseFloat(this.value) || 0;
-            const nuevoCosto = nuevaCantidad * costoUnitario;
-            document.getElementById('reqCostoTotal').textContent = nuevoCosto.toLocaleString('es-CO', {maximumFractionDigits: 0});
-        });
+
+        reqCantidadInput.oninput = recalcularCostoRequerimiento;
+        reqProveedor.onchange = recalcularCostoRequerimiento;
         
         const modal = new bootstrap.Modal(document.getElementById('modalProcesarRequerimiento'));
         modal.show();

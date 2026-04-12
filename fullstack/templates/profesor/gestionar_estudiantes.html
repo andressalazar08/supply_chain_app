@@ -174,7 +174,7 @@
                         <select class="form-select" name="rol" required>
                             <option value="">Seleccione un rol...</option>
                             {% for rol in roles_disponibles %}
-                            <option value="{{ rol }}">{{ rol|upper }}</option>
+                            <option value="{{ rol }}">{{ rol.replace('_', ' / ')|upper }}</option>
                             {% endfor %}
                         </select>
                     </div>

@@ -20,12 +20,6 @@
     </a>
     {% endif %}
     
-    {% if current_user.rol == 'planeacion' %}
-    <a href="{{ url_for('estudiante.dashboard_planeacion') }}" class="{{ 'active' if 'planeacion' in request.endpoint else '' }}">
-        <i class="fas fa-calendar-alt me-2"></i>Planeación
-    </a>
-    {% endif %}
-    
     {% if current_user.rol == 'compras' %}
     <a href="{{ url_for('estudiante.dashboard_compras') }}" class="{{ 'active' if 'compras' in request.endpoint else '' }}">
         <i class="fas fa-shopping-cart me-2"></i>Compras
@@ -36,6 +30,9 @@
     <a href="{{ url_for('estudiante.dashboard_logistica') }}" class="{{ 'active' if 'logistica' in request.endpoint else '' }}">
         <i class="fas fa-warehouse me-2"></i>Logística
     </a>
+    <a href="{{ url_for('estudiante.vista_recepcion') }}" class="{{ 'active' if request.endpoint == 'estudiante.vista_recepcion' else '' }}">
+        <i class="fas fa-inbox me-2"></i>Recepción de Pedidos
+    </a>
     {% endif %}
     
     <hr class="bg-light mx-3">
@@ -43,10 +40,9 @@
     <div class="px-3 py-2">
         <small class="text-white-50 d-block mb-1">Mi Rol</small>
         <span class="badge {{ 'badge-ventas' if current_user.rol == 'ventas' 
-                              else 'badge-planeacion' if current_user.rol == 'planeacion'
-                              else 'badge-compras' if current_user.rol == 'compras'
+                              else 'badge-planeacion' if current_user.rol == 'compras'
                               else 'badge-logistica' }} badge-rol w-100">
-            {{ current_user.rol.upper() }}
+            {{ current_user.rol.replace('_', ' ').upper() }}
         </span>
     </div>
     

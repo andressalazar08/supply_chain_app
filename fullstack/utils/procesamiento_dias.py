@@ -465,7 +465,7 @@ def procesar_ventas_semana(simulacion, empresa):
             # Actualizar inventario si hubo venta
             if cantidad_vendida > 0:
                 saldo_anterior = inventario.cantidad_actual
-                inventario.cantidad_actual -= cantidad_vendida
+                inventario.cantidad_actual = max(0, int(round((inventario.cantidad_actual or 0) - cantidad_vendida)))
                 
                 # Calcular porcentaje de competitividad para el mensaje
                 competitividad_msg = ""

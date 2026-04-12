@@ -7,6 +7,11 @@ from typing import Dict, List, Any
 from datetime import datetime
 
 
+def _qty_int(value) -> int:
+    """Normaliza cantidades de inventario a enteros."""
+    return max(0, int(round(value or 0)))
+
+
 def calcular_tiempo_entrega_region(region: str) -> int:
     """
     Calcula el tiempo de entrega en días según la región de Colombia
@@ -40,7 +45,7 @@ def procesar_recepcion_compra(compra, inventario) -> Dict[str, Any]:
         Diccionario con resultado de la operación
     """
     cantidad_anterior = inventario.cantidad_actual
-    inventario.cantidad_actual += compra.cantidad
+    inventario.cantidad_actual = _qty_int(inventario.cantidad_actual + compra.cantidad)
     
     # Actualizar costo promedio ponderado
     valor_anterior = cantidad_anterior * inventario.costo_promedio
@@ -53,7 +58,7 @@ def procesar_recepcion_compra(compra, inventario) -> Dict[str, Any]:
     return {
         'cantidad_recibida': compra.cantidad,
         'cantidad_anterior': cantidad_anterior,
-        'cantidad_nueva': inventario.cantidad_actual,
+        'cantidad_nueva': _qty_int(inventario.cantidad_actual),
         'costo_unitario': compra.costo_unitario,
         'costo_promedio': inventario.costo_promedio,
         'valor_recepcion': valor_nueva_compra
@@ -71,14 +76,14 @@ def calcular_stock_disponible_despacho(inventario, ordenes_pendientes=None) -> f
     Returns:
         Cantidad disponible para despachar
     """
-    stock_disponible = inventario.cantidad_actual - inventario.cantidad_reservada
+    stock_disponible = _qty_int(inventario.cantidad_actual - inventario.cantidad_reservada)
     
     # Restar cantidades en órdenes de despacho pendientes
     if ordenes_pendientes:
         for orden in ordenes_pendientes:
-            stock_disponible -= orden.cantidad
-    
-    return max(0, stock_disponible)
+            stock_disponible -= _qty_int(orden.cantidad)
+
+    return max(0, _qty_int(stock_disponible))
 
 
 def validar_despacho_region(inventario, cantidad_solicitada: float, 
@@ -95,12 +100,12 @@ def validar_despacho_region(inventario, cantidad_solicitada: float,
         Diccionario con validación y recomendación
     """
     stock_seguridad = stock_seguridad or inventario.stock_seguridad
-    stock_disponible = inventario.cantidad_actual - inventario.cantidad_reservada
+    stock_disponible = _qty_int(inventario.cantidad_actual - inventario.cantidad_reservada)
     
     puede_despachar = cantidad_solicitada <= stock_disponible
     
     # Verificar si el despacho dejaría menos del stock de seguridad
-    stock_resultante = stock_disponible - cantidad_solicitada
+    stock_resultante = _qty_int(stock_disponible - cantidad_solicitada)
     alerta_stock_bajo = stock_resultante < stock_seguridad
     
     recomendacion = None

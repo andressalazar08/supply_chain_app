@@ -58,7 +58,7 @@ Estos datos están "cableados" en el sistema y no se pueden cambiar sin código:
 | **Número de Productos** | 2 tipos (vinos 750ml y 1L) |
 | **Regiones de Mercado** | 5 (Andina, Caribe, Pacífica, Orinoquia, Amazonia) |
 | **Duración Simulación** | 30 semanas (≈90 días) |
-| **Estructura de Roles** | 4 (Ventas, Planeación, Compras, Logística) |
+| **Estructura de Roles** | 3 (Ventas, Compras, Logística) |
 | **Costo Almacenamiento** | $0.50/unidad/día |
 | **Costo Faltante** | $10.00/unidad no vendida |
 | **Volatilidad Demanda** | ±20% variación |
@@ -107,8 +107,8 @@ Cuando accede por primera vez, cada estudiante ve:
 
 - **Decisiones de Ventas:** Qué precio fijan
 - **Decisiones de Compras:** Cuándo y cuánto ordenan
-- **Decisiones de Planeación:** Cómo pronostican demanda
-- **Decisiones de Logística:** Cómo distribuyen por regiones
+- **Decisiones de Compras:** Cuándo, cuánto y con qué proveedor ordenan
+- **Decisiones de Logística:** Cómo distribuyen por regiones y reciben pedidos
 
 ### Factores que NO varían:
 
@@ -231,9 +231,9 @@ DESAFÍO:
   Estudiante → Ventas → ¿Ves precio base sin cambios?
   ```
 
-- [ ] ¿Demanda se muestra?  
+- [ ] ¿Requerimientos y pedidos se muestran?  
   ```
-  Estudiante → Planeación → ¿Ves demanda promedio calculada?
+  Estudiante → Compras → ¿Ves requerimientos, proveedor y opciones de pedido?
   ```
 
 ---

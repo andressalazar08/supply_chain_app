@@ -3,9 +3,11 @@ Rutas para el rol Estudiante
 Dashboard diferenciado seg�n rol: Ventas, Planeaci�n, Compras, Log�stica
 """
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
 from flask_login import login_required, current_user
 from functools import wraps
+import csv
+import io
 from models import (Usuario, Empresa, Simulacion, Inventario, Venta, Compra, Decision,
                     Producto, Pronostico, RequerimientoCompra, MovimientoInventario, DespachoRegional,
                     DisrupcionEmpresa)
@@ -28,6 +30,7 @@ bp = Blueprint('estudiante', __name__, url_prefix='/estudiante')
 
 # Costo base de transporte por unidad y por dia de transito.
 COSTO_TRANSPORTE_POR_UNIDAD_DIA = 500
+ROL_PLANEACION_COMPRAS = 'compras'
 
 REGIONES_CANONICAS = [
     'Andina',
@@ -50,6 +53,90 @@ def variantes_region(region):
     """Retorna alias válidos de una región para tolerar datos legados mal codificados."""
     return REGION_VARIANTES.get(region, [region])
 
+
+def _role_set_for_user(user_role):
+    """Mapea roles legados a su conjunto funcional equivalente."""
+    if user_role in ['planeacion', 'compras', ROL_PLANEACION_COMPRAS]:
+        return {'planeacion', 'compras', ROL_PLANEACION_COMPRAS}
+    return {user_role}
+
+
+def _role_allowed(user_role, allowed_roles):
+    return bool(_role_set_for_user(user_role).intersection(set(allowed_roles)))
+
+
+PROVEEDORES_COMPRA = {
+    'A': {
+        'nombre': 'Proveedor A (económico)',
+        'costo_multiplicador': 0.95,
+        'lead_time_delta': 2,
+    },
+    'B': {
+        'nombre': 'Proveedor B (rápido)',
+        'costo_multiplicador': 1.10,
+        'lead_time_delta': -1,
+    },
+}
+
+
+def _normalizar_proveedor(valor):
+    proveedor = (valor or 'A').strip().upper()
+    return proveedor if proveedor in PROVEEDORES_COMPRA else 'A'
+
+
+def _calcular_condiciones_compra(producto, cantidad, simulacion, empresa_id, proveedor):
+    """Calcula costo/lead time según proveedor elegido y disrupciones activas."""
+    proveedor = _normalizar_proveedor(proveedor)
+    config = PROVEEDORES_COMPRA[proveedor]
+
+    costo_unitario = producto.costo_unitario * config['costo_multiplicador']
+    tiempo_entrega = max(1, int(round(producto.tiempo_entrega + config['lead_time_delta'])))
+
+    # Disrupción 1: retraso en proveedor estratégico.
+    # Si se usa proveedor A sobre producto afectado, se agrega retraso de 10 días.
+    dis_retraso = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.empresa_id == empresa_id,
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.producto_afectado_id == producto.id,
+        DisrupcionEmpresa.disrupcion_key == 'retraso_proveedor',
+        DisrupcionEmpresa.activa == True
+    ).first()
+    if dis_retraso and proveedor == 'A':
+        tiempo_entrega += 10
+
+    # Disrupción de aumento de costos de compra (opción C)
+    delay_extra = 0
+    dis_costos_c = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.empresa_id == empresa_id,
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.producto_afectado_id == producto.id,
+        DisrupcionEmpresa.disrupcion_key == 'aumento_costos_compra',
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.opcion_elegida == 'C'
+    ).first()
+    if dis_costos_c:
+        from utils.catalogo_disrupciones import get_disrupcion as _gd_cc
+        cat_cc = _gd_cc('aumento_costos_compra')
+        if cat_cc:
+            efectos_c = cat_cc['opciones']['C']['efectos']
+            pedido_min_c = int(efectos_c.get('pedido_minimo', 150))
+            if cantidad < pedido_min_c:
+                return {
+                    'ok': False,
+                    'mensaje': f'Con disrupción activa, el pedido mínimo es {pedido_min_c} unidades.'
+                }
+            costo_unitario *= efectos_c.get('costo_multiplicador', 0.826)
+            delay_extra = efectos_c.get('delay_entrega', 1)
+
+    return {
+        'ok': True,
+        'proveedor': proveedor,
+        'proveedor_nombre': config['nombre'],
+        'costo_unitario': costo_unitario,
+        'tiempo_entrega': tiempo_entrega,
+        'delay_extra': delay_extra,
+    }
+
 def obtener_simulacion_activa():
     """Helper para obtener la simulaci�n actualmente activa"""
     return Simulacion.query.filter_by(activa=True).first()
@@ -70,7 +157,7 @@ def rol_required(*roles):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if current_user.rol not in roles:
+            if not _role_allowed(current_user.rol, roles):
                 flash('No tienes permiso para acceder a este módulo.', 'error')
                 return redirect(url_for('estudiante.dashboard_general'))
             return f(*args, **kwargs)
@@ -183,6 +270,17 @@ def dashboard_general():
         Compra.semana_entrega <= simulacion.dia_actual + 21
     ).order_by(Compra.semana_entrega).limit(5).all()
 
+    # Histórico de 30 días (antes de la simulación activa)
+    historico_ventas = Venta.query.filter_by(
+        empresa_id=empresa.id
+    ).filter(
+        Venta.semana_simulacion < 0
+    ).order_by(Venta.semana_simulacion.desc()).all()
+    
+    total_ventas_historico = sum(v.cantidad_vendida for v in historico_ventas) if historico_ventas else 0
+    ingresos_historico = sum(v.ingreso_total for v in historico_ventas) if historico_ventas else 0
+    promedio_diario_historico = total_ventas_historico / 30 if historico_ventas else 0
+
     # --- DISRUPCIONES ---
     # Garantizar que esta empresa tenga sus disrupciones creadas y expiradas
     # correctamente incluso si el estudiante entra sin que el motor haya corrido.
@@ -232,6 +330,10 @@ def dashboard_general():
                          alertas_inventario=alertas_inventario,
                          movimientos_recientes=movimientos_recientes,
                          ordenes_proximas=ordenes_proximas,
+                         historico_ventas=historico_ventas,
+                         total_ventas_historico=total_ventas_historico,
+                         ingresos_historico=ingresos_historico,
+                         promedio_diario_historico=promedio_diario_historico,
                          disrupcion_pendiente=disrupcion_pendiente,
                          disrupciones_finalizadas=disrupciones_finalizadas,
                          disrupciones_activas=disrupciones_activas,
@@ -985,66 +1087,11 @@ def api_ventas_demanda_mercado():
 @bp.route('/planeacion')
 @login_required
 @estudiante_required
-@rol_required('planeacion')
+@rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
 def dashboard_planeacion():
-    """Dashboard espec�fico para el rol de Planeaci�n"""
-    # Acceso permitido para todos los roles - Panel unificado
-    simulacion = Simulacion.query.filter_by(activa=True).first()
-    empresa = current_user.empresa
-    
-    # Obtener productos
-    productos = Producto.query.filter_by(activo=True).all()
-    
-    # Obtener inventarios actuales
-    inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
-    inventarios_dict = {inv.producto_id: inv for inv in inventarios}
-    
-    # Calcular estad�sticas por producto
-    stats_productos = []
-    for producto in productos:
-        # Ventas hist�ricas del producto
-        ventas = Venta.query.filter_by(
-            empresa_id=empresa.id,
-            producto_id=producto.id
-        ).order_by(Venta.semana_simulacion).all()
-        
-        # Datos para an�lisis
-        total_vendido = sum([v.cantidad_vendida for v in ventas])
-        total_perdido = sum([v.cantidad_perdida for v in ventas])
-        demanda_promedio = total_vendido / len(ventas) if ventas else 0
-        
-        inventario = inventarios_dict.get(producto.id)
-        stock_actual = inventario.cantidad_actual if inventario else 0
-        
-        stats_productos.append({
-            'producto': producto,
-            'total_vendido': total_vendido,
-            'total_perdido': total_perdido,
-            'demanda_promedio': demanda_promedio,
-            'stock_actual': stock_actual,
-            'dias_ventas': len(set([v.semana_simulacion for v in ventas]))
-        })
-    
-    # Pron�sticos recientes
-    pronosticos_recientes = Pronostico.query.filter_by(
-        empresa_id=empresa.id,
-        usuario_id=current_user.id
-    ).order_by(Pronostico.created_at.desc()).limit(10).all()
-    
-    # Requerimientos pendientes
-    requerimientos_pendientes = RequerimientoCompra.query.filter_by(
-        empresa_id=empresa.id,
-        usuario_planeacion_id=current_user.id,
-        estado='pendiente'
-    ).count()
-    
-    return render_template('estudiante/planeacion/dashboard_planeacion.html',
-                         simulacion=simulacion,
-                         empresa=empresa,
-                         productos=productos,
-                         stats_productos=stats_productos,
-                         pronosticos_recientes=pronosticos_recientes,
-                         requerimientos_pendientes=requerimientos_pendientes)
+    """La Planeación se integró con Compras en un único módulo operativo."""
+    flash('Planeación y Compras ahora están integradas en un solo módulo.', 'info')
+    return redirect(url_for('estudiante.dashboard_compras'))
 
 
 @bp.route('/planeacion/generar-pronostico')
@@ -1052,8 +1099,8 @@ def dashboard_planeacion():
 @estudiante_required
 def generar_pronostico():
     """Mantiene compatibilidad con ruta legacy y redirige al panel vigente."""
-    flash('La gestión de pronósticos está integrada en el panel de Planeación.', 'info')
-    return redirect(url_for('estudiante.dashboard_planeacion'))
+    flash('La gestión de pronósticos ahora se realiza fuera de la app. Exporta ventas desde Planeación y Compras.', 'info')
+    return redirect(url_for('estudiante.dashboard_compras'))
 
 
 @bp.route('/planeacion/guardar-pronostico', methods=['POST'])
@@ -1219,7 +1266,7 @@ def crear_requerimiento():
 @estudiante_required
 def api_historico_producto(producto_id):
     """API: Datos hist�ricos de demanda de un producto"""
-    if current_user.rol != 'planeacion':
+    if not _role_allowed(current_user.rol, ['planeacion', 'compras', ROL_PLANEACION_COMPRAS]):
         return jsonify({'error': 'No autorizado'}), 403
     
     empresa_id = current_user.empresa_id
@@ -1272,7 +1319,7 @@ def api_historico_producto(producto_id):
 @bp.route('/compras')
 @login_required
 @estudiante_required
-@rol_required('compras')
+@rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
 def dashboard_compras():
     """Dashboard espec�fico para el rol de Compras"""
     # Acceso permitido para todos los roles - Panel unificado
@@ -1325,28 +1372,74 @@ def dashboard_compras():
     ordenes_transito = Compra.query.filter_by(
         empresa_id=empresa.id,
         estado='en_transito'
-    ).all()
-    
+    ).order_by(Compra.semana_entrega.asc()).all()
+
     # Capital comprometido
     capital_comprometido = sum([o.costo_total for o in ordenes_transito])
     capital_libre = empresa.capital_actual - capital_comprometido
     
+    # Histórico de 30 días (antes de la simulación activa)
+    historico_ventas = Venta.query.filter_by(
+        empresa_id=empresa.id
+    ).filter(
+        Venta.semana_simulacion < 0
+    ).order_by(Venta.semana_simulacion.desc()).all()
+    
+    total_ventas_historico = sum(v.cantidad_vendida for v in historico_ventas) if historico_ventas else 0
+    promedio_diario_historico = total_ventas_historico / 30 if historico_ventas else 0
+    
     return render_template('estudiante/compras/dashboard.html',
                          simulacion=simulacion,
                          empresa=empresa,
+                         productos=productos,
+                         inventarios_dict=inventarios_dict,
                          productos_priorizados=productos_priorizados,
                          requerimientos=requerimientos,
                          ordenes_compra=ordenes_compra,
                          ordenes_transito=ordenes_transito,
                          capital_comprometido=capital_comprometido,
-                         capital_libre=capital_libre)
+                         capital_libre=capital_libre,
+                         historico_ventas=historico_ventas,
+                         total_ventas_historico=total_ventas_historico,
+                         promedio_diario_historico=promedio_diario_historico)
+
+
+@bp.route('/compras/exportar-ventas-csv')
+@login_required
+@estudiante_required
+def exportar_ventas_csv():
+    """Exporta ventas para pronóstico externo (día, producto, unidades vendidas, región)."""
+    empresa = current_user.empresa
+
+    ventas = Venta.query.filter(
+        Venta.empresa_id == empresa.id,
+        Venta.cantidad_vendida > 0
+    ).order_by(Venta.semana_simulacion.asc(), Venta.producto_id.asc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['dia_venta', 'producto', 'unidades_vendidas', 'region'])
+
+    for venta in ventas:
+        writer.writerow([
+            venta.semana_simulacion,
+            venta.producto.nombre if venta.producto else venta.producto_id,
+            int(round(venta.cantidad_vendida or 0)),
+            venta.region,
+        ])
+
+    response = make_response(output.getvalue())
+    output.close()
+    response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+    response.headers['Content-Disposition'] = 'attachment; filename=ventas_para_pronostico.csv'
+    return response
 
 
 @bp.route('/compras/requerimientos')
 @login_required
 @estudiante_required
 def ver_requerimientos():
-    """Vista de requerimientos de Planeaci�n"""
+    """Vista de requerimientos para Planeación y Compras."""
     # Acceso permitido para todos los roles - Panel unificado
     simulacion = Simulacion.query.filter_by(activa=True).first()
     empresa = current_user.empresa
@@ -1386,55 +1479,26 @@ def crear_orden_desde_requerimiento(requerimiento_id):
         
         # Cantidad (puede ser ajustada por Compras)
         cantidad = float(request.form.get('cantidad', requerimiento.cantidad_sugerida))
+        proveedor = _normalizar_proveedor(request.form.get('proveedor', 'A'))
         notas_compras = request.form.get('notas_compras', '')
         
         simulacion = Simulacion.query.filter_by(activa=True).first()
         producto = Producto.query.get(requerimiento.producto_id)
         
-        # Calcular costos (con posible ajuste por disrupci�n Opci�n A)
-        costo_unitario = producto.costo_unitario
-        tiempo_entrega = producto.tiempo_entrega
+        condiciones = _calcular_condiciones_compra(
+            producto=producto,
+            cantidad=cantidad,
+            simulacion=simulacion,
+            empresa_id=current_user.empresa_id,
+            proveedor=proveedor,
+        )
+        if not condiciones['ok']:
+            flash(condiciones['mensaje'], 'error')
+            return redirect(url_for('estudiante.ver_requerimientos'))
 
-        dis_opcion_a = DisrupcionEmpresa.query.filter(
-            DisrupcionEmpresa.empresa_id == current_user.empresa_id,
-            DisrupcionEmpresa.simulacion_id == simulacion.id,
-            DisrupcionEmpresa.producto_afectado_id == requerimiento.producto_id,
-            DisrupcionEmpresa.activa == True,
-            DisrupcionEmpresa.opcion_elegida == 'A'
-        ).first()
-        if dis_opcion_a:
-            from utils.catalogo_disrupciones import get_disrupcion
-            cat = get_disrupcion(dis_opcion_a.disrupcion_key)
-            if cat:
-                efectos_a = cat['opciones']['A']['efectos']
-                costo_unitario *= efectos_a.get('costo_multiplicador', 1.20)
-                tiempo_entrega = efectos_a.get('tiempo_entrega_override', tiempo_entrega)
-                pedido_min = efectos_a.get('pedido_minimo', 0)
-                if cantidad < pedido_min:
-                    flash(f'?? Con el proveedor alterno, el pedido m�nimo es {pedido_min:.0f} unidades.', 'error')
-                    return redirect(url_for('estudiante.ver_requerimientos'))
-
-        # Efecto Opcion C de aumento_costos_compra: proveedor alterno
-        dis_costos_c = DisrupcionEmpresa.query.filter(
-            DisrupcionEmpresa.empresa_id == current_user.empresa_id,
-            DisrupcionEmpresa.simulacion_id == simulacion.id,
-            DisrupcionEmpresa.producto_afectado_id == requerimiento.producto_id,
-            DisrupcionEmpresa.disrupcion_key == 'aumento_costos_compra',
-            DisrupcionEmpresa.activa == True,
-            DisrupcionEmpresa.opcion_elegida == 'C'
-        ).first()
-        delay_extra = 0
-        if dis_costos_c:
-            from utils.catalogo_disrupciones import get_disrupcion as _gd_cc
-            cat_cc = _gd_cc('aumento_costos_compra')
-            if cat_cc:
-                efectos_c = cat_cc['opciones']['C']['efectos']
-                pedido_min_c = int(efectos_c.get('pedido_minimo', 150))
-                if cantidad < pedido_min_c:
-                    flash(f'Con el proveedor alterno, el pedido minimo es {pedido_min_c} unidades.', 'error')
-                    return redirect(url_for('estudiante.ver_requerimientos'))
-                costo_unitario *= efectos_c.get('costo_multiplicador', 0.826)
-                delay_extra = efectos_c.get('delay_entrega', 1)
+        costo_unitario = condiciones['costo_unitario']
+        tiempo_entrega = condiciones['tiempo_entrega']
+        delay_extra = condiciones['delay_extra']
 
         costo_total = cantidad * costo_unitario
 
@@ -1489,16 +1553,19 @@ def crear_orden_desde_requerimiento(requerimiento_id):
             datos_decision={
                 'requerimiento_id': requerimiento_id,
                 'producto_id': requerimiento.producto_id,
+                'proveedor': proveedor,
+                'proveedor_nombre': condiciones['proveedor_nombre'],
                 'cantidad_sugerida': requerimiento.cantidad_sugerida,
                 'cantidad_ordenada': cantidad,
-                'costo_total': costo_total
+                'costo_total': costo_total,
+                'lead_time_aplicado': tiempo_entrega + delay_extra,
             }
         )
         
         db.session.add(decision)
         db.session.commit()
         
-        flash(f'Orden creada: {cantidad:.0f} unidades de {producto.nombre}. Llegar� d�a {semana_entrega}', 'success')
+        flash(f'Orden creada con proveedor {proveedor}: {cantidad:.0f} unidades de {producto.nombre}. Llegará día {semana_entrega}', 'success')
         return redirect(url_for('estudiante.ver_requerimientos'))
     
     except Exception as e:
@@ -1516,6 +1583,7 @@ def crear_orden_manual():
     try:
         producto_id = int(request.form.get('producto_id'))
         cantidad = float(request.form.get('cantidad'))
+        proveedor = _normalizar_proveedor(request.form.get('proveedor', 'A'))
         
         simulacion = Simulacion.query.filter_by(activa=True).first()
         producto = Producto.query.get(producto_id)
@@ -1524,50 +1592,20 @@ def crear_orden_manual():
             flash('Producto no encontrado', 'error')
             return redirect(url_for('estudiante.dashboard_compras'))
         
-        # Calcular costos (con posible ajuste por disrupci�n Opci�n A)
-        costo_unitario = producto.costo_unitario
-        tiempo_entrega = producto.tiempo_entrega
+        condiciones = _calcular_condiciones_compra(
+            producto=producto,
+            cantidad=cantidad,
+            simulacion=simulacion,
+            empresa_id=current_user.empresa_id,
+            proveedor=proveedor,
+        )
+        if not condiciones['ok']:
+            flash(condiciones['mensaje'], 'error')
+            return redirect(url_for('estudiante.dashboard_compras'))
 
-        dis_opcion_a = DisrupcionEmpresa.query.filter(
-            DisrupcionEmpresa.empresa_id == current_user.empresa_id,
-            DisrupcionEmpresa.simulacion_id == simulacion.id,
-            DisrupcionEmpresa.producto_afectado_id == producto_id,
-            DisrupcionEmpresa.activa == True,
-            DisrupcionEmpresa.opcion_elegida == 'A'
-        ).first()
-        if dis_opcion_a:
-            from utils.catalogo_disrupciones import get_disrupcion
-            cat = get_disrupcion(dis_opcion_a.disrupcion_key)
-            if cat:
-                efectos_a = cat['opciones']['A']['efectos']
-                costo_unitario *= efectos_a.get('costo_multiplicador', 1.20)
-                tiempo_entrega = efectos_a.get('tiempo_entrega_override', tiempo_entrega)
-                pedido_min = efectos_a.get('pedido_minimo', 0)
-                if cantidad < pedido_min:
-                    flash(f'?? Con el proveedor alterno, el pedido m�nimo es {pedido_min:.0f} unidades.', 'error')
-                    return redirect(url_for('estudiante.dashboard_compras'))
-
-        # Efecto Opcion C de aumento_costos_compra: proveedor alterno
-        dis_costos_c = DisrupcionEmpresa.query.filter(
-            DisrupcionEmpresa.empresa_id == current_user.empresa_id,
-            DisrupcionEmpresa.simulacion_id == simulacion.id,
-            DisrupcionEmpresa.producto_afectado_id == producto_id,
-            DisrupcionEmpresa.disrupcion_key == 'aumento_costos_compra',
-            DisrupcionEmpresa.activa == True,
-            DisrupcionEmpresa.opcion_elegida == 'C'
-        ).first()
-        delay_extra = 0
-        if dis_costos_c:
-            from utils.catalogo_disrupciones import get_disrupcion as _gd_cc
-            cat_cc = _gd_cc('aumento_costos_compra')
-            if cat_cc:
-                efectos_c = cat_cc['opciones']['C']['efectos']
-                pedido_min_c = int(efectos_c.get('pedido_minimo', 150))
-                if cantidad < pedido_min_c:
-                    flash(f'Con el proveedor alterno, el pedido minimo es {pedido_min_c} unidades.', 'error')
-                    return redirect(url_for('estudiante.dashboard_compras'))
-                costo_unitario *= efectos_c.get('costo_multiplicador', 0.826)
-                delay_extra = efectos_c.get('delay_entrega', 1)
+        costo_unitario = condiciones['costo_unitario']
+        tiempo_entrega = condiciones['tiempo_entrega']
+        delay_extra = condiciones['delay_extra']
 
         costo_total = cantidad * costo_unitario
 
@@ -1613,8 +1651,11 @@ def crear_orden_manual():
             tipo_decision='orden_compra_manual',
             datos_decision={
                 'producto_id': producto_id,
+                'proveedor': proveedor,
+                'proveedor_nombre': condiciones['proveedor_nombre'],
                 'cantidad': cantidad,
-                'costo_total': costo_total
+                'costo_total': costo_total,
+                'lead_time_aplicado': tiempo_entrega + delay_extra,
             }
         )
         
@@ -1622,13 +1663,171 @@ def crear_orden_manual():
         db.session.add(decision)
         db.session.commit()
         
-        flash(f'Orden creada: {cantidad:.0f} unidades. Llegar� d�a {semana_entrega}', 'success')
+        flash(f'Orden creada con proveedor {proveedor}: {cantidad:.0f} unidades. Llegará día {semana_entrega}', 'success')
         return redirect(url_for('estudiante.dashboard_compras'))
     
     except Exception as e:
         db.session.rollback()
         flash(f'Error al crear orden: {str(e)}', 'error')
         return redirect(url_for('estudiante.dashboard_compras'))
+
+
+@bp.route('/compras/crear-pedido-general', methods=['POST'])
+@login_required
+@estudiante_required
+@rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
+def crear_pedido_general():
+    """Crear múltiples órdenes de compra en una sola operación."""
+    try:
+        simulacion = Simulacion.query.filter_by(activa=True).first()
+        empresa = current_user.empresa
+        proveedor = _normalizar_proveedor(request.form.get('proveedor', 'A'))
+
+        productos_activos = {
+            p.id: p for p in Producto.query.filter_by(activo=True).all()
+        }
+
+        solicitudes = []
+        for key, value in request.form.items():
+            if not key.startswith('qty_'):
+                continue
+
+            try:
+                producto_id = int(key.split('_', 1)[1])
+                cantidad = float(value or 0)
+            except (ValueError, TypeError):
+                continue
+
+            if cantidad > 0:
+                solicitudes.append((producto_id, cantidad))
+
+        if not solicitudes:
+            flash('Debes ingresar al menos una cantidad mayor a 0 para crear el pedido general.', 'warning')
+            return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
+        # Validar mínimos de pedido por tamaño de producto
+        for producto_id, cantidad in solicitudes:
+            producto = productos_activos.get(producto_id)
+            if not producto:
+                continue
+
+            # Determinar si es 750ml o 1L según el código
+            es_750ml = '750' in producto.codigo
+            es_1l = '1L' in producto.codigo or 'L' in producto.codigo.upper()
+
+            pedido_minimo = 0
+            if es_750ml:
+                pedido_minimo = 50
+            elif es_1l:
+                pedido_minimo = 40
+
+            if pedido_minimo > 0 and cantidad < pedido_minimo:
+                flash(
+                    f'El producto {producto.nombre} tiene un pedido mínimo de {pedido_minimo} unidades. '
+                    f'Has ingresado {cantidad:.0f}.',
+                    'error'
+                )
+                return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
+        ordenes_preparadas = []
+        for producto_id, cantidad in solicitudes:
+            producto = productos_activos.get(producto_id)
+            if not producto:
+                flash(f'Producto inválido en pedido general: {producto_id}', 'error')
+                return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
+            condiciones = _calcular_condiciones_compra(
+                producto=producto,
+                cantidad=cantidad,
+                simulacion=simulacion,
+                empresa_id=current_user.empresa_id,
+                proveedor=proveedor,
+            )
+            if not condiciones['ok']:
+                flash(f"{producto.nombre}: {condiciones['mensaje']}", 'error')
+                return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
+            costo_unitario = condiciones['costo_unitario']
+            tiempo_entrega = condiciones['tiempo_entrega']
+            delay_extra = condiciones['delay_extra']
+
+            costo_total = cantidad * costo_unitario
+            semana_entrega = simulacion.dia_actual + tiempo_entrega + delay_extra
+
+            ordenes_preparadas.append({
+                'producto': producto,
+                'cantidad': cantidad,
+                'proveedor': proveedor,
+                'costo_unitario': costo_unitario,
+                'costo_total': costo_total,
+                'semana_entrega': semana_entrega
+            })
+
+        costo_total_general = sum(item['costo_total'] for item in ordenes_preparadas)
+        ordenes_pendientes = Compra.query.filter_by(
+            empresa_id=empresa.id,
+            estado='en_transito'
+        ).all()
+
+        validacion = validar_capacidad_compra(
+            empresa.capital_actual,
+            costo_total_general,
+            ordenes_pendientes
+        )
+        if not validacion['puede_comprar']:
+            flash(f"Capital insuficiente para pedido general. {validacion['sugerencia']}", 'error')
+            return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
+        for item in ordenes_preparadas:
+            compra = Compra(
+                empresa_id=current_user.empresa_id,
+                producto_id=item['producto'].id,
+                semana_orden=simulacion.dia_actual,
+                semana_entrega=item['semana_entrega'],
+                cantidad=item['cantidad'],
+                costo_unitario=item['costo_unitario'],
+                costo_total=item['costo_total'],
+                estado='en_transito'
+            )
+            db.session.add(compra)
+
+        empresa.capital_actual -= costo_total_general
+
+        decision = Decision(
+            usuario_id=current_user.id,
+            empresa_id=current_user.empresa_id,
+            semana_simulacion=simulacion.dia_actual,
+            tipo_decision='orden_compra_general',
+            datos_decision={
+                'ordenes': [
+                    {
+                        'producto_id': item['producto'].id,
+                        'producto': item['producto'].nombre,
+                        'proveedor': item['proveedor'],
+                        'cantidad': item['cantidad'],
+                        'costo_total': item['costo_total'],
+                        'semana_entrega': item['semana_entrega']
+                    }
+                    for item in ordenes_preparadas
+                ],
+                'proveedor_aplicado': proveedor,
+                'costo_total_general': costo_total_general
+            }
+        )
+        db.session.add(decision)
+        db.session.commit()
+
+        flash(
+            f'Pedido general creado con proveedor {proveedor} y {len(ordenes_preparadas)} órdenes. '
+            f'Costo total: ${costo_total_general:,.0f}.',
+            'success'
+        )
+        return redirect(url_for('estudiante.dashboard_compras') + '#ordenes')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al crear pedido general: {str(e)}', 'error')
+        return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
 
 
 @bp.route('/compras/marcar-requerimiento-revisado/<int:requerimiento_id>', methods=['POST'])
@@ -1654,13 +1853,95 @@ def marcar_requerimiento_revisado(requerimiento_id):
     return redirect(url_for('estudiante.ver_requerimientos'))
 
 
+@bp.route('/compras/recibir-orden/<int:compra_id>', methods=['POST'])
+@login_required
+@estudiante_required
+@rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
+def recibir_orden_compra_compras(compra_id):
+    """Recepción movida al módulo de Logística."""
+    flash('La recepción de pedidos ahora se gestiona desde Logística.', 'info')
+    return redirect(url_for('estudiante.vista_recepcion'))
+
+
+def _procesar_recepcion_compra_individual(compra, usuario_id, empresa_id):
+    """Procesa una compra individual y retorna (éxito, mensaje)."""
+    if compra.estado != 'en_transito':
+        return False, 'Esta orden ya fue recibida o no está en tránsito'
+
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    if not simulacion:
+        return False, 'No existe una simulación activa'
+
+    if simulacion.dia_actual < compra.semana_entrega:
+        return False, f'Esta orden llega el día {compra.semana_entrega}. Aún no puede ser recibida.'
+
+    inventario = Inventario.query.filter_by(
+        empresa_id=empresa_id,
+        producto_id=compra.producto_id
+    ).first()
+
+    if not inventario:
+        inventario = Inventario(
+            empresa_id=empresa_id,
+            producto_id=compra.producto_id,
+            cantidad_actual=0,
+            costo_promedio=compra.costo_unitario
+        )
+        db.session.add(inventario)
+
+    resultado = procesar_recepcion_compra(compra, inventario)
+    compra.estado = 'entregado'
+
+    movimiento = MovimientoInventario(
+        empresa_id=empresa_id,
+        producto_id=compra.producto_id,
+        usuario_id=usuario_id,
+        semana_simulacion=simulacion.dia_actual,
+        tipo_movimiento='entrada_compra',
+        cantidad=compra.cantidad,
+        saldo_anterior=resultado['cantidad_anterior'],
+        saldo_nuevo=resultado['cantidad_nueva'],
+        compra_id=compra.id,
+        observaciones=f"Recepción de compra. Costo unitario: ${compra.costo_unitario:,.0f}"
+    )
+
+    decision = Decision(
+        usuario_id=usuario_id,
+        empresa_id=empresa_id,
+        semana_simulacion=simulacion.dia_actual,
+        tipo_decision='recepcion_compra',
+        datos_decision={
+            'compra_id': compra.id,
+            'producto_id': compra.producto_id,
+            'cantidad': compra.cantidad
+        },
+        resultado=resultado
+    )
+
+    db.session.add(movimiento)
+    db.session.add(decision)
+    db.session.commit()
+
+    return True, f'Orden recibida: {compra.cantidad:.0f} unidades de {compra.producto.nombre}. Nuevo stock: {resultado["cantidad_nueva"]:.0f}'
+
+
+@bp.route('/compras/recibir-todas-ordenes', methods=['POST'])
+@login_required
+@estudiante_required
+@rol_required('planeacion', 'compras', ROL_PLANEACION_COMPRAS)
+def recibir_todas_ordenes_compras():
+    """Recepción masiva movida al módulo de Logística."""
+    flash('La recepción masiva ahora se gestiona desde Logística.', 'info')
+    return redirect(url_for('estudiante.vista_recepcion'))
+
+
 # APIs para Compras
 @bp.route('/api/compras/inventario-status')
 @login_required
 @estudiante_required
 def api_inventario_status():
     """API: Estado del inventario para gr�ficos"""
-    if current_user.rol != 'compras':
+    if not _role_allowed(current_user.rol, ['planeacion', 'compras', ROL_PLANEACION_COMPRAS]):
         return jsonify({'error': 'No autorizado'}), 403
     
     empresa_id = current_user.empresa_id
@@ -1779,6 +2060,7 @@ def dashboard_logistica():
 @bp.route('/logistica/recepcion')
 @login_required
 @estudiante_required
+@rol_required('logistica')
 def vista_recepcion():
     """Vista de recepci�n de �rdenes de compra"""
     # Acceso permitido para todos los roles - Panel unificado
@@ -1807,6 +2089,7 @@ def vista_recepcion():
 @bp.route('/logistica/recibir-orden/<int:compra_id>', methods=['POST'])
 @login_required
 @estudiante_required
+@rol_required('logistica')
 def recibir_orden_compra(compra_id):
     """Procesar recepci�n de una orden de compra"""
     # Acceso permitido para todos los roles - Panel unificado
@@ -1891,6 +2174,37 @@ def recibir_orden_compra(compra_id):
     except Exception as e:
         db.session.rollback()
         flash(f'Error al recibir orden: {str(e)}', 'error')
+        return redirect(url_for('estudiante.vista_recepcion'))
+
+
+@bp.route('/logistica/recibir-todas-ordenes', methods=['POST'])
+@login_required
+@estudiante_required
+@rol_required('logistica')
+def recibir_todas_ordenes_logistica():
+    """Recibe todas las compras en tránsito que ya están listas para entrega."""
+    try:
+        simulacion = Simulacion.query.filter_by(activa=True).first()
+        compras_listas = Compra.query.filter_by(
+            empresa_id=current_user.empresa_id,
+            estado='en_transito'
+        ).filter(Compra.semana_entrega <= simulacion.dia_actual).order_by(Compra.semana_entrega.asc()).all()
+
+        if not compras_listas:
+            flash('No hay órdenes listas para recibir.', 'info')
+            return redirect(url_for('estudiante.vista_recepcion'))
+
+        recibidas = 0
+        for compra in compras_listas:
+            ok, _mensaje = _procesar_recepcion_compra_individual(compra, current_user.id, current_user.empresa_id)
+            if ok:
+                recibidas += 1
+
+        flash(f'Se recibieron {recibidas} órdenes de compra de forma masiva.', 'success')
+        return redirect(url_for('estudiante.vista_recepcion'))
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al recibir órdenes masivas: {str(e)}', 'error')
         return redirect(url_for('estudiante.vista_recepcion'))
 
 
@@ -2034,7 +2348,7 @@ def crear_despacho_regional():
         
         # Actualizar inventario: el stock sale físicamente del almacén al despachar
         # NO se toca cantidad_reservada (eso es para stock prometido que aún no salió)
-        inventario.cantidad_actual -= cantidad
+        inventario.cantidad_actual = max(0, int(round((inventario.cantidad_actual or 0) - cantidad)))
         
         # Registrar movimiento
         movimiento = MovimientoInventario(
@@ -2617,16 +2931,44 @@ def api_logistica_stock():
     inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
     
     stock_data = []
+    stock_total = 0
+    stock_maximo_total = 0
+    sobrestock_total = 0
+    costo_sobrestock_total = 0
+
     for inv in inventarios:
+        stock_actual = int(round(inv.cantidad_actual or 0))
+        stock_seguridad = int(round(inv.stock_seguridad or 0))
+        stock_maximo = int(round(inv.producto.stock_maximo or 0)) if inv.producto else 0
+        costo_referencia = inv.costo_promedio or (inv.producto.costo_unitario if inv.producto else 0)
+        sobrestock = max(0, stock_actual - stock_maximo)
+
+        stock_total += stock_actual
+        stock_maximo_total += stock_maximo
+        sobrestock_total += sobrestock
+        costo_sobrestock_total += sobrestock * costo_referencia
+
         stock_data.append({
             'producto_id': inv.producto_id,
             'producto_nombre': inv.producto.nombre,
-            'stock_actual': inv.cantidad_actual,
-            'stock_seguridad': inv.stock_seguridad,
-            'capacidad_maxima': inv.producto.capacidad_produccion if hasattr(inv.producto, 'capacidad_produccion') else 1000
+            'stock_actual': stock_actual,
+            'stock_seguridad': stock_seguridad,
+            'stock_maximo': stock_maximo,
+            'sobrestock': sobrestock,
+            'costo_referencia': round(costo_referencia, 2),
+            'costo_sobrestock': round(sobrestock * costo_referencia, 2)
         })
     
-    return jsonify({'success': True, 'stock': stock_data})
+    return jsonify({
+        'success': True,
+        'stock': stock_data,
+        'resumen': {
+            'stock_total': stock_total,
+            'stock_maximo_total': stock_maximo_total,
+            'sobrestock_total': sobrestock_total,
+            'costo_sobrestock_total': round(costo_sobrestock_total, 2)
+        }
+    })
 
 
 @bp.route('/api/logistica/despachar', methods=['POST'])
@@ -2698,7 +3040,7 @@ def api_logistica_despachar():
     )
     
     # Actualizar inventario
-    inventario.cantidad_actual -= cantidad
+    inventario.cantidad_actual = max(0, int(round((inventario.cantidad_actual or 0) - cantidad)))
     
     # Registrar movimiento
     movimiento = MovimientoInventario(
@@ -2848,7 +3190,7 @@ def api_logistica_despachar_multiple():
         
         # Actualizar inventario una sola vez con el total
         saldo_anterior = inventario.cantidad_actual
-        inventario.cantidad_actual -= cantidad_total
+        inventario.cantidad_actual = max(0, int(round((inventario.cantidad_actual or 0) - cantidad_total)))
         saldo_nuevo = inventario.cantidad_actual
         
         # Registrar movimiento total

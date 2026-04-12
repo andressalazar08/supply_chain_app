@@ -26,9 +26,8 @@
 El simulador de cadena de abastecimiento es un juego de negocio educativo donde los estudiantes toman decisiones sobre:
 
 - **Gestión de ventas:** Precios y estrategias comerciales
-- **Planeación:** Pronósticos y requerimientos de compra
-- **Compras:** Órdenes a proveedores
-- **Logística:** Inventario y distribución regional
+- **Compras:** Requerimientos, pronósticos operativos, órdenes a proveedores y selección de proveedor
+- **Logística:** Inventario, recepción y distribución regional
 
 Todos comienzan con **datos iniciales idénticos** (excepto el capital individual, si se configura así), creando un entorno competitivo justo.
 
@@ -122,7 +121,7 @@ Estos parámetros **NO se pueden cambiar** sin modificar el código:
 | Parámetro | Valor | Detalle |
 |-----------|-------|--------|
 | Número de empresas | Configurable | Profesor crea las que necesite |
-| Asignación de roles | 4 roles mínimo por empresa | Ventas, Planeación, Compras, Logística |
+| Asignación de roles | 3 roles por empresa | Ventas, Compras, Logística |
 | Estudiantes por rol | 1 o más | Flexible según grupo |
 | Visibilidad de datos | Solo tu empresa | Cada equipo ve solo sus propios datos |
 
@@ -312,7 +311,7 @@ Antes de que los estudiantes vean los datos iniciales, verifica:
 
 ### **Paso 2: Verificar Empresas Creadas**
 - [ ] ¿Cuántas empresas se crearon? **______ empresas**
-- [ ] ¿Cada empresa tiene exactamente 4 roles? (Ventas, Planeación, Compras, Logística)
+- [ ] ¿Cada empresa tiene exactamente 3 roles? (Ventas, Compras, Logística)
 - [ ] ¿Cada estudiante está asignado a su rol?
 
 ### **Paso 3: Consultar Datos en la BD**
@@ -340,7 +339,7 @@ with app.app_context():
 - [ ] ¿El capital es suficiente para hacer compras? (Mínimo recomendado: $10M)
 - [ ] ¿El inventario inicial es realista? (Recomendado: 80-200 unidades)
 - [ ] ¿Las empresas están en estado "pausado" antes de avanzar?
-- [ ] ¿La duración es 30 semanas (90 días)?
+- [ ] ¿La duración coincide con la configurada en la simulación?
 
 ---
 
@@ -398,7 +397,7 @@ Costo de Proveedores:
 **R:** Las empresas no podrán hacer pedidos significativos. Para pruebas educativas, recomendamos mínimo $20M.
 
 ### **P: ¿Puedo cambiar el inventario inicial después de crear la simulación?**
-**R:** Solo mediante reinicio de simulación (borraría todo progreso). Es mejor usar "Calibrar Demanda" para ajustes.
+**R:** Solo mediante reinicio de simulación (borraría todo progreso). No existe una recalibración manual desde la interfaz actual.
 
 ### **P: ¿Qué pasa si dos empresas tienen exactamente los mismos datos iniciales?**
 **R:** El juego es completamente justo. Las diferencias en resultados provienen 100% de las decisiones de cada equipo.

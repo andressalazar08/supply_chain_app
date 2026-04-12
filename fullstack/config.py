@@ -127,17 +127,15 @@ config = {
 ROLES = {
     'ADMIN': 'admin',
     'VENTAS': 'ventas',
-    'PLANEACION': 'planeacion',
-    'COMPRAS': 'compras',
+    'PLANEACION_COMPRAS': 'compras',
     'LOGISTICA': 'logistica'
 }
 
 # Mapeo de número a rol
 ROLES_NUM_MAP = {
     '1': 'ventas',
-    '2': 'planeacion',
-    '3': 'compras',
-    '4': 'logistica'
+    '2': 'compras',
+    '3': 'logistica'
 }
 
 # Mapeo de rol a número

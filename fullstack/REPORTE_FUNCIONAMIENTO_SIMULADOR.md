@@ -4,7 +4,7 @@
 
 El simulador es una herramienta web creada para representar el funcionamiento de una empresa dentro de una cadena de abastecimiento. Su objetivo es que los usuarios puedan tomar decisiones como si estuvieran administrando una empresa real, observando después qué efectos tienen esas decisiones sobre las ventas, el inventario, los costos y la rentabilidad.
 
-La aplicación está pensada como un entorno de aprendizaje y práctica. Cada usuario ve una parte del proceso según su rol, por ejemplo ventas, planeación, compras, logística o administración. De esta manera, la herramienta permite trabajar de forma organizada y simular la interacción entre distintas áreas de una empresa.
+La aplicación está pensada como un entorno de aprendizaje y práctica. Cada usuario ve una parte del proceso según su rol, por ejemplo ventas, compras, logística o administración. De esta manera, la herramienta permite trabajar de forma organizada y simular la interacción entre distintas áreas de una empresa.
 
 ## 2. ¿Para qué sirve?
 
@@ -33,8 +33,7 @@ Primero, el profesor o administrador inicia una simulación. Cuando la simulaci�
 Después, cada rol realiza acciones específicas:
 
 - El área de ventas ajusta precios y analiza el comportamiento del mercado.
-- Planeación genera pronósticos de demanda y define requerimientos.
-- Compras crea órdenes para abastecer la empresa.
+- Compras define requerimientos, selecciona proveedor y crea órdenes para abastecer la empresa.
 - Logística gestiona recepciones, despachos y movimientos de inventario.
 
 Cada vez que un usuario toma una decisión, la aplicación la guarda y la asocia a su empresa. Más adelante, cuando otro usuario entra al sistema, puede ver los cambios generados por esas decisiones.
@@ -81,7 +80,7 @@ Por ejemplo:
 - Si ventas cambia el precio, eso puede afectar la demanda.
 - Si compras no realiza pedidos a tiempo, el inventario puede bajar.
 - Si logística no responde a tiempo, pueden aparecer demoras o faltantes.
-- Si planeación genera un mal pronóstico, la empresa puede comprar de más o de menos.
+- Si compras calcula mal el requerimiento o elige un proveedor inadecuado, la empresa puede comprar de más o de menos.
 
 De esta forma, el simulador muestra que las decisiones de una área influyen en todas las demás.
 

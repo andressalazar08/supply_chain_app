@@ -628,7 +628,7 @@ def gestionar_estudiantes():
         empresas = Empresa.query.filter_by(activa=True, profesor_id=current_user.id).all()
     
     # Roles disponibles para asignar
-    roles_disponibles = ['ventas', 'planeacion', 'compras', 'logistica']
+    roles_disponibles = ['ventas', 'compras', 'logistica']
     
     # Listas para filtros
     universidades = db.session.query(Usuario.universidad).filter(
@@ -679,7 +679,7 @@ def asignar_estudiante(id):
         }), 400
     
     # Validar rol
-    roles_validos = ['ventas', 'planeacion', 'compras', 'logistica']
+    roles_validos = ['ventas', 'compras', 'logistica']
     if rol not in roles_validos:
         return jsonify({
             'success': False,

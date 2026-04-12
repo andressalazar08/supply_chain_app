@@ -435,15 +435,9 @@ with app.app_context():
     print("✓ Inventario actualizado")
 ```
 
-### **6.3 Recalibrar Demanda**
+### **6.3 Ajustar Datos Iniciales**
 
-Si necesitas ajustar la demanda sin reiniciar:
-
-```bash
-# Ejecutar script de calibración
-python calibrar_demanda.py 150 100
-# (inv_750ml=150, inv_1L=100)
-```
+Si necesitas cambiar inventario o capital inicial, hazlo antes de crear la simulación o reinicia la simulación con los nuevos valores. En la interfaz actual no existe un ajuste manual independiente de demanda.
 
 ---
 
@@ -497,10 +491,9 @@ LEFT JOIN empresa e ON u.empresa_id = e.id
 WHERE u.tipo_usuario = 'estudiante';
 ```
 
-### **Problema: Demanda no se calcula**
+### **Problema: Los datos iniciales no coinciden con lo esperado**
 ```
-Solución: Ejecuta manualmente:
-python calibrar_demanda.py [inv_750ml] [inv_1l]
+Solución: Verifica los campos de creación de simulación y, si es necesario, reinicia la simulación con los valores correctos.
 ```
 
 ---
@@ -508,7 +501,7 @@ python calibrar_demanda.py [inv_750ml] [inv_1l]
 ## 📚 Referencias Técnicas
 
 - **Archivo de reinicio:** `utils/reinicio_simulacion.py`
-- **Archivo de calibración:** `calibrar_demanda.py`
+- **Script de validación:** `validar_datos_iniciales.py`
 - **Modelos de datos:** `models.py`
 - **Rutas administrador:** `routes/profesor.py`
 
