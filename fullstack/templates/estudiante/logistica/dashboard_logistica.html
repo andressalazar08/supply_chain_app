@@ -98,6 +98,17 @@
         font-weight: 800;
         line-height: 1;
     }
+
+    .table-logistica th,
+    .table-logistica td {
+        vertical-align: middle;
+    }
+
+    .table-logistica input[type="number"] {
+        width: 100%;
+        min-width: 96px;
+        text-align: center;
+    }
     
     .stock-cantidad {
         font-size: 2rem;
@@ -219,6 +230,11 @@
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="recepcion-tab" data-bs-toggle="tab" data-bs-target="#recepcion" type="button" role="tab">
+                        <i class="fas fa-inbox"></i> Recepción
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
                     <button class="nav-link" id="transito-tab" data-bs-toggle="tab" data-bs-target="#transito" type="button" role="tab">
                         <i class="fas fa-route"></i> Stock en Tránsito
                     </button>
@@ -280,50 +296,41 @@
                 <div class="tab-pane fade" id="despachos" role="tabpanel">
                     <div class="row mb-3">
                         <div class="col-12">
-                            <h4><i class="fas fa-paper-plane"></i> Despacho General por Regiones</h4>
-                            <p class="text-muted">Distribuye todos los productos a las diferentes regiones en una sola operación</p>
+                            <h4><i class="fas fa-paper-plane"></i> Asignación de Pedidos por Vehículo</h4>
+                            <p class="text-muted">Asigna cada pedido del día a un vehículo respetando capacidades y envío total.</p>
                         </div>
+                    </div>
+
+                    <div id="fallaFlotaAlert"></div>
+
+                    <div class="row mb-3" id="resumenRegiones">
+                        <div class="col-12 text-muted small">Cargando resumen regional...</div>
+                    </div>
+
+                    <div class="row mb-3" id="resumenVehiculos">
+                        <div class="col-12 text-muted small">Cargando capacidades de vehículos...</div>
                     </div>
                     
                     <div class="despacho-form">
                         <form id="despachoForm">
-                            <!-- Matriz de Regiones x Productos -->
+                            <!-- Tabla de pedidos del día -->
                             <div class="table-responsive">
-                                <table class="table table-bordered table-hover align-middle" id="matrizDespachos">
+                                <table class="table table-bordered table-hover align-middle table-logistica" id="matrizDespachos">
                                     <thead class="table-primary">
                                         <tr>
-                                            <th width="200"><i class="fas fa-box"></i> Producto</th>
-                                            <th class="text-center" width="120"><i class="fas fa-warehouse"></i> Stock Disponible</th>
-                                            <th class="text-center" width="150">
-                                                <i class="fas fa-map-marker-alt text-primary"></i> Andina<br>
-                                                <small class="text-muted">(2-3 días)</small>
-                                            </th>
-                                            <th class="text-center" width="150">
-                                                <i class="fas fa-map-marker-alt text-info"></i> Caribe<br>
-                                                <small class="text-muted">(3-4 días)</small>
-                                            </th>
-                                            <th class="text-center" width="150">
-                                                <i class="fas fa-map-marker-alt text-success"></i> Pacífica<br>
-                                                <small class="text-muted">(3-4 días)</small>
-                                            </th>
-                                            <th class="text-center" width="150">
-                                                <i class="fas fa-map-marker-alt text-warning"></i> Orinoquía<br>
-                                                <small class="text-muted">(4-5 días)</small>
-                                            </th>
-                                            <th class="text-center" width="150">
-                                                <i class="fas fa-map-marker-alt text-danger"></i> Amazonía<br>
-                                                <small class="text-muted">(5-7 días)</small>
-                                            </th>
-                                            <th class="text-center" width="120"><i class="fas fa-calculator"></i> Total</th>
+                                            <th width="220"><i class="fas fa-map-marker-alt"></i> Región</th>
+                                            <th width="250"><i class="fas fa-truck"></i> Vehículo asignado</th>
+                                            <th class="text-center" width="180"><i class="fas fa-clipboard-list"></i> Unidades solicitadas</th>
+                                            <th class="text-center" width="180"><i class="fas fa-paper-plane"></i> Unidades a enviar</th>
                                         </tr>
                                     </thead>
                                     <tbody id="matrizDespachoBody">
                                         <tr>
-                                            <td colspan="8" class="text-center py-4">
+                                            <td colspan="4" class="text-center py-4">
                                                 <div class="spinner-border text-primary" role="status">
                                                     <span class="visually-hidden">Cargando...</span>
                                                 </div>
-                                                <p class="text-muted mt-2">Cargando productos...</p>
+                                                <p class="text-muted mt-2">Cargando pedidos del día...</p>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -333,10 +340,75 @@
                             <!-- Botón de Despacho General -->
                             <div class="d-grid gap-2 mt-4">
                                 <button type="submit" class="btn btn-primary btn-lg" id="btnDespachoGeneral">
-                                    <i class="fas fa-paper-plane"></i> Realizar Despacho General
+                                    <i class="fas fa-paper-plane"></i> Confirmar Asignación y Despachar
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+
+                <!-- TAB 3: Recepción -->
+                <div class="tab-pane fade" id="recepcion" role="tabpanel">
+                    <div class="row mb-3">
+                        <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>
+                                <h4><i class="fas fa-inbox"></i> Recepción de Pedidos</h4>
+                                <p class="text-muted mb-0">Tabla general de órdenes en tránsito listas para recibir.</p>
+                            </div>
+                            <form method="POST" action="{{ url_for('estudiante.recibir_todas_ordenes_logistica') }}" class="d-inline">
+                                <button type="submit" class="btn btn-success" onclick="return confirm('¿Deseas recibir todas las órdenes listas ahora mismo?')">
+                                    <i class="fas fa-check-double me-2"></i>Recibir todas las órdenes
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-md-4 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Órdenes en tránsito</div>
+                                <div class="summary-value text-info" style="font-size: 2rem;" id="recepcionTransitoCount">0</div>
+                                <div class="text-muted small">Pendientes por recibir</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Órdenes listas</div>
+                                <div class="summary-value text-success" style="font-size: 2rem;" id="recepcionListaCount">0</div>
+                                <div class="text-muted small">Con entrega hoy o anterior</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Unidades en camino</div>
+                                <div class="summary-value text-warning" style="font-size: 2rem;" id="recepcionUnidadesCount">0</div>
+                                <div class="text-muted small">Total en tránsito</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle table-logistica">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Orden</th>
+                                            <th>Producto</th>
+                                            <th>Cantidad</th>
+                                            <th>Día orden</th>
+                                            <th>Día entrega</th>
+                                            <th>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="recepcionTableBody">
+                                        <tr>
+                                            <td colspan="6" class="text-center py-4 text-muted">Cargando órdenes...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -349,28 +421,25 @@
                         </div>
                     </div>
 
-                    <!-- Compras en Tránsito -->
-                    <div class="mb-4">
-                        <h5 class="mb-3">
-                            <i class="fas fa-dolly"></i> Compras en Camino
-                            <span class="badge bg-info ms-2" id="comprasTransitoCount">0</span>
-                        </h5>
-                        <div id="comprasTransito">
-                            <div class="alert alert-info">
-                                <i class="fas fa-info-circle"></i> No hay compras en tránsito
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Despachos Regionales en Tránsito -->
-                    <div class="mb-4">
-                        <h5 class="mb-3">
-                            <i class="fas fa-truck-moving"></i> Despachos Regionales en Camino
-                            <span class="badge bg-purple ms-2" id="despachosTransitoCount">0</span>
-                        </h5>
-                        <div id="despachosTransito">
-                            <div class="alert alert-info">
-                                <i class="fas fa-info-circle"></i> No hay despachos en tránsito
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle table-logistica">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Tipo</th>
+                                            <th>Referencia</th>
+                                            <th>Detalle</th>
+                                            <th>Cantidad</th>
+                                            <th>Entrega</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="transitoTableBody">
+                                        <tr>
+                                            <td colspan="5" class="text-center py-4 text-muted">Cargando tránsito...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
@@ -381,7 +450,7 @@
                     <div class="row mb-3">
                         <div class="col-12">
                             <h4><i class="fas fa-chart-bar"></i> Fill Rate por Región</h4>
-                            <p class="text-muted">Porcentaje de demanda atendida en cada región (histórico acumulado)</p>
+                            <p class="text-muted">Porcentaje de demanda atendida en cada región desde el día 1</p>
                         </div>
                     </div>
                     <div class="row">
@@ -429,6 +498,14 @@ document.addEventListener('DOMContentLoaded', function() {
     cargarMatrizDespachos();
     cargarTransito();
 
+    document.getElementById('recepcion-tab').addEventListener('shown.bs.tab', function() {
+        cargarTransito();
+    });
+
+    document.getElementById('transito-tab').addEventListener('shown.bs.tab', function() {
+        cargarTransito();
+    });
+
     // Cargar fill rate cuando se abre ese tab
     document.getElementById('fillrate-tab').addEventListener('shown.bs.tab', function() {
         cargarFillRate();
@@ -443,6 +520,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+const DIA_ACTUAL = {{ simulacion.dia_actual }};
 
 // ========== TAB 1: STOCK DISPONIBLE ==========
 async function cargarStock() {
@@ -501,346 +580,417 @@ function mostrarStock(stock) {
     container.innerHTML = html;
 }
 
-// ========== TAB 2: REALIZAR DESPACHOS ==========
-let stockProductos = {}; // Guardar stock de cada producto
+// ========== TAB 2: ASIGNACION POR VEHICULO ==========
+let pedidosDia = [];
+let vehiculosLogistica = {};
 
 async function cargarMatrizDespachos() {
     try {
-        const response = await fetch('/estudiante/api/logistica/stock');
+        const response = await fetch('/estudiante/api/logistica/pedidos-dia');
         const data = await response.json();
         
         if (data.success) {
             const tbody = document.getElementById('matrizDespachoBody');
+            pedidosDia = data.pedidos || [];
+            vehiculosLogistica = {};
+
+            (data.vehiculos || []).forEach(v => {
+                vehiculosLogistica[v.codigo] = v;
+            });
+
+            renderResumenRegiones();
+
+            renderResumenVehiculos();
+            renderFallaFlotaAlert(Boolean(data.falla_flota_activa));
+
             let html = '';
             
-            data.stock.forEach(item => {
-                if (item.stock_actual > 0) {
-                    stockProductos[item.producto_id] = Math.round(item.stock_actual);
-                    
-                    html += `
-                        <tr class="producto-row" data-producto-id="${item.producto_id}" data-producto-nombre="${item.producto_nombre}">
-                            <td class="fw-bold">${item.producto_nombre}</td>
-                            <td class="text-center stock-value">${Math.round(item.stock_actual)}</td>
-                            <td class="text-center">
-                                <input type="number" class="form-control despacho-input" 
-                                       data-producto="${item.producto_id}" 
-                                       data-region="Andina" 
-                                       min="0" max="${Math.round(item.stock_actual)}" value="0">
-                            </td>
-                            <td class="text-center">
-                                <input type="number" class="form-control despacho-input" 
-                                       data-producto="${item.producto_id}" 
-                                       data-region="Caribe" 
-                                       min="0" max="${Math.round(item.stock_actual)}" value="0">
-                            </td>
-                            <td class="text-center">
-                                <input type="number" class="form-control despacho-input" 
-                                       data-producto="${item.producto_id}" 
-                                       data-region="Pacífica" 
-                                       min="0" max="${Math.round(item.stock_actual)}" value="0">
-                            </td>
-                            <td class="text-center">
-                                <input type="number" class="form-control despacho-input" 
-                                       data-producto="${item.producto_id}" 
-                                       data-region="Orinoquía" 
-                                       min="0" max="${Math.round(item.stock_actual)}" value="0">
-                            </td>
-                            <td class="text-center">
-                                <input type="number" class="form-control despacho-input" 
-                                       data-producto="${item.producto_id}" 
-                                       data-region="Amazonía" 
-                                       min="0" max="${Math.round(item.stock_actual)}" value="0">
-                            </td>
-                            <td class="text-center">
-                                <span class="badge bg-info total-producto" data-producto="${item.producto_id}">0</span>
-                            </td>
-                        </tr>
-                    `;
-                }
+            pedidosDia.forEach((pedido, index) => {
+                html += `
+                    <tr class="pedido-row" data-index="${index}" data-region="${pedido.region}" data-demanda="${pedido.unidades_solicitadas}">
+                        <td>
+                            <div class="fw-bold">${pedido.region}</div>
+                            <small class="text-muted">Demanda disponible: ${pedido.unidades_solicitadas.toLocaleString('es-CO')} unds</small>
+                        </td>
+                        <td class="text-center">
+                            <select class="form-select vehiculo-select" data-index="${index}">
+                                ${renderOpcionesVehiculo(null)}
+                            </select>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-primary">${pedido.unidades_solicitadas.toLocaleString('es-CO')} unds</span>
+                            <div class="small text-muted mt-2">Definido por Ventas</div>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-warning text-dark external-badge" id="external-${index}">0</span>
+                            <div class="small text-muted mt-1 external-text" id="external-text-${index}">Sin uso</div>
+                        </td>
+                    </tr>
+                `;
             });
-            
+
             if (html === '') {
-                html = `<tr><td colspan="8" class="text-center text-muted py-4">No hay productos con stock disponible</td></tr>`;
+                html = `<tr><td colspan="4" class="text-center text-muted py-4">No hay pedidos de demanda para el día actual</td></tr>`;
             }
-            
+
             tbody.innerHTML = html;
-            
-            // Configurar listeners para los inputs
-            document.querySelectorAll('.despacho-input').forEach(input => {
-                input.addEventListener('input', function() {
-                    actualizarTotalesProducto(this.getAttribute('data-producto'));
-                });
+
+            document.querySelectorAll('.vehiculo-select').forEach(select => {
+                select.addEventListener('change', validarCapacidadesVehiculos);
             });
+
+            asignarVehiculosIniciales();
+            validarCapacidadesVehiculos();
         }
     } catch (error) {
         console.error('Error cargando matriz:', error);
         document.getElementById('matrizDespachoBody').innerHTML = `
-            <tr><td colspan="8" class="text-center text-danger py-4">Error al cargar productos</td></tr>
+            <tr><td colspan="4" class="text-center text-danger py-4">Error al cargar pedidos</td></tr>
         `;
     }
 }
 
-function actualizarTotalesProducto(productoId) {
-    const inputs = document.querySelectorAll(`input[data-producto="${productoId}"]`);
-    let total = 0;
-    
-    inputs.forEach(input => {
-        const cantidad = parseInt(input.value) || 0;
-        total += cantidad;
+function renderResumenRegiones() {
+    const container = document.getElementById('resumenRegiones');
+    const totalGeneral = pedidosDia.reduce((acc, pedido) => acc + (pedido.unidades_solicitadas || 0), 0);
+
+    const cards = pedidosDia.map(pedido => `
+        <div class="col-md-4 col-lg-2 mb-2">
+            <div class="card h-100 border-primary">
+                <div class="card-body p-2 text-center">
+                    <div class="fw-bold">${pedido.region}</div>
+                    <div class="small text-muted">${(pedido.unidades_solicitadas || 0).toLocaleString('es-CO')} unds</div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    container.innerHTML = `
+        <div class="col-12 mb-2">
+            <div class="alert alert-light border mb-0">
+                <strong>Total del día:</strong> ${totalGeneral.toLocaleString('es-CO')} unidades a despachar en todas las regiones.
+            </div>
+        </div>
+        ${cards}
+    `;
+}
+
+function renderOpcionesVehiculo(defaultVehiculo) {
+    let html = '<option value="">-- Seleccionar vehículo --</option>';
+    html += Object.values(vehiculosLogistica).map(v => {
+        const capacidadTxt = v.capacidad === null ? 'Sin límite' : `${v.capacidad} unds`;
+        const estadoTxt = v.disponible ? '' : ' (Fuera de servicio)';
+        const selected = v.codigo === defaultVehiculo ? 'selected' : '';
+        const disabled = v.disponible ? '' : 'disabled';
+        return `<option value="${v.codigo}" ${selected} ${disabled}>${v.codigo} - ${capacidadTxt}${estadoTxt}</option>`;
+    }).join('');
+    return html;
+}
+
+function renderResumenVehiculos() {
+    const container = document.getElementById('resumenVehiculos');
+    const cards = Object.values(vehiculosLogistica).map(v => {
+        const capacidadTxt = v.capacidad === null ? 'Sin límite' : `${v.capacidad.toLocaleString('es-CO')} unds`;
+        const estadoClass = v.disponible ? (v.externo ? 'warning' : 'success') : 'secondary';
+        const estado = v.disponible ? 'Disponible' : 'Fuera de servicio';
+        return `
+            <div class="col-md-4 col-lg-2 mb-2">
+                <div class="card h-100 border-${estadoClass}">
+                    <div class="card-body p-2 text-center">
+                        <div class="fw-bold">${v.codigo}</div>
+                        <div class="small text-muted">${capacidadTxt}</div>
+                        <span class="badge bg-${estadoClass}">${estado}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    container.innerHTML = cards;
+}
+
+function asignarVehiculosIniciales() {
+    // Los selectores van vacíos para que los estudiantes tomen la decisión
+    renderResumenSeleccion();
+}
+
+function renderResumenSeleccion() {
+    const seleccionados = new Set();
+    document.querySelectorAll('.vehiculo-select').forEach(select => {
+        const codigo = (select.value || '').toUpperCase();
+        if (codigo && codigo !== 'EXTERNO') {
+            seleccionados.add(codigo);
+        }
     });
-    
-    // Actualizar badge de total
-    const totalBadge = document.querySelector(`.total-producto[data-producto="${productoId}"]`);
-    totalBadge.textContent = total;
-    
-    // Verificar si excede el stock
-    const stockDisponible = stockProductos[productoId];
-    
-    if (total > stockDisponible) {
-        totalBadge.classList.remove('bg-info', 'bg-success');
-        totalBadge.classList.add('bg-danger');
-        inputs.forEach(input => input.classList.add('excede-stock'));
-    } else if (total > 0) {
-        totalBadge.classList.remove('bg-danger', 'bg-info');
-        totalBadge.classList.add('bg-success');
-        inputs.forEach(input => input.classList.remove('excede-stock'));
-    } else {
-        totalBadge.classList.remove('bg-danger', 'bg-success');
-        totalBadge.classList.add('bg-info');
-        inputs.forEach(input => input.classList.remove('excede-stock'));
+
+    document.querySelectorAll('.vehiculo-select').forEach(select => {
+        const actual = (select.value || '').toUpperCase();
+        Array.from(select.options).forEach(option => {
+            const codigo = (option.value || '').toUpperCase();
+            const conf = vehiculosLogistica[codigo];
+            if (!conf) return;
+
+            option.disabled = (!conf.disponible) || (codigo !== 'EXTERNO' && seleccionados.has(codigo) && codigo !== actual);
+        });
+    });
+}
+
+function renderFallaFlotaAlert(activa) {
+    const container = document.getElementById('fallaFlotaAlert');
+    if (!activa) {
+        container.innerHTML = '';
+        return;
     }
+    container.innerHTML = `
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            Disrupción activa: Reducción de capacidad logística por fallas en flota.
+            El vehículo propio de mayor capacidad está fuera de operación.
+        </div>
+    `;
+}
+
+function validarCapacidadesVehiculos() {
+    const usoPorVehiculo = {};
+    let hayErrores = false;
+
+    Object.keys(vehiculosLogistica).forEach(codigo => {
+        usoPorVehiculo[codigo] = 0;
+    });
+
+    const usedVehicles = new Set();
+    document.querySelectorAll('.pedido-row').forEach(row => {
+        row.classList.remove('table-danger');
+        const index = Number(row.getAttribute('data-index'));
+        const demanda = Number(row.getAttribute('data-demanda')) || 0;
+        const selectVehiculo = row.querySelector('.vehiculo-select');
+        const vehiculo = (selectVehiculo?.value || '').toUpperCase();
+        const conf = vehiculosLogistica[vehiculo];
+        const capacidad = conf ? conf.capacidad : null;
+
+        if (!vehiculo) {
+            hayErrores = true;
+            row.classList.add('table-danger');
+            return;
+        }
+
+        if (vehiculo !== 'EXTERNO' && usedVehicles.has(vehiculo)) {
+            hayErrores = true;
+            row.classList.add('table-danger');
+        }
+        if (vehiculo !== 'EXTERNO') {
+            usedVehicles.add(vehiculo);
+        }
+
+        let envioExterno = 0;
+        if (vehiculo === 'EXTERNO') {
+            envioExterno = demanda;
+        } else if (capacidad !== null && demanda > capacidad) {
+            envioExterno = demanda - capacidad;
+        }
+
+        const badge = document.getElementById(`external-${index}`);
+        const label = document.getElementById(`external-text-${index}`);
+        if (badge && label) {
+            badge.textContent = envioExterno.toLocaleString('es-CO');
+            label.textContent = vehiculo === 'EXTERNO'
+                ? 'Todo el envío usa vehículo externo'
+                : (envioExterno > 0 ? 'Se activa vehículo externo automáticamente' : 'No aplica vehículo externo');
+        }
+
+        if (conf && !conf.disponible) {
+            hayErrores = true;
+        }
+
+        if (vehiculo !== 'EXTERNO') {
+            usoPorVehiculo[vehiculo] = (usoPorVehiculo[vehiculo] || 0) + Math.min(demanda, capacidad || demanda);
+            if (capacidad !== null && usoPorVehiculo[vehiculo] > capacidad) {
+                hayErrores = true;
+                row.classList.add('table-danger');
+            }
+        }
+    });
+
+    Object.entries(usoPorVehiculo).forEach(([codigo, uso]) => {
+        const conf = vehiculosLogistica[codigo];
+        if (!conf) return;
+        if (!conf.disponible) {
+            hayErrores = true;
+        }
+        if (conf.capacidad !== null && uso > conf.capacidad) {
+            hayErrores = true;
+        }
+    });
+
+    renderResumenSeleccion();
+
+    const btn = document.getElementById('btnDespachoGeneral');
+    if (btn) {
+        btn.disabled = hayErrores;
+    }
+
+    return { hayErrores, usoPorVehiculo };
 }
 
 async function realizarDespachoGeneral() {
-    // Recopilar TODOS los despachos de TODOS los productos
-    const despachosPorProducto = [];
-    let hayErrores = false;
-    let mensajeError = '';
-    
-    // Iterar por cada producto
-    document.querySelectorAll('.producto-row').forEach(fila => {
-        const productoId = fila.getAttribute('data-producto-id');
-        const productoNombre = fila.getAttribute('data-producto-nombre');
-        const stockDisponible = stockProductos[productoId];
-        
-        const inputs = fila.querySelectorAll('.despacho-input');
-        const despachos = [];
-        let totalProducto = 0;
-        
-        inputs.forEach(input => {
-            const cantidad = parseInt(input.value) || 0;
-            if (cantidad > 0) {
-                despachos.push({
-                    region: input.getAttribute('data-region'),
-                    cantidad: cantidad
-                });
-                totalProducto += cantidad;
-            }
+    const validacion = validarCapacidadesVehiculos();
+    if (validacion.hayErrores) {
+        alert('⚠️ Selecciona un vehículo para cada región. No repitas vehículos V1-V5 (puedes usar EXTERNO varias veces).');
+        return;
+    }
+
+    const asignaciones = [];
+    document.querySelectorAll('.pedido-row').forEach(row => {
+        const index = Number(row.getAttribute('data-index'));
+        const demanda = Number(row.getAttribute('data-demanda')) || 0;
+        const pedido = pedidosDia[index];
+        const vehiculo = row.querySelector('.vehiculo-select')?.value || '';
+        const capacidad = vehiculosLogistica[vehiculo]?.capacidad ?? null;
+        const unidadesExternas = vehiculo === 'EXTERNO'
+            ? demanda
+            : (capacidad !== null && demanda > capacidad ? demanda - capacidad : 0);
+
+        asignaciones.push({
+            region: pedido.region,
+            unidades_solicitadas: demanda,
+            unidades_enviar: demanda,
+            vehiculo: vehiculo,
+            unidades_externas: unidadesExternas,
         });
-        
-        // Validar stock
-        if (totalProducto > stockDisponible) {
-            hayErrores = true;
-            mensajeError += `❌ ${productoNombre}: total ${totalProducto} excede stock ${stockDisponible}\n`;
-        }
-        
-        // Si hay despachos para este producto, agregarlo
-        if (despachos.length > 0) {
-            despachosPorProducto.push({
-                producto_id: productoId,
-                producto_nombre: productoNombre,
-                despachos: despachos,
-                total: totalProducto
-            });
-        }
     });
-    
-    // Validaciones
-    if (hayErrores) {
-        alert('⚠️ Errores en las cantidades:\n\n' + mensajeError);
+
+    const total = asignaciones.reduce((acc, a) => acc + a.unidades_enviar, 0);
+    if (!confirm(`¿Confirmar despacho diario de ${total.toLocaleString('es-CO')} unidades?`)) {
         return;
     }
-    
-    if (despachosPorProducto.length === 0) {
-        alert('⚠️ Debes ingresar al menos una cantidad para despachar');
-        return;
-    }
-    
-    // Mensaje de confirmación detallado
-    let mensaje = `¿Confirmar despacho general?\n\n`;
-    despachosPorProducto.forEach(prod => {
-        mensaje += `📦 ${prod.producto_nombre} (Total: ${prod.total}):\n`;
-        prod.despachos.forEach(d => {
-            mensaje += `   • ${d.region}: ${d.cantidad} unidades\n`;
-        });
-        mensaje += '\n';
-    });
-    
-    if (!confirm(mensaje)) {
-        return;
-    }
-    
-    // Deshabilitar botón
+
     const btnDespacho = document.getElementById('btnDespachoGeneral');
     btnDespacho.disabled = true;
     btnDespacho.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
     
     try {
-        let despachosExitosos = 0;
-        let despachosError = 0;
-        let mensajesError = [];
-        
-        // Enviar despachos de cada producto
-        for (const prod of despachosPorProducto) {
-            try {
-                const response = await fetch('/estudiante/api/logistica/despachar-multiple', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        producto_id: prod.producto_id,
-                        despachos: prod.despachos
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    despachosExitosos++;
-                } else {
-                    despachosError++;
-                    mensajesError.push(`${prod.producto_nombre}: ${data.message}`);
-                    console.error(`Error en ${prod.producto_nombre}:`, data.message);
-                }
-            } catch (error) {
-                despachosError++;
-                mensajesError.push(`${prod.producto_nombre}: ${error.message}`);
-                console.error(`Error procesando ${prod.producto_nombre}:`, error);
-            }
-        }
-        
-        // Mostrar resultado
-        if (despachosExitosos > 0) {
-            let alertMsg = `✅ Despacho completado:\n\n• ${despachosExitosos} productos despachados exitosamente\n`;
-            if (despachosError > 0) {
-                alertMsg += `• ${despachosError} productos con errores:\n`;
-                mensajesError.forEach(msg => alertMsg += `  - ${msg}\n`);
-            }
-            alert(alertMsg);
-            
-            // Resetear matriz
-            document.querySelectorAll('.despacho-input').forEach(input => {
-                input.value = 0;
-            });
-            document.querySelectorAll('.total-producto').forEach(badge => {
-                badge.textContent = '0';
-                badge.classList.remove('bg-success', 'bg-danger');
-                badge.classList.add('bg-info');
-            });
-            
-            // Recargar datos
+        const response = await fetch('/estudiante/api/logistica/despachar-multiple', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ asignaciones })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            alert(`✅ ${data.message}`);
             cargarStock();
             cargarMatrizDespachos();
             cargarTransito();
         } else {
-            alert('❌ No se pudo completar ningún despacho\n\nErrores:\n' + mensajesError.join('\n'));
+            alert(`❌ ${data.message || 'No se pudo guardar la asignación logística.'}`);
         }
     } catch (error) {
         console.error('Error general:', error);
-        alert('❌ Error al procesar despachos: ' + error.message);
+        alert('❌ Error al procesar asignaciones: ' + error.message);
     } finally {
-        // Rehabilitar botón
         btnDespacho.disabled = false;
-        btnDespacho.innerHTML = '<i class="fas fa-paper-plane"></i> Realizar Despacho General';
+        btnDespacho.innerHTML = '<i class="fas fa-paper-plane"></i> Confirmar Asignación y Despachar';
     }
 }
 
-// ========== TAB 3: STOCK EN TRÁNSITO ==========
+// ========== TAB 3: RECEPCIÓN / TRÁNSITO ==========
+let transitoCache = { compras: [], despachos: [] };
+
 async function cargarTransito() {
     try {
         const response = await fetch('/estudiante/api/logistica/transito');
         const data = await response.json();
-        
-        if (data.success) {
-            mostrarComprasTransito(data.compras);
-            mostrarDespachosTransito(data.despachos);
+
+        if (!data.success) {
+            return;
         }
+
+        transitoCache = {
+            compras: data.compras || [],
+            despachos: data.despachos || [],
+        };
+
+        renderRecepcionTabla(transitoCache.compras);
+        renderTransitoTabla(transitoCache.compras, transitoCache.despachos);
     } catch (error) {
         console.error('Error cargando tránsito:', error);
     }
 }
 
-function mostrarComprasTransito(compras) {
-    const container = document.getElementById('comprasTransito');
-    const countBadge = document.getElementById('comprasTransitoCount');
-    
-    countBadge.textContent = compras.length;
-    
+function renderRecepcionTabla(compras) {
+    const container = document.getElementById('recepcionTableBody');
+    const transitoCount = document.getElementById('recepcionTransitoCount');
+    const listaCount = document.getElementById('recepcionListaCount');
+    const unidadesCount = document.getElementById('recepcionUnidadesCount');
+
+    const totalUnidades = compras.reduce((acc, compra) => acc + (parseInt(compra.cantidad || 0, 10) || 0), 0);
+    const listas = compras.filter(compra => Boolean(compra.lista_para_recibir)).length;
+
+    if (transitoCount) transitoCount.textContent = compras.length;
+    if (listaCount) listaCount.textContent = listas;
+    if (unidadesCount) unidadesCount.textContent = totalUnidades.toLocaleString('es-CO');
+
     if (!compras || compras.length === 0) {
-        container.innerHTML = '<div class="alert alert-info"><i class="fas fa-info-circle"></i> No hay compras en tránsito</div>';
+        container.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No hay órdenes en tránsito</td></tr>';
         return;
     }
-    
+
     let html = '';
     compras.forEach(compra => {
+        const lista = Boolean(compra.lista_para_recibir);
         html += `
-            <div class="transito-card compra">
-                <div class="row align-items-center">
-                    <div class="col-md-6">
-                        <h6 class="mb-1"><i class="fas fa-box"></i> ${compra.producto_nombre}</h6>
-                        <small class="text-muted">Orden #${compra.id}</small>
-                    </div>
-                    <div class="col-md-3 text-center">
-                        <div class="fw-bold text-primary">${compra.cantidad} unidades</div>
-                        <small class="text-muted">En camino</small>
-                    </div>
-                    <div class="col-md-3 text-center">
-                        <div class="badge bg-info px-3 py-2">
-                            <i class="fas fa-calendar-check"></i> Semana ${compra.semana_entrega}
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <tr>
+                <td>#${compra.id}</td>
+                <td>${compra.producto_nombre}</td>
+                <td>${Number(compra.cantidad || 0).toLocaleString('es-CO')}</td>
+                <td>Día ${compra.semana_orden || '-'}</td>
+                <td>Día ${compra.semana_entrega}</td>
+                <td>
+                    <span class="badge bg-${lista ? 'success' : 'warning'}">${lista ? 'Lista para recibir' : 'En tránsito'}</span>
+                </td>
+            </tr>
         `;
     });
-    
+
     container.innerHTML = html;
 }
 
-function mostrarDespachosTransito(despachos) {
-    const container = document.getElementById('despachosTransito');
-    const countBadge = document.getElementById('despachosTransitoCount');
-    
-    countBadge.textContent = despachos.length;
-    
-    if (!despachos || despachos.length === 0) {
-        container.innerHTML = '<div class="alert alert-info"><i class="fas fa-info-circle"></i> No hay despachos en tránsito</div>';
+function renderTransitoTabla(compras, despachos) {
+    const container = document.getElementById('transitoTableBody');
+    const totalCompras = compras.length;
+    const totalDespachos = despachos.length;
+
+    if ((!compras || compras.length === 0) && (!despachos || despachos.length === 0)) {
+        container.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">No hay movimientos en tránsito</td></tr>';
         return;
     }
-    
-    let html = '';
-    despachos.forEach(despacho => {
-        html += `
-            <div class="transito-card despacho">
-                <div class="row align-items-center">
-                    <div class="col-md-5">
-                        <h6 class="mb-1"><i class="fas fa-box"></i> ${despacho.producto_nombre}</h6>
-                        <small class="text-muted">Despacho #${despacho.id}</small>
-                    </div>
-                    <div class="col-md-3 text-center">
-                        <div class="fw-bold text-purple"><i class="fas fa-map-marker-alt"></i> ${despacho.region_destino}</div>
-                        <small class="text-muted">${despacho.cantidad} unidades</small>
-                    </div>
-                    <div class="col-md-4 text-center">
-                        <div class="badge bg-purple px-3 py-2">
-                            <i class="fas fa-truck"></i> Llegada: Semana ${despacho.semana_llegada}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
+
+    const filas = [];
+
+    compras.forEach(compra => {
+        filas.push(`
+            <tr>
+                <td><span class="badge bg-info">Compra</span></td>
+                <td>#${compra.id}</td>
+                <td>${compra.producto_nombre}</td>
+                <td>${Number(compra.cantidad || 0).toLocaleString('es-CO')}</td>
+                <td>Día ${compra.semana_entrega}</td>
+            </tr>
+        `);
     });
-    
-    container.innerHTML = html;
+
+    despachos.forEach(despacho => {
+        filas.push(`
+            <tr>
+                <td><span class="badge bg-purple">Despacho</span></td>
+                <td>#${despacho.id}</td>
+                <td>${despacho.producto_nombre} - ${despacho.region_destino}</td>
+                <td>${Number(despacho.cantidad || 0).toLocaleString('es-CO')}</td>
+                <td>Día ${despacho.semana_llegada}</td>
+            </tr>
+        `);
+    });
+
+    container.innerHTML = filas.join('');
 }
 
 // ========== TAB 4: FILL RATE POR REGIÓN ==========

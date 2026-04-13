@@ -80,7 +80,7 @@
                 <div class="col-md-4 text-end">
                         <div class="d-flex gap-2 justify-content-end align-items-start">
                             <a href="{{ url_for('estudiante.exportar_ventas_csv') }}" class="btn btn-outline-success">
-                                <i class="fas fa-file-csv me-2"></i>Exportar Ventas CSV
+                                <i class="fas fa-file-csv me-2"></i>Exportar Demanda y Ventas CSV
                             </a>
                             <div class="p-3 rounded status-panel">
                                 <p class="mb-1 small text-muted">Día de Simulación</p>
@@ -144,21 +144,21 @@
                         <div class="col-md-3">
                             <div class="p-3 border rounded bg-light">
                                 <i class="fas fa-chart-line fa-2x text-info mb-2"></i>
-                                <p class="text-muted mb-1 small">Ingresos Día Actual</p>
+                                <p class="text-muted mb-1 small">Ingresos Acumulados</p>
                                 <h4 class="mb-0 text-info">
-                                    ${{ "{:,.2f}".format(metrica_hoy.ingresos if metrica_hoy else 0) }}
+                                    ${{ "{:,.2f}".format(ingresos_acumulados) }}
                                 </h4>
-                                <small class="text-muted">Día {{ simulacion.dia_actual }} (Sem. {{ simulacion.semana_actual }})</small>
+                                <small class="text-muted">Desde el día 1 hasta el día {{ simulacion.dia_actual }}</small>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="p-3 border rounded bg-light">
                                 <i class="fas fa-coins fa-2x text-warning mb-2"></i>
-                                <p class="text-muted mb-1 small">Utilidad del Día</p>
-                                <h4 class="mb-0 {{ 'text-success' if metrica_hoy and metrica_hoy.utilidad > 0 else 'text-danger' }}">
-                                    ${{ "{:,.2f}".format(metrica_hoy.utilidad if metrica_hoy else 0) }}
+                                <p class="text-muted mb-1 small">Utilidad Acumulada</p>
+                                <h4 class="mb-0 {{ 'text-success' if utilidad_acumulada > 0 else 'text-danger' }}">
+                                    ${{ "{:,.2f}".format(utilidad_acumulada) }}
                                 </h4>
-                                <small class="text-muted">Margen: {{ "{:.1f}".format((metrica_hoy.utilidad / metrica_hoy.ingresos * 100) if metrica_hoy and metrica_hoy.ingresos > 0 else 0) }}%</small>
+                                <small class="text-muted">Acumulado desde el día 1</small>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -372,42 +372,42 @@
                 </div>
             </div>
 
-            <!-- Sección de Histórico de 30 Días -->
-            {% if historico_ventas %}
+            <!-- Sección de Histórico Operativo -->
+            {% if historico_operacion %}
             <div class="card mt-4 border-info">
                 <div class="card-header bg-info text-white">
                     <h5 class="mb-0">
-                        <i class="fas fa-history me-2"></i>Histórico de Ventas (30 Días Anteriores)
+                        <i class="fas fa-history me-2"></i>Histórico Operativo (Desde Día 1)
                     </h5>
                 </div>
                 <div class="card-body">
                     <div class="row mb-4">
                         <div class="col-md-3">
                             <div class="p-3 border rounded bg-light text-center">
-                                <p class="text-muted mb-1 small">Total de Unidades</p>
-                                <h4 class="mb-0 text-primary">{{ "{:.0f}".format(total_ventas_historico) }}</h4>
-                                <small class="text-muted">últimos 30 días</small>
+                                <p class="text-muted mb-1 small">Unidades Vendidas Acumuladas</p>
+                                <h4 class="mb-0 text-primary">{{ "{:.0f}".format(total_ventas_periodo) }}</h4>
+                                <small class="text-muted">desde día 1</small>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="p-3 border rounded bg-light text-center">
                                 <p class="text-muted mb-1 small">Promedio Diario</p>
-                                <h4 class="mb-0 text-success">{{ "{:.0f}".format(promedio_diario_historico) }}</h4>
+                                <h4 class="mb-0 text-success">{{ "{:.0f}".format(promedio_diario_periodo) }}</h4>
                                 <small class="text-muted">unidades/día</small>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="p-3 border rounded bg-light text-center">
                                 <p class="text-muted mb-1 small">Ingresos Totales</p>
-                                <h4 class="mb-0 text-info">${{ "{:,.0f}".format(ingresos_historico) }}</h4>
-                                <small class="text-muted">últimos 30 días</small>
+                                <h4 class="mb-0 text-info">${{ "{:,.0f}".format(ingresos_periodo) }}</h4>
+                                <small class="text-muted">desde día 1</small>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="p-3 border rounded bg-light text-center">
-                                <p class="text-muted mb-1 small">Registros</p>
-                                <h4 class="mb-0 text-secondary">{{ historico_ventas|length }}</h4>
-                                <small class="text-muted">días con ventas</small>
+                                <p class="text-muted mb-1 small">Días Registrados</p>
+                                <h4 class="mb-0 text-secondary">{{ historico_operacion|length }}</h4>
+                                <small class="text-muted">día 1 a día actual</small>
                             </div>
                         </div>
                     </div>
@@ -418,34 +418,34 @@
                                 <tr>
                                     <th>Día</th>
                                     <th>Producto</th>
-                                    <th>Región</th>
-                                    <th class="text-end">Cantidad</th>
+                                    <th class="text-end">Demanda Base</th>
+                                    <th class="text-end">Pedidos Demandados</th>
+                                    <th class="text-end">Unidades Vendidas</th>
+                                    <th class="text-end">Unidades Perdidas</th>
                                     <th class="text-end">Ingresos</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for venta in historico_ventas[:20] %}
+                                {% for item in historico_operacion[:20] %}
                                 <tr>
                                     <td>
-                                        <span class="badge bg-secondary">Día {{ abs(venta.semana_simulacion) }}</span>
+                                        <span class="badge bg-secondary">Día {{ item.dia }}</span>
                                     </td>
-                                    <td>
-                                        <strong>{{ venta.producto.nombre }}</strong>
-                                    </td>
-                                    <td>
-                                        <small>{{ venta.region }}</small>
-                                    </td>
-                                    <td class="text-end">{{ "{:.0f}".format(venta.cantidad_vendida) }}</td>
-                                    <td class="text-end">${{ "{:,.0f}".format(venta.ingreso_total) }}</td>
+                                    <td><strong>{{ item.producto }}</strong></td>
+                                    <td class="text-end">{{ "{:.0f}".format(item.demanda_base) }}</td>
+                                    <td class="text-end">{{ "{:.0f}".format(item.pedidos_demandados) }}</td>
+                                    <td class="text-end">{{ "{:.0f}".format(item.unidades_vendidas) }}</td>
+                                    <td class="text-end">{{ "{:.0f}".format(item.unidades_perdidas) }}</td>
+                                    <td class="text-end">${{ "{:,.0f}".format(item.ingresos) }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
 
-                    {% if historico_ventas|length > 20 %}
+                    {% if historico_operacion|length > 20 %}
                     <div class="text-center py-2">
-                        <small class="text-muted">Mostrando 20 de {{ historico_ventas|length }} registros</small>
+                        <small class="text-muted">Mostrando 20 de {{ historico_operacion|length }} días</small>
                     </div>
                     {% endif %}
                 </div>

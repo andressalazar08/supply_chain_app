@@ -2,9 +2,10 @@
 Rutas para el rol Profesor (Administrador)
 """
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, Response
 from flask_login import login_required, current_user
 from functools import wraps
+from sqlalchemy import func
 from models import (Usuario, Empresa, Simulacion, Inventario, Venta, Compra, Decision,
                     Metrica, Producto, MovimientoInventario, DespachoRegional,
                     RequerimientoCompra, Pronostico, DisrupcionEmpresa)
@@ -13,9 +14,11 @@ from datetime import datetime
 import random
 from utils.procesamiento_dias import (
     avanzar_simulacion,
-    obtener_resumen_simulacion
+    obtener_resumen_simulacion,
+    asegurar_metricas_base_dia_uno
 )
 from utils.reinicio_simulacion import reiniciar_simulacion
+from utils.demanda_central import exportar_demanda_csv, importar_demanda_csv, generar_base_demanda_simulacion
 
 bp = Blueprint('profesor', __name__, url_prefix='/profesor')
 
@@ -66,13 +69,23 @@ def dashboard():
         )
         db.session.add(simulacion)
         db.session.commit()
+
+        ok, _ = generar_base_demanda_simulacion(simulacion, dias_historico=30, replace=True)
+        if ok:
+            db.session.commit()
     
     # Obtener empresas de la simulación activa
     empresas = Empresa.query.filter_by(simulacion_id=simulacion.id, activa=True).all()
+    asegurar_metricas_base_dia_uno(simulacion, commit=True)
     total_estudiantes = Usuario.query.filter(Usuario.rol != 'admin').count()
     
-    # Obtener métricas del día actual
-    metricas_dia = Metrica.query.filter_by(semana_simulacion=simulacion.dia_actual).all()
+    # Reportar siempre el último día procesado para mantener coherencia operativa.
+    dia_reporte = max(1, int(simulacion.dia_actual or 1) - 1)
+    ids_empresas = [e.id for e in empresas]
+    metricas_dia = Metrica.query.filter(
+        Metrica.semana_simulacion == dia_reporte,
+        Metrica.empresa_id.in_(ids_empresas)
+    ).all()
     
     # Disrupciones de la simulacion activa para panel de seguimiento
     from utils.catalogo_disrupciones import get_disrupcion
@@ -82,6 +95,7 @@ def dashboard():
 
     return render_template('profesor/dashboard.html',
                          simulacion=simulacion,
+                         dia_reporte=dia_reporte,
                          empresas=empresas,
                          total_estudiantes=total_estudiantes,
                          metricas_dia=metricas_dia,
@@ -179,6 +193,63 @@ def reiniciar_simulacion_endpoint():
     except Exception as e:
         flash(f'❌ Error al reiniciar: {str(e)}', 'error')
     
+    return redirect(url_for('profesor.dashboard'))
+
+
+@bp.route('/demanda/descargar-csv')
+@login_required
+@admin_required
+def descargar_demanda_csv():
+    """Descarga la base central de demanda diaria de la simulación activa."""
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    if not simulacion:
+        flash('No hay simulación activa para descargar demanda.', 'warning')
+        return redirect(url_for('profesor.dashboard'))
+
+    csv_text = exportar_demanda_csv(simulacion.id)
+    filename = f"demanda_central_sim_{simulacion.id}.csv"
+
+    return Response(
+        csv_text,
+        mimetype='text/csv; charset=utf-8',
+        headers={
+            'Content-Disposition': f'attachment; filename={filename}'
+        },
+    )
+
+
+@bp.route('/demanda/cargar-csv', methods=['POST'])
+@login_required
+@admin_required
+def cargar_demanda_csv():
+    """Carga y valida una base de demanda diaria en CSV para la simulación activa."""
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    if not simulacion:
+        flash('No hay simulación activa para cargar demanda.', 'warning')
+        return redirect(url_for('profesor.dashboard'))
+
+    archivo = request.files.get('archivo_demanda_csv')
+    if not archivo or not archivo.filename:
+        flash('Debes seleccionar un archivo CSV para cargar.', 'warning')
+        return redirect(url_for('profesor.dashboard'))
+
+    if not archivo.filename.lower().endswith('.csv'):
+        flash('El archivo debe tener extensión .csv', 'warning')
+        return redirect(url_for('profesor.dashboard'))
+
+    try:
+        ok, mensaje = importar_demanda_csv(simulacion, archivo, min_historico=30)
+        if not ok:
+            db.session.rollback()
+            flash(f'❌ {mensaje}', 'error')
+            return redirect(url_for('profesor.dashboard'))
+
+        db.session.commit()
+        flash(f'✅ {mensaje}', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'❌ Error cargando CSV de demanda: {str(e)}', 'error')
+
     return redirect(url_for('profesor.dashboard'))
 
 
@@ -970,17 +1041,40 @@ def api_market_share():
         return jsonify({'error': 'No hay simulación activa'}), 404
 
     empresas = Empresa.query.filter_by(simulacion_id=simulacion.id, activa=True).all()
-    dia_actual = simulacion.dia_actual
+    dia_reporte = max(1, int(simulacion.dia_actual or 1) - 1)
+    empresa_ids = [e.id for e in empresas]
 
     nombres = []
     market_shares = []
     capitales = []
     niveles_servicio = []
 
+    # Snapshot principal: cuota acumulada por ingresos hasta el día de reporte.
+    ingresos_acumulados_rows = db.session.query(
+        Venta.empresa_id,
+        func.sum(Venta.ingreso_total).label('ingresos_total')
+    ).filter(
+        Venta.empresa_id.in_(empresa_ids),
+        Venta.semana_simulacion >= 1,
+        Venta.semana_simulacion <= dia_reporte
+    ).group_by(Venta.empresa_id).all()
+
+    ingresos_acumulados = {
+        int(row.empresa_id): float(row.ingresos_total or 0)
+        for row in ingresos_acumulados_rows
+    }
+    total_ingresos_acumulados = sum(ingresos_acumulados.values())
+
     for empresa in empresas:
+        ingresos_empresa = float(ingresos_acumulados.get(empresa.id, 0))
+        share_acumulado = (
+            round(ingresos_empresa / total_ingresos_acumulados * 100, 2)
+            if total_ingresos_acumulados > 0 else 0.0
+        )
+
         metrica = Metrica.query.filter_by(
             empresa_id=empresa.id,
-            semana_simulacion=dia_actual - 1
+            semana_simulacion=dia_reporte
         ).first()
         if not metrica:
             metrica = Metrica.query.filter_by(
@@ -988,20 +1082,44 @@ def api_market_share():
             ).order_by(Metrica.semana_simulacion.desc()).first()
 
         nombres.append(empresa.nombre)
-        market_shares.append(metrica.market_share if metrica else 0)
+        market_shares.append(share_acumulado)
         capitales.append(round(empresa.capital_actual, 0))
-        niveles_servicio.append(round(metrica.nivel_servicio, 1) if metrica else 0)
+        niveles_servicio.append(round(metrica.nivel_servicio, 1) if metrica else 100.0)
 
-    # Evolución de market share: últimos 30 días
-    ultimo_dia = dia_actual - 1
+    # Evolución de market share diario: últimos 30 días con ventas reales.
+    ultimo_dia = dia_reporte
     primer_dia = max(1, ultimo_dia - 29)
     dias_evolucion = list(range(primer_dia, ultimo_dia + 1))
+
+    ingresos_diarios_rows = db.session.query(
+        Venta.semana_simulacion,
+        Venta.empresa_id,
+        func.sum(Venta.ingreso_total).label('ingresos_total')
+    ).filter(
+        Venta.empresa_id.in_(empresa_ids),
+        Venta.semana_simulacion >= primer_dia,
+        Venta.semana_simulacion <= ultimo_dia,
+    ).group_by(Venta.semana_simulacion, Venta.empresa_id).all()
+
+    ingresos_por_dia_empresa = {}
+    total_por_dia = {}
+    for row in ingresos_diarios_rows:
+        dia = int(row.semana_simulacion)
+        eid = int(row.empresa_id)
+        ingreso = float(row.ingresos_total or 0)
+        ingresos_por_dia_empresa[(dia, eid)] = ingreso
+        total_por_dia[dia] = total_por_dia.get(dia, 0.0) + ingreso
+
     evolucion = {}
     for empresa in empresas:
         shares_evol = []
         for dia in dias_evolucion:
-            m = Metrica.query.filter_by(empresa_id=empresa.id, semana_simulacion=dia).first()
-            shares_evol.append(m.market_share if m else 0)
+            total_dia = float(total_por_dia.get(dia, 0.0))
+            ingreso_empresa_dia = float(ingresos_por_dia_empresa.get((dia, empresa.id), 0.0))
+            if total_dia > 0:
+                shares_evol.append(round(ingreso_empresa_dia / total_dia * 100, 2))
+            else:
+                shares_evol.append(None)
         evolucion[empresa.nombre] = shares_evol
 
     return jsonify({

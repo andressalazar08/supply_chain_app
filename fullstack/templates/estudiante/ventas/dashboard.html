@@ -134,7 +134,7 @@
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
                     <h2><i class="fas fa-chart-line"></i> Gestión de Ventas</h2>
-                    <p class="text-muted">Estrategia de precios y análisis de mercado</p>
+                    <p class="text-muted">Pedidos del día, demanda de mercado y ventas efectivas</p>
                 </div>
                 <div class="text-end">
                     <div class="badge bg-primary fs-6 px-3 py-2">
@@ -146,13 +146,13 @@
             <!-- Navigation Tabs -->
             <ul class="nav nav-tabs mb-4" id="ventasTabs" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab">
-                        <i class="fas fa-chart-pie"></i> Dashboard
+                    <button class="nav-link active" id="pedidos-tab" data-bs-toggle="tab" data-bs-target="#pedidos" type="button" role="tab">
+                        <i class="fas fa-clipboard-list"></i> Pedidos del Día
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="precios-tab" data-bs-toggle="tab" data-bs-target="#precios" type="button" role="tab">
-                        <i class="fas fa-tags"></i> Configurar Precios
+                    <button class="nav-link" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab">
+                        <i class="fas fa-chart-pie"></i> Dashboard
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
@@ -164,9 +164,43 @@
 
             <!-- Tabs Content -->
             <div class="tab-content" id="ventasTabsContent">
+
+                <!-- TAB 0: Pedidos del Día -->
+                <div class="tab-pane fade show active" id="pedidos" role="tabpanel">
+                    <div class="card mb-4">
+                        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1"><i class="fas fa-clipboard-check"></i> Pedidos Solicitados vs Aprobados</h5>
+                                <small class="text-muted">No puedes aprobar más de lo solicitado ni superar el inventario del producto.</small>
+                            </div>
+                            <button class="btn btn-outline-primary btn-sm" onclick="cargarPedidosDia()">
+                                <i class="fas fa-sync-alt"></i> Actualizar
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="resumenPedidosDia" class="alert alert-light border mb-3">
+                                <strong>Día {{ simulacion.dia_actual }}:</strong> ajusta cantidades aprobadas por región según tu estrategia.
+                            </div>
+                            <div id="pedidosDiaContainer" class="table-responsive">
+                                <div class="text-center py-4">
+                                    <div class="spinner-border text-primary"></div>
+                                    <p class="text-muted mt-2">Cargando pedidos del día...</p>
+                                </div>
+                            </div>
+                            <div class="mt-3 d-flex gap-2">
+                                <button class="btn btn-success" onclick="guardarAprobacionesVentas()">
+                                    <i class="fas fa-save"></i> Guardar Aprobaciones
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="aprobarTodoGlobal()">
+                                    <i class="fas fa-bolt"></i> Aprobar Rápido Todo
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 
                 <!-- TAB 1: Dashboard de Métricas -->
-                <div class="tab-pane fade show active" id="dashboard" role="tabpanel">
+                <div class="tab-pane fade" id="dashboard" role="tabpanel">
                     <!-- Métricas principales -->
                     <div class="row mb-4">
                         <div class="col-md-3 mb-3">
@@ -224,25 +258,6 @@
                         </div>
                     </div>
                     
-                    <!-- Análisis de Competitividad -->
-                    <div class="row mb-4">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-header bg-white">
-                                    <h5><i class="fas fa-balance-scale"></i> Análisis de Competitividad de Precios</h5>
-                                    <small class="text-muted">Compara tus precios con el promedio del mercado</small>
-                                </div>
-                                <div class="card-body">
-                                    <div id="competitividadContainer">
-                                        <div class="text-center py-4">
-                                            <div class="spinner-border text-primary"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- Demanda de Mercado vs Ventas -->
                     <div class="row mb-4">
                         <div class="col-12">
@@ -264,57 +279,6 @@
                             </div>
                         </div>
                     </div>
-                </div>
-
-                <!-- TAB 2: Configuración de Precios -->
-                <div class="tab-pane fade" id="precios" role="tabpanel">
-                    <div class="row mb-3">
-                        <div class="col-12">
-                            <h4><i class="fas fa-tags"></i> Matriz de Precios por Región</h4>
-                            <p class="text-muted">Ajusta los precios de venta para cada producto en cada región</p>
-                        </div>
-                    </div>
-                    
-                    <form id="preciosForm">
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-hover align-middle" id="matrizPrecios">
-                                <thead class="table-primary">
-                                    <tr>
-                                        <th width="200"><i class="fas fa-box"></i> Producto</th>
-                                        <th class="text-center" width="150">
-                                            <i class="fas fa-map-marker-alt text-primary"></i> Andina
-                                        </th>
-                                        <th class="text-center" width="150">
-                                            <i class="fas fa-map-marker-alt text-info"></i> Caribe
-                                        </th>
-                                        <th class="text-center" width="150">
-                                            <i class="fas fa-map-marker-alt text-success"></i> Pacífica
-                                        </th>
-                                        <th class="text-center" width="150">
-                                            <i class="fas fa-map-marker-alt text-warning"></i> Orinoquía
-                                        </th>
-                                        <th class="text-center" width="150">
-                                            <i class="fas fa-map-marker-alt text-danger"></i> Amazonía
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody id="matrizPreciosBody">
-                                    <tr>
-                                        <td colspan="7" class="text-center py-4">
-                                            <div class="spinner-border text-primary"></div>
-                                            <p class="text-muted mt-2">Cargando productos...</p>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div class="d-grid gap-2 mt-4">
-                            <button type="submit" class="btn btn-primary btn-lg" id="btnAplicarPrecios">
-                                <i class="fas fa-save"></i> Aplicar Cambios de Precios
-                            </button>
-                        </div>
-                    </form>
                 </div>
 
                 <!-- TAB 3: Análisis por Región -->
@@ -342,19 +306,149 @@
 
 {% block extra_js %}
 <script>
+let pedidosDiaData = [];
+
 document.addEventListener('DOMContentLoaded', function() {
+    cargarPedidosDia();
     cargarDashboard();
-    cargarMatrizPrecios();
     cargarAnalisisRegional();
-    cargarCompetitividad();
     cargarDemandaMercado();
-    
-    // Submit form de precios
-    document.getElementById('preciosForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        aplicarCambiosPrecios();
-    });
 });
+
+// ========== TAB 0: PEDIDOS DEL DIA ==========
+async function cargarPedidosDia() {
+    try {
+        const response = await fetch('/estudiante/api/ventas/pedidos-dia');
+        const data = await response.json();
+
+        if (!data.success) {
+            document.getElementById('pedidosDiaContainer').innerHTML = `<div class="alert alert-danger">${data.message || 'No fue posible cargar los pedidos del día.'}</div>`;
+            return;
+        }
+
+        pedidosDiaData = data.productos || [];
+        renderTablaPedidosDia();
+    } catch (error) {
+        document.getElementById('pedidosDiaContainer').innerHTML = '<div class="alert alert-danger">Error cargando pedidos del día.</div>';
+    }
+}
+
+function renderTablaPedidosDia() {
+    const container = document.getElementById('pedidosDiaContainer');
+    if (!pedidosDiaData.length) {
+        container.innerHTML = '<div class="alert alert-warning">No hay pedidos de demanda para el día actual.</div>';
+        return;
+    }
+
+    let html = '<table class="table table-bordered table-sm align-middle">';
+    html += '<thead class="table-light"><tr><th>Producto</th><th>Inventario Actual</th>';
+    html += '<th>Andina</th><th>Caribe</th><th>Pacífica</th><th>Orinoquía</th><th>Amazonía</th><th>Aprobación Rápida</th></tr></thead><tbody>';
+
+    pedidosDiaData.forEach((p) => {
+        html += `<tr data-producto-id="${p.producto_id}" data-inventario="${p.inventario_actual}">`;
+        html += `<td><strong>${p.producto_nombre}</strong><br><small class="text-muted">Solicitado: ${p.total_solicitado} | Aprobado: <span id="aprobado-total-${p.producto_id}">${p.total_aprobado}</span></small></td>`;
+        html += `<td><span class="badge bg-dark" id="inv-${p.producto_id}">${p.inventario_actual}</span></td>`;
+
+        p.regiones.forEach((r) => {
+            const key = `${p.producto_id}__${r.region}`;
+            html += '<td>';
+            html += `<div><small class="text-muted">Solicitado: <strong>${r.solicitado}</strong></small></div>`;
+            html += '<div class="d-flex gap-1 mt-1">';
+            html += `<input type="number" class="form-control form-control-sm aprobado-input" style="max-width:90px" min="0" max="${r.solicitado}" value="${r.aprobado}" data-key="${key}" data-producto="${p.producto_id}" data-region="${r.region}" data-solicitado="${r.solicitado}" oninput="validarFilaProducto(${p.producto_id})">`;
+            html += `<button type="button" class="btn btn-outline-success btn-sm" onclick="aprobarRapido('${key}', ${r.solicitado}, ${p.producto_id})" title="Aprobar solicitado"><i class="fas fa-check"></i></button>`;
+            html += '</div></td>';
+        });
+
+        html += `<td><button class="btn btn-outline-primary btn-sm" onclick="aprobarTodoProducto(${p.producto_id})"><i class="fas fa-bolt"></i> Aprobar todo</button></td>`;
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    pedidosDiaData.forEach((p) => validarFilaProducto(p.producto_id));
+}
+
+function aprobarRapido(key, solicitado, productoId) {
+    const input = document.querySelector(`input[data-key="${key}"]`);
+    if (!input) return;
+    input.value = solicitado;
+    validarFilaProducto(productoId);
+}
+
+function aprobarTodoProducto(productoId) {
+    const inputs = document.querySelectorAll(`input.aprobado-input[data-producto="${productoId}"]`);
+    inputs.forEach((input) => {
+        input.value = input.dataset.solicitado;
+    });
+    validarFilaProducto(productoId);
+}
+
+function aprobarTodoGlobal() {
+    pedidosDiaData.forEach((p) => aprobarTodoProducto(p.producto_id));
+}
+
+function validarFilaProducto(productoId) {
+    const inputs = document.querySelectorAll(`input.aprobado-input[data-producto="${productoId}"]`);
+    const invEl = document.getElementById(`inv-${productoId}`);
+    const totalEl = document.getElementById(`aprobado-total-${productoId}`);
+    const inventario = parseInt(invEl ? invEl.textContent : '0') || 0;
+
+    let totalAprobado = 0;
+    inputs.forEach((input) => {
+        let val = parseInt(input.value || '0') || 0;
+        const solicitado = parseInt(input.dataset.solicitado || '0') || 0;
+        if (val < 0) val = 0;
+        if (val > solicitado) val = solicitado;
+        input.value = val;
+        totalAprobado += val;
+    });
+
+    if (totalAprobado > inventario) {
+        let excedente = totalAprobado - inventario;
+        const arr = Array.from(inputs).reverse();
+        arr.forEach((input) => {
+            if (excedente <= 0) return;
+            const cur = parseInt(input.value || '0') || 0;
+            const reducir = Math.min(cur, excedente);
+            input.value = cur - reducir;
+            excedente -= reducir;
+        });
+        totalAprobado = inventario;
+    }
+
+    if (totalEl) totalEl.textContent = totalAprobado;
+}
+
+async function guardarAprobacionesVentas() {
+    const inputs = document.querySelectorAll('input.aprobado-input');
+    const payload = [];
+
+    inputs.forEach((input) => {
+        payload.push({
+            producto_id: parseInt(input.dataset.producto),
+            region: input.dataset.region,
+            cantidad_aprobada: parseInt(input.value || '0') || 0,
+        });
+    });
+
+    try {
+        const response = await fetch('/estudiante/api/ventas/aprobar-pedidos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ aprobaciones: payload })
+        });
+        const data = await response.json();
+        if (data.success) {
+            alert(data.message || 'Aprobaciones guardadas.');
+            await cargarPedidosDia();
+        } else {
+            alert(data.message || 'No fue posible guardar aprobaciones.');
+        }
+    } catch (error) {
+        alert('Error guardando aprobaciones de ventas.');
+    }
+}
 
 // ========== TAB 1: DASHBOARD ==========
 async function cargarDashboard() {
@@ -429,188 +523,6 @@ function mostrarVentasPorRegion(regiones) {
     container.innerHTML = html;
 }
 
-async function cargarCompetitividad() {
-    try {
-        const response = await fetch('/estudiante/api/ventas/competitividad');
-        const data = await response.json();
-        
-        if (data.success) {
-            mostrarCompetitividad(data.competitividad);
-        }
-    } catch (error) {
-        console.error('Error cargando competitividad:', error);
-    }
-}
-
-function mostrarCompetitividad(competitividad) {
-    const container = document.getElementById('competitividadContainer');
-    
-    if (!competitividad || competitividad.length === 0) {
-        container.innerHTML = '<p class="text-muted">No hay datos de competitividad disponibles</p>';
-        return;
-    }
-    
-    let html = '<div class="table-responsive"><table class="table table-hover align-middle">';
-    html += `
-        <thead>
-            <tr>
-                <th><i class="fas fa-wine-bottle"></i> Producto</th>
-                <th class="text-center">Tu Precio</th>
-                <th class="text-center">Precio Mercado</th>
-                <th class="text-center">Diferencia</th>
-                <th class="text-center">Estado</th>
-                <th class="text-center">Expectativa Ventas</th>
-                <th class="text-center">Stock</th>
-            </tr>
-        </thead>
-        <tbody>
-    `;
-    
-    competitividad.forEach(comp => {
-        const diferencia = comp.diferencia_porcentual;
-        const signo = diferencia >= 0 ? '+' : '';
-        const iconoDiferencia = diferencia > 20 ? '📈' : diferencia < -20 ? '📉' : '➡️';
-        
-        html += `
-            <tr>
-                <td><strong>${comp.producto}</strong></td>
-                <td class="text-center">$${comp.precio_empresa.toLocaleString()}</td>
-                <td class="text-center">$${comp.precio_mercado.toLocaleString()}</td>
-                <td class="text-center">
-                    <span class="badge bg-${comp.color}">
-                        ${iconoDiferencia} ${signo}${diferencia.toFixed(1)}%
-                    </span>
-                </td>
-                <td class="text-center">
-                    <span class="badge bg-${comp.color}">${comp.clasificacion}</span>
-                </td>
-                <td class="text-center">${comp.expectativa_ventas}</td>
-                <td class="text-center">
-                    <span class="badge ${comp.stock > 0 ? 'bg-success' : 'bg-danger'}">
-                        ${comp.stock} und
-                    </span>
-                </td>
-            </tr>
-        `;
-    });
-    
-    html += '</tbody></table></div>';
-    
-    // Agregar leyenda
-    html += `
-        <div class="alert alert-info mt-3">
-            <strong><i class="fas fa-info-circle"></i> Interpretación:</strong>
-            <ul class="mb-0 mt-2">
-                <li><strong>Muy Alto (>+50%):</strong> Precio no competitivo - Ventas muy bajas esperadas</li>
-                <li><strong>Alto (+20% a +50%):</strong> Precio alto - Ventas bajas esperadas</li>
-                <li><strong>Competitivo (-10% a +20%):</strong> Precio en rango del mercado - Ventas normales</li>
-                <li><strong>Bajo (-30% a -10%):</strong> Precio atractivo - Ventas altas esperadas</li>
-                <li><strong>Muy Bajo (<-30%):</strong> Precio sospechosamente bajo - Puede generar desconfianza</li>
-            </ul>
-        </div>
-    `;
-    
-    container.innerHTML = html;
-}
-
-// ========== TAB 2: MATRIZ DE PRECIOS ==========
-let costosProductos = {};
-let preciosActuales = {};
-
-async function cargarMatrizPrecios() {
-    try {
-        const response = await fetch('/estudiante/api/ventas/matriz-precios');
-        const data = await response.json();
-        
-        if (data.success) {
-            const tbody = document.getElementById('matrizPreciosBody');
-            let html = '';
-            
-            data.productos.forEach(prod => {
-                costosProductos[prod.id] = prod.costo;
-                
-                html += `
-                    <tr class="producto-row" data-producto-id="${prod.id}">
-                        <td class="fw-bold">${prod.nombre}</td>
-                `;
-                
-                ['Andina', 'Caribe', 'Pacífica', 'Orinoquía', 'Amazonía'].forEach(region => {
-                    const precio = prod.precios[region] || 0;
-                    
-                    html += `
-                        <td class="text-center">
-                            <input type="number" class="form-control precio-input" 
-                                   data-producto="${prod.id}" 
-                                   data-region="${region}" 
-                                   step="1" 
-                                   value="${precio > 0 ? precio.toFixed(0) : ''}">
-                        </td>
-                    `;
-                });
-                
-                html += '</tr>';
-            });
-            
-            tbody.innerHTML = html;
-        }
-    } catch (error) {
-        console.error('Error cargando matriz:', error);
-    }
-}
-
-async function aplicarCambiosPrecios() {
-    const cambios = [];
-    
-    document.querySelectorAll('.precio-input').forEach(input => {
-        const productoId = input.getAttribute('data-producto');
-        const region = input.getAttribute('data-region');
-        const precio = parseFloat(input.value);
-        
-        if (precio && precio > 0) {
-            cambios.push({
-                producto_id: productoId,
-                region: region,
-                precio: precio
-            });
-        }
-    });
-    
-    if (cambios.length === 0) {
-        alert('⚠️ No hay cambios de precios para aplicar');
-        return;
-    }
-    
-    if (!confirm(`¿Confirmar actualización de ${cambios.length} precios?`)) {
-        return;
-    }
-    
-    const btn = document.getElementById('btnAplicarPrecios');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Aplicando cambios...';
-    
-    try {
-        const response = await fetch('/estudiante/api/ventas/actualizar-precios', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({cambios: cambios})
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            alert(`✅ ${data.actualizados} precios actualizados correctamente`);
-            cargarDashboard();
-        } else {
-            alert('❌ ' + data.message);
-        }
-    } catch (error) {
-        alert('❌ Error al actualizar precios: ' + error.message);
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-save"></i> Aplicar Cambios de Precios';
-    }
-}
-
 // ========== TAB 3: ANÁLISIS REGIONAL ==========
 async function cargarAnalisisRegional() {
     try {
@@ -622,8 +534,6 @@ async function cargarAnalisisRegional() {
             let html = '';
             
             data.regiones.forEach(region => {
-                const tendencia = region.tendencia > 0 ? 'arrow-up text-success' : region.tendencia < 0 ? 'arrow-down text-danger' : 'minus text-secondary';
-                
                 html += `
                     <div class="col-md-6 col-lg-4 mb-3">
                         <div class="region-card">
@@ -638,14 +548,6 @@ async function cargarAnalisisRegional() {
                             </div>
                             
                             <div class="mb-3">
-                                <small class="text-muted">Tendencia</small>
-                                <div>
-                                    <i class="fas fa-${tendencia}"></i>
-                                    <span class="ms-2">${Math.abs(region.tendencia)}%</span>
-                                </div>
-                            </div>
-                            
-                            <div class="mb-2">
                                 <small class="text-muted">Producto más vendido:</small>
                                 <div class="fw-bold">${region.top_producto || 'N/A'}</div>
                             </div>
@@ -690,15 +592,6 @@ async function cargarDemandaMercado() {
                         data: data.demanda_mercado,
                         borderColor: '#e74c3c',
                         backgroundColor: 'rgba(231,76,60,0.08)',
-                        fill: true,
-                        tension: 0.3,
-                        borderWidth: 2
-                    },
-                    {
-                        label: 'Cuota Asignada a tu Empresa',
-                        data: data.cantidad_asignada,
-                        borderColor: '#3498db',
-                        backgroundColor: 'rgba(52,152,219,0.08)',
                         fill: true,
                         tension: 0.3,
                         borderWidth: 2
