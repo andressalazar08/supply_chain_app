@@ -93,6 +93,7 @@ class Simulacion(db.Model):
     
     # Relaciones
     empresas = db.relationship('Empresa', backref='simulacion', lazy=True)
+    demandas_mercado = db.relationship('DemandaMercadoDiaria', backref='simulacion', lazy=True, cascade='all, delete-orphan')
     
     def __repr__(self):
         return f'<Simulacion {self.nombre} - Semana {self.semana_actual} - {self.estado}>'
@@ -119,6 +120,7 @@ class Producto(db.Model):
     
     # Relaciones
     inventarios = db.relationship('Inventario', backref='producto', lazy=True)
+    demandas_mercado = db.relationship('DemandaMercadoDiaria', backref='producto', lazy=True)
     
     def __repr__(self):
         return f'<Producto {self.codigo} - {self.nombre}>'
@@ -427,3 +429,29 @@ class DisrupcionEmpresa(db.Model):
 
     def __repr__(self):
         return f'<DisrupcionEmpresa {self.disrupcion_key} - Empresa {self.empresa_id} - Opción {self.opcion_elegida}>'
+
+
+class DemandaMercadoDiaria(db.Model):
+    """Base central de demanda diaria por simulación, producto y región."""
+    __tablename__ = 'demanda_mercado_diaria'
+
+    id = db.Column(db.Integer, primary_key=True)
+    simulacion_id = db.Column(db.Integer, db.ForeignKey('simulacion.id'), nullable=False)
+    dia_simulacion = db.Column(db.Integer, nullable=False)  # días negativos = histórico
+    producto_id = db.Column(db.Integer, db.ForeignKey('productos.id'), nullable=False)
+    region = db.Column(db.String(50), nullable=False)
+
+    demanda_base = db.Column(db.Integer, nullable=False, default=0)
+    disrupcion_key = db.Column(db.String(50), nullable=True)
+    multiplicador_disrupcion = db.Column(db.Float, default=1.0)
+    fuente = db.Column(db.String(20), default='sistema')  # sistema/admin
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('simulacion_id', 'dia_simulacion', 'producto_id', 'region', name='uq_demanda_sim_dia_prod_region'),
+    )
+
+    def __repr__(self):
+        return f'<DemandaMercadoDiaria sim={self.simulacion_id} dia={self.dia_simulacion} prod={self.producto_id} reg={self.region}>'

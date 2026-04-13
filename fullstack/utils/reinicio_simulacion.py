@@ -6,6 +6,7 @@ from models import (Simulacion, Empresa, Producto, Inventario,
                     MovimientoInventario, DisrupcionEmpresa, RequerimientoCompra)
 from extensions import db
 from datetime import datetime
+from utils.demanda_central import generar_base_demanda_simulacion
 
 
 def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None,
@@ -153,11 +154,18 @@ def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None,
 
         db.session.commit()
 
-        # 6. Generar histórico de 30 días y órdenes iniciales
+        # 6. Generar base central de demanda (histórico + horizonte simulación)
+        demanda_ok, demanda_msg = generar_base_demanda_simulacion(nueva_simulacion, dias_historico=30, replace=True)
+        if not demanda_ok:
+            raise RuntimeError(demanda_msg)
+
+        # 7. Generar histórico de 30 días y órdenes iniciales
         from utils.historico_simulacion import generar_historico_30dias, generar_ordenes_iniciales
+        from utils.procesamiento_dias import asegurar_metricas_base_dia_uno
         
         historico_ok, historico_msg = generar_historico_30dias(nueva_simulacion, empresas)
         ordenes_ok, ordenes_msg = generar_ordenes_iniciales(nueva_simulacion, empresas)
+        asegurar_metricas_base_dia_uno(nueva_simulacion)
 
         mensaje = (
             f'Simulación reiniciada exitosamente. '
@@ -165,6 +173,7 @@ def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None,
             f'Empresas: {len(empresas)} | '
             f'Capital: ${capital_inicial:,.0f} | '
             f'Inventario: {inv_750ml} und (750ml) / {inv_1l} und (1L) | '
+            f'{demanda_msg} | '
             f'{historico_msg} | '
             f'{ordenes_msg}'
         )

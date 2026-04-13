@@ -8,9 +8,11 @@ from flask_login import login_required, current_user
 from functools import wraps
 import csv
 import io
+from types import SimpleNamespace
+from sqlalchemy import func
 from models import (Usuario, Empresa, Simulacion, Inventario, Venta, Compra, Decision,
                     Producto, Pronostico, RequerimientoCompra, MovimientoInventario, DespachoRegional,
-                    DisrupcionEmpresa)
+                    DisrupcionEmpresa, DemandaMercadoDiaria)
 from extensions import db
 from datetime import datetime
 from utils.pronosticos import (
@@ -18,8 +20,8 @@ from utils.pronosticos import (
     comparar_metodos, obtener_mejor_metodo, calcular_cantidad_pedir
 )
 from utils.inventario import (
-    calcular_consumo_diario, calcular_dias_cobertura, analizar_inventario,
-    calcular_costo_total_compra, validar_capacidad_compra, priorizar_productos_compra
+    calcular_consumo_diario, calcular_dias_cobertura,
+    calcular_costo_total_compra, validar_capacidad_compra
 )
 from utils.logistica import (
     calcular_tiempo_entrega_region, procesar_recepcion_compra, validar_despacho_region,
@@ -28,8 +30,19 @@ from utils.logistica import (
 )
 bp = Blueprint('estudiante', __name__, url_prefix='/estudiante')
 
-# Costo base de transporte por unidad y por dia de transito.
-COSTO_TRANSPORTE_POR_UNIDAD_DIA = 500
+# Tarifa base de transporte por unidad según región (flota propia).
+TARIFA_TRANSPORTE_POR_REGION = {
+    'Andina': 500,
+    'Pacífica': 1000,
+    'Caribe': 1000,
+    'Orinoquía': 1500,
+    'Amazonía': 2000,
+}
+
+
+def _tarifa_transporte_region(region):
+    """Retorna la tarifa base por unidad para la región dada."""
+    return float(TARIFA_TRANSPORTE_POR_REGION.get(region, 1000))
 ROL_PLANEACION_COMPRAS = 'compras'
 
 REGIONES_CANONICAS = [
@@ -65,71 +78,184 @@ def _role_allowed(user_role, allowed_roles):
     return bool(_role_set_for_user(user_role).intersection(set(allowed_roles)))
 
 
+LEAD_TIME_COMPRA_BASE = 3
+LEAD_TIME_RETRASO_PROVEEDOR_ACTUAL = 7
+COSTO_EXTRA_PROVEEDOR_EXTERNO = 5000
+
 PROVEEDORES_COMPRA = {
-    'A': {
-        'nombre': 'Proveedor A (económico)',
-        'costo_multiplicador': 0.95,
-        'lead_time_delta': 2,
+    'ACTUAL': {
+        'nombre': 'Proveedor actual',
     },
-    'B': {
-        'nombre': 'Proveedor B (rápido)',
-        'costo_multiplicador': 1.10,
-        'lead_time_delta': -1,
+    'EXTERNO': {
+        'nombre': 'Proveedor externo',
     },
 }
 
+VEHICULOS_LOGISTICA = {
+    'V1': {'nombre': 'Vehículo 1', 'capacidad': 270, 'externo': False},
+    'V2': {'nombre': 'Vehículo 2', 'capacidad': 440, 'externo': False},
+    'V3': {'nombre': 'Vehículo 3', 'capacidad': 385, 'externo': False},
+    'V4': {'nombre': 'Vehículo 4', 'capacidad': 305, 'externo': False},
+    'V5': {'nombre': 'Vehículo 5', 'capacidad': 340, 'externo': False},
+    'EXTERNO': {'nombre': 'Vehículo externo', 'capacidad': None, 'externo': True},
+}
+
+
+def _disrupcion_falla_flota_activa(simulacion, empresa_id):
+    if not simulacion:
+        return False
+
+    return DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.empresa_id == empresa_id,
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.disrupcion_key == 'falla_flota',
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.opcion_elegida != None,
+    ).first() is not None
+
+
+def _opcion_falla_flota(simulacion, empresa_id):
+    if not simulacion:
+        return None
+
+    dis = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.empresa_id == empresa_id,
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.disrupcion_key == 'falla_flota',
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.opcion_elegida != None,
+    ).first()
+    return dis.opcion_elegida if dis else None
+
+
+def _obtener_capacidades_vehiculos(simulacion, empresa_id):
+    """Retorna el catálogo de vehículos con disponibilidad según disrupciones activas."""
+    catalogo = {}
+    for codigo, conf in VEHICULOS_LOGISTICA.items():
+        catalogo[codigo] = {
+            'codigo': codigo,
+            'nombre': conf['nombre'],
+            'capacidad': conf['capacidad'],
+            'externo': conf['externo'],
+            'disponible': True,
+        }
+
+    if _disrupcion_falla_flota_activa(simulacion, empresa_id):
+        propios = [
+            (codigo, conf['capacidad'])
+            for codigo, conf in catalogo.items()
+            if not conf['externo'] and conf['capacidad'] is not None
+        ]
+        if propios:
+            vehiculo_fuera = max(propios, key=lambda x: x[1])[0]
+            catalogo[vehiculo_fuera]['disponible'] = False
+            catalogo[vehiculo_fuera]['capacidad'] = 0
+
+    return catalogo
+
+
+def _serializar_vehiculos(catalogo):
+    return [
+        {
+            'codigo': v['codigo'],
+            'nombre': v['nombre'],
+            'capacidad': v['capacidad'],
+            'externo': v['externo'],
+            'disponible': v['disponible'],
+        }
+        for v in catalogo.values()
+    ]
+
+
+def _pedido_minimo_externo(producto):
+    """Pedido mínimo por referencia solo para proveedor externo durante disrupción."""
+    codigo = (producto.codigo or '').upper()
+    nombre = (producto.nombre or '').upper()
+
+    if '750' in codigo or '750' in nombre:
+        return 60
+    if '1L' in codigo or ' 1L' in nombre or '1 L' in nombre:
+        return 50
+    return 0
+
+
+def _disrupcion_retraso_proveedor_activa(simulacion, empresa_id):
+    """Indica si la disrupción de retraso de proveedor está activa para la empresa."""
+    if not simulacion:
+        return False
+
+    return DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.empresa_id == empresa_id,
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.disrupcion_key == 'retraso_proveedor',
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.opcion_elegida != None,
+    ).first() is not None
+
+
+def _opcion_retraso_proveedor(simulacion, empresa_id):
+    if not simulacion:
+        return None
+
+    dis = DisrupcionEmpresa.query.filter(
+        DisrupcionEmpresa.empresa_id == empresa_id,
+        DisrupcionEmpresa.simulacion_id == simulacion.id,
+        DisrupcionEmpresa.disrupcion_key == 'retraso_proveedor',
+        DisrupcionEmpresa.activa == True,
+        DisrupcionEmpresa.opcion_elegida != None,
+    ).first()
+    return dis.opcion_elegida if dis else None
+
 
 def _normalizar_proveedor(valor):
-    proveedor = (valor or 'A').strip().upper()
-    return proveedor if proveedor in PROVEEDORES_COMPRA else 'A'
+    proveedor = (valor or 'ACTUAL').strip().upper()
+    return proveedor if proveedor in PROVEEDORES_COMPRA else 'ACTUAL'
 
 
 def _calcular_condiciones_compra(producto, cantidad, simulacion, empresa_id, proveedor):
-    """Calcula costo/lead time según proveedor elegido y disrupciones activas."""
+    """Calcula costo/lead time según reglas operativas de Compras y disrupciones."""
     proveedor = _normalizar_proveedor(proveedor)
     config = PROVEEDORES_COMPRA[proveedor]
 
-    costo_unitario = producto.costo_unitario * config['costo_multiplicador']
-    tiempo_entrega = max(1, int(round(producto.tiempo_entrega + config['lead_time_delta'])))
+    dis_retraso_activa = _disrupcion_retraso_proveedor_activa(simulacion, empresa_id)
 
-    # Disrupción 1: retraso en proveedor estratégico.
-    # Si se usa proveedor A sobre producto afectado, se agrega retraso de 10 días.
-    dis_retraso = DisrupcionEmpresa.query.filter(
-        DisrupcionEmpresa.empresa_id == empresa_id,
-        DisrupcionEmpresa.simulacion_id == simulacion.id,
-        DisrupcionEmpresa.producto_afectado_id == producto.id,
-        DisrupcionEmpresa.disrupcion_key == 'retraso_proveedor',
-        DisrupcionEmpresa.activa == True
-    ).first()
-    if dis_retraso and proveedor == 'A':
-        tiempo_entrega += 10
+    # Sin disrupción: opera solo proveedor actual con lead time fijo de 3 días.
+    if not dis_retraso_activa:
+        proveedor = 'ACTUAL'
+        config = PROVEEDORES_COMPRA[proveedor]
 
-    # Disrupción de aumento de costos de compra (opción C)
-    delay_extra = 0
-    dis_costos_c = DisrupcionEmpresa.query.filter(
-        DisrupcionEmpresa.empresa_id == empresa_id,
-        DisrupcionEmpresa.simulacion_id == simulacion.id,
-        DisrupcionEmpresa.producto_afectado_id == producto.id,
-        DisrupcionEmpresa.disrupcion_key == 'aumento_costos_compra',
-        DisrupcionEmpresa.activa == True,
-        DisrupcionEmpresa.opcion_elegida == 'C'
-    ).first()
-    if dis_costos_c:
-        from utils.catalogo_disrupciones import get_disrupcion as _gd_cc
-        cat_cc = _gd_cc('aumento_costos_compra')
-        if cat_cc:
-            efectos_c = cat_cc['opciones']['C']['efectos']
-            pedido_min_c = int(efectos_c.get('pedido_minimo', 150))
-            if cantidad < pedido_min_c:
+    costo_unitario = float(producto.costo_unitario)
+    tiempo_entrega = LEAD_TIME_COMPRA_BASE
+    opcion_retraso = _opcion_retraso_proveedor(simulacion, empresa_id)
+
+    # Disrupción activa de retraso de proveedor estratégico.
+    if dis_retraso_activa:
+        if opcion_retraso == 'B':
+            proveedor = 'ACTUAL'
+
+        if proveedor == 'ACTUAL':
+            if simulacion.dia_actual % 2 != 0:
                 return {
                     'ok': False,
-                    'mensaje': f'Con disrupción activa, el pedido mínimo es {pedido_min_c} unidades.'
+                    'mensaje': 'Con disrupción activa, el proveedor actual solo recibe pedidos en días pares.'
                 }
-            costo_unitario *= efectos_c.get('costo_multiplicador', 0.826)
-            delay_extra = efectos_c.get('delay_entrega', 1)
+            tiempo_entrega = LEAD_TIME_RETRASO_PROVEEDOR_ACTUAL
+        elif proveedor == 'EXTERNO':
+            tiempo_entrega = LEAD_TIME_COMPRA_BASE
+            costo_unitario += COSTO_EXTRA_PROVEEDOR_EXTERNO
+
+            pedido_minimo = _pedido_minimo_externo(producto)
+            if pedido_minimo > 0 and cantidad < pedido_minimo:
+                return {
+                    'ok': False,
+                    'mensaje': f'Proveedor externo exige pedido mínimo de {pedido_minimo} unidades para {producto.nombre}.'
+                }
+
+    delay_extra = 0
 
     return {
         'ok': True,
+        'disrupcion_retraso_activa': dis_retraso_activa,
         'proveedor': proveedor,
         'proveedor_nombre': config['nombre'],
         'costo_unitario': costo_unitario,
@@ -219,6 +345,9 @@ def dashboard_general():
     if not simulacion:
         flash('No existe una simulaci�n activa', 'error')
         return redirect(url_for('auth.login'))
+
+    from utils.procesamiento_dias import asegurar_metricas_base_dia_uno
+    asegurar_metricas_base_dia_uno(simulacion, commit=True)
     
     # Obtener datos generales
     productos = Producto.query.filter_by(activo=True).all()
@@ -236,6 +365,29 @@ def dashboard_general():
         empresa_id=empresa.id,
         semana_simulacion=simulacion.dia_actual
     ).first()
+    if not metrica_hoy:
+        metrica_hoy = Metrica.query.filter(
+            Metrica.empresa_id == empresa.id,
+            Metrica.semana_simulacion <= simulacion.dia_actual
+        ).order_by(Metrica.semana_simulacion.desc()).first()
+    if not metrica_hoy:
+        metrica_hoy = SimpleNamespace(
+            ingresos=0,
+            costos=0,
+            utilidad=0,
+            nivel_servicio=100.0,
+            rotacion_inventario=0,
+            market_share=0,
+        )
+
+    metricas_acumuladas = Metrica.query.filter(
+        Metrica.empresa_id == empresa.id,
+        Metrica.semana_simulacion >= 1,
+        Metrica.semana_simulacion <= simulacion.dia_actual,
+    ).all()
+    ingresos_acumulados = sum(m.ingresos or 0 for m in metricas_acumuladas)
+    costos_acumulados = sum(m.costos or 0 for m in metricas_acumuladas)
+    utilidad_acumulada = sum(m.utilidad or 0 for m in metricas_acumuladas)
     
     # Pron�sticos activos
     pronosticos_activos = Pronostico.query.filter_by(
@@ -270,16 +422,102 @@ def dashboard_general():
         Compra.semana_entrega <= simulacion.dia_actual + 21
     ).order_by(Compra.semana_entrega).limit(5).all()
 
-    # Histórico de 30 días (antes de la simulación activa)
-    historico_ventas = Venta.query.filter_by(
-        empresa_id=empresa.id
+    # Histórico operativo desde el día 1 (sin mezclar histórico negativo).
+    dia_actual = int(simulacion.dia_actual or 1)
+    dias_periodo = list(range(1, dia_actual + 1))
+
+    demanda_rows = db.session.query(
+        DemandaMercadoDiaria.dia_simulacion,
+        DemandaMercadoDiaria.producto_id,
+        func.sum(DemandaMercadoDiaria.demanda_base).label('demanda_total')
     ).filter(
-        Venta.semana_simulacion < 0
-    ).order_by(Venta.semana_simulacion.desc()).all()
-    
-    total_ventas_historico = sum(v.cantidad_vendida for v in historico_ventas) if historico_ventas else 0
-    ingresos_historico = sum(v.ingreso_total for v in historico_ventas) if historico_ventas else 0
-    promedio_diario_historico = total_ventas_historico / 30 if historico_ventas else 0
+        DemandaMercadoDiaria.simulacion_id == simulacion.id,
+        DemandaMercadoDiaria.dia_simulacion >= 1,
+        DemandaMercadoDiaria.dia_simulacion <= dia_actual,
+    ).group_by(
+        DemandaMercadoDiaria.dia_simulacion,
+        DemandaMercadoDiaria.producto_id,
+    ).all()
+
+    ventas_rows = db.session.query(
+        Venta.semana_simulacion,
+        Venta.producto_id,
+        func.sum(Venta.cantidad_solicitada).label('pedidos_total'),
+        func.sum(Venta.cantidad_vendida).label('vendidas_total'),
+        func.sum(Venta.cantidad_perdida).label('perdidas_total'),
+        func.sum(Venta.ingreso_total).label('ingresos_total')
+    ).filter(
+        Venta.empresa_id == empresa.id,
+        Venta.semana_simulacion >= 1,
+        Venta.semana_simulacion <= dia_actual,
+    ).group_by(
+        Venta.semana_simulacion,
+        Venta.producto_id,
+    ).all()
+
+    demanda_por_dia = {d: 0 for d in dias_periodo}
+    pedidos_por_dia = {d: 0 for d in dias_periodo}
+    vendidas_por_dia = {d: 0 for d in dias_periodo}
+    perdidas_por_dia = {d: 0 for d in dias_periodo}
+    ingresos_por_dia = {d: 0 for d in dias_periodo}
+
+    demanda_por_dia_producto = {}
+    for row in demanda_rows:
+        d = int(row.dia_simulacion)
+        p = int(row.producto_id)
+        demanda_valor = int(round(row.demanda_total or 0))
+        demanda_por_dia_producto[(d, p)] = demanda_valor
+        if d in demanda_por_dia:
+            demanda_por_dia[d] += demanda_valor
+
+    ventas_por_dia_producto = {}
+    for row in ventas_rows:
+        d = int(row.semana_simulacion)
+        p = int(row.producto_id)
+        pedidos_valor = int(round(row.pedidos_total or 0))
+        vendidas_valor = int(round(row.vendidas_total or 0))
+        perdidas_valor = int(round(row.perdidas_total or 0))
+        ingresos_valor = float(row.ingresos_total or 0)
+        ventas_por_dia_producto[(d, p)] = {
+            'pedidos_demandados': pedidos_valor,
+            'unidades_vendidas': vendidas_valor,
+            'unidades_perdidas': perdidas_valor,
+            'ingresos': ingresos_valor,
+        }
+        if d in pedidos_por_dia:
+            pedidos_por_dia[d] += pedidos_valor
+            vendidas_por_dia[d] += vendidas_valor
+            perdidas_por_dia[d] += perdidas_valor
+            ingresos_por_dia[d] += ingresos_valor
+
+    historico_operacion = []
+    producto_nombre_map = {p.id: p.nombre for p in productos}
+    producto_ids_ordenados = sorted(producto_nombre_map.keys(), key=lambda pid: producto_nombre_map[pid])
+    for d in reversed(dias_periodo):
+        for pid in producto_ids_ordenados:
+            demanda_base = demanda_por_dia_producto.get((d, pid), 0)
+            venta_item = ventas_por_dia_producto.get((d, pid), {})
+            pedidos_demandados = int(venta_item.get('pedidos_demandados', 0))
+            unidades_vendidas = int(venta_item.get('unidades_vendidas', 0))
+            unidades_perdidas = int(venta_item.get('unidades_perdidas', 0))
+            ingresos = float(venta_item.get('ingresos', 0))
+
+            if demanda_base <= 0 and pedidos_demandados <= 0 and unidades_vendidas <= 0 and unidades_perdidas <= 0 and ingresos <= 0:
+                continue
+
+            historico_operacion.append({
+                'dia': d,
+                'producto': producto_nombre_map.get(pid, f'Producto {pid}'),
+                'demanda_base': demanda_base,
+                'pedidos_demandados': pedidos_demandados,
+                'unidades_vendidas': unidades_vendidas,
+                'unidades_perdidas': unidades_perdidas,
+                'ingresos': ingresos,
+            })
+
+    total_ventas_periodo = sum(vendidas_por_dia.values())
+    ingresos_periodo = sum(ingresos_por_dia.values())
+    promedio_diario_periodo = (total_ventas_periodo / len(dias_periodo)) if dias_periodo else 0
 
     # --- DISRUPCIONES ---
     # Garantizar que esta empresa tenga sus disrupciones creadas y expiradas
@@ -290,29 +528,68 @@ def dashboard_general():
     if expiradas or nuevas_disrupciones:
         db.session.commit()
 
-    # Disrupci�n activa sin respuesta (muestra el modal)
-    disrupcion_pendiente = DisrupcionEmpresa.query.filter(
+    # Disrupción activa sin respuesta (muestra el modal)
+    disrupcion_pendiente_query = DisrupcionEmpresa.query.filter(
         DisrupcionEmpresa.empresa_id == empresa.id,
         DisrupcionEmpresa.simulacion_id == simulacion.id,
         DisrupcionEmpresa.activa == True,
         DisrupcionEmpresa.opcion_elegida == None
-    ).first()
+    )
+    if current_user.rol != 'compras':
+        disrupcion_pendiente_query = disrupcion_pendiente_query.filter(
+            DisrupcionEmpresa.disrupcion_key != 'retraso_proveedor'
+        )
+    if current_user.rol != 'ventas':
+        disrupcion_pendiente_query = disrupcion_pendiente_query.filter(
+            DisrupcionEmpresa.disrupcion_key != 'aumento_demanda'
+        )
+    if current_user.rol != 'logistica':
+        disrupcion_pendiente_query = disrupcion_pendiente_query.filter(
+            DisrupcionEmpresa.disrupcion_key != 'falla_flota'
+        )
+    disrupcion_pendiente = disrupcion_pendiente_query.first()
 
-    # Disrupciones reci�n expiradas cuya notificaci�n de cierre a�n no se vio
-    disrupciones_finalizadas = DisrupcionEmpresa.query.filter(
+    # Disrupciones recién expiradas cuya notificación de cierre aún no se vio
+    disrupciones_finalizadas_query = DisrupcionEmpresa.query.filter(
         DisrupcionEmpresa.empresa_id == empresa.id,
         DisrupcionEmpresa.simulacion_id == simulacion.id,
         DisrupcionEmpresa.activa == False,
         DisrupcionEmpresa.notificacion_fin_vista == False
-    ).all()
+    )
+    if current_user.rol != 'compras':
+        disrupciones_finalizadas_query = disrupciones_finalizadas_query.filter(
+            DisrupcionEmpresa.disrupcion_key != 'retraso_proveedor'
+        )
+    if current_user.rol != 'ventas':
+        disrupciones_finalizadas_query = disrupciones_finalizadas_query.filter(
+            DisrupcionEmpresa.disrupcion_key != 'aumento_demanda'
+        )
+    if current_user.rol != 'logistica':
+        disrupciones_finalizadas_query = disrupciones_finalizadas_query.filter(
+            DisrupcionEmpresa.disrupcion_key != 'falla_flota'
+        )
+    disrupciones_finalizadas = disrupciones_finalizadas_query.all()
 
     # Disrupciones activas con decisi�n ya tomada (para info en dashboard)
-    disrupciones_activas = DisrupcionEmpresa.query.filter(
+    disrupciones_activas_query = DisrupcionEmpresa.query.filter(
         DisrupcionEmpresa.empresa_id == empresa.id,
         DisrupcionEmpresa.simulacion_id == simulacion.id,
         DisrupcionEmpresa.activa == True,
         DisrupcionEmpresa.opcion_elegida != None
-    ).all()
+    )
+    if current_user.rol != 'compras':
+        disrupciones_activas_query = disrupciones_activas_query.filter(
+            DisrupcionEmpresa.disrupcion_key != 'retraso_proveedor'
+        )
+    if current_user.rol != 'ventas':
+        disrupciones_activas_query = disrupciones_activas_query.filter(
+            DisrupcionEmpresa.disrupcion_key != 'aumento_demanda'
+        )
+    if current_user.rol != 'logistica':
+        disrupciones_activas_query = disrupciones_activas_query.filter(
+            DisrupcionEmpresa.disrupcion_key != 'falla_flota'
+        )
+    disrupciones_activas = disrupciones_activas_query.all()
 
     # Cargar definiciones del cat�logo para el template
     from utils.catalogo_disrupciones import CATALOGO_DISRUPCIONES, get_disrupcion
@@ -330,10 +607,13 @@ def dashboard_general():
                          alertas_inventario=alertas_inventario,
                          movimientos_recientes=movimientos_recientes,
                          ordenes_proximas=ordenes_proximas,
-                         historico_ventas=historico_ventas,
-                         total_ventas_historico=total_ventas_historico,
-                         ingresos_historico=ingresos_historico,
-                         promedio_diario_historico=promedio_diario_historico,
+                         historico_operacion=historico_operacion,
+                         ingresos_acumulados=ingresos_acumulados,
+                         costos_acumulados=costos_acumulados,
+                         utilidad_acumulada=utilidad_acumulada,
+                         total_ventas_periodo=total_ventas_periodo,
+                         ingresos_periodo=ingresos_periodo,
+                         promedio_diario_periodo=promedio_diario_periodo,
                          disrupcion_pendiente=disrupcion_pendiente,
                          disrupciones_finalizadas=disrupciones_finalizadas,
                          disrupciones_activas=disrupciones_activas,
@@ -368,6 +648,18 @@ def responder_disrupcion():
         flash('Opci�n inv�lida.', 'error')
         return redirect(url_for('estudiante.dashboard_general'))
 
+    if dis.disrupcion_key == 'retraso_proveedor' and current_user.rol != 'compras':
+        flash('Solo el rol de Compras puede decidir esta disrupción.', 'error')
+        return redirect(url_for('estudiante.dashboard_general'))
+
+    if dis.disrupcion_key == 'aumento_demanda' and current_user.rol != 'ventas':
+        flash('Solo el rol de Ventas puede decidir esta disrupción.', 'error')
+        return redirect(url_for('estudiante.dashboard_general'))
+
+    if dis.disrupcion_key == 'falla_flota' and current_user.rol != 'logistica':
+        flash('Solo el rol de Logística puede decidir esta disrupción.', 'error')
+        return redirect(url_for('estudiante.dashboard_general'))
+
     # Registrar decisi�n
     dis.opcion_elegida = opcion
     dis.usuario_decision_id = current_user.id
@@ -397,34 +689,15 @@ def responder_disrupcion():
         msg_extra = (f' Se emiti\u00f3 autom\u00e1ticamente una orden de compra de {cantidad_auto} unidades '
 f'de {producto_afectado.nombre} (entrega día {simulacion.dia_actual + producto_afectado.tiempo_entrega}).')
 
-    # Efecto inmediato de Opci\xf3n C (disrupcion 1): extender compras pendientes
-    elif (opcion == 'C' and dis.disrupcion_key == 'retraso_proveedor'
-          and dis.producto_afectado_id and not dis.efecto_inicial_aplicado):
-        delay = definicion['opciones']['C']['efectos'].get('delay_compras_pendientes', 2)
-        compras_pendientes = Compra.query.filter(
-            Compra.empresa_id == empresa.id,
-            Compra.producto_id == dis.producto_afectado_id,
-            Compra.estado.in_(['pendiente', 'en_transito'])
-        ).all()
-        for c in compras_pendientes:
-            c.semana_entrega += delay
+    # Efecto inmediato disrupcion 1 (retraso_proveedor): confirmar decisión de Compras.
+    elif dis.disrupcion_key == 'retraso_proveedor' and not dis.efecto_inicial_aplicado:
         dis.efecto_inicial_aplicado = True
-        msg_extra = f' Las {len(compras_pendientes)} \xf3rdenes pendientes de {dis.producto_afectado.nombre} se retrasaron {delay} d\xedas.'
-
-    # Efecto inmediato Opcion D (disrupcion 2): actualizar precio real del producto
-    elif (opcion == 'D' and dis.disrupcion_key == 'aumento_demanda'
-          and dis.producto_afectado_id and not dis.efecto_inicial_aplicado):
-        from models import Producto
-        producto_afectado = dis.producto_afectado
-        precio_original = float(producto_afectado.precio_actual)
-        mult_precio = definicion['opciones']['D']['efectos'].get('precio_multiplicador', 1.15)
-        nuevo_precio = round(precio_original * mult_precio)
-        producto_afectado.precio_actual = nuevo_precio
-        dis.datos_extra = {'precio_original': precio_original}
-        dis.efecto_inicial_aplicado = True
-        msg_extra = (f' El precio de {producto_afectado.nombre} se ajustó a '
-                     f'${nuevo_precio:,.0f} (era ${precio_original:,.0f}). '
-                     'Volverá al precio original al finalizar la disrupción.')
+        if opcion == 'A':
+            msg_extra = (' Se activó proveedor alterno: lead time 3 días, '
+                         '+$5.000 por unidad y pedido mínimo por presentación.')
+        else:
+            msg_extra = (' Se activó racionamiento de inventario: '
+                         'se mantiene proveedor actual y prioridad de clientes estratégicos.')
 
     # Efecto inmediato disrupcion 3 (falla_flota): retroactivo en despachos en tránsito
     elif dis.disrupcion_key == 'falla_flota' and not dis.efecto_inicial_aplicado:
@@ -449,7 +722,13 @@ f'de {producto_afectado.nombre} (entrega día {simulacion.dia_actual + producto_
         dis.datos_extra = {'costos_originales': costos_originales}
         dis.efecto_inicial_aplicado = True
 
-        if delay_d:
+        if opcion == 'A':
+            msg_extra = (' Se habilitó transporte externo para cubrir faltantes de capacidad. '
+                         'Los despachos podrán usar flota tercerizada con costo por unidad al doble.')
+        elif opcion == 'B':
+            msg_extra = (' Se restringió la operación a capacidad interna. '
+                         'No se permitirá transporte externo mientras esté activa la disrupción.')
+        elif delay_d:
             msg_extra = (f' {len(despachos_activos)} despachos en tránsito retrasados '
                          f'+{delay_d} día(s). Sin costo adicional.')
         else:
@@ -457,42 +736,6 @@ f'de {producto_afectado.nombre} (entrega día {simulacion.dia_actual + producto_
             msg_extra = (f' El costo de transporte de los {len(despachos_activos)} despachos '
                          f'en tránsito aumentó un {pct}%. Los nuevos despachos también '
                          'tendrán el costo adicional durante 2 semanas.')
-
-    # Efecto inmediato de aumento_costos_compra
-    elif dis.disrupcion_key == 'aumento_costos_compra' and not dis.efecto_inicial_aplicado:
-        from models import Producto
-        producto_afectado = dis.producto_afectado
-        efectos = definicion['opciones'][opcion]['efectos']
-
-        if opcion == 'B':
-            # Trasladar aumento al precio de venta
-            precio_original = float(producto_afectado.precio_actual)
-            mult_precio = efectos.get('precio_multiplicador', 1.18)
-            nuevo_precio = round(precio_original * mult_precio)
-            producto_afectado.precio_actual = nuevo_precio
-            dis.datos_extra = {'precio_original': precio_original}
-            dis.efecto_inicial_aplicado = True
-            msg_extra = (f' El precio de {producto_afectado.nombre} se ajustó a '
-                         f'${nuevo_precio:,.0f} (era ${precio_original:,.0f}). '
-                         'Volverá al precio original al finalizar la disrupción.')
-
-        elif opcion == 'A':
-            # Absorber el costo — el efecto se aplica en cada orden de compra
-            dis.efecto_inicial_aplicado = True
-            pct = round((efectos.get('costo_multiplicador', 1.18) - 1) * 100)
-            msg_extra = (f' El costo de compra de {producto_afectado.nombre} aumentará '
-                         f'un {pct}% durante la disrupción. El impacto se verá en cada nueva orden de compra.')
-
-        elif opcion == 'C':
-            # Activar proveedor alterno — el efecto se aplica en cada orden de compra
-            dis.efecto_inicial_aplicado = True
-            pedido_min = int(efectos.get('pedido_minimo', 150))
-            delay = efectos.get('delay_entrega', 1)
-            msg_extra = (f' Se activó el proveedor alterno para {producto_afectado.nombre}. '
-                         f'Pedido mínimo: {pedido_min} unidades, entrega con {delay} día(s) adicional(es). '
-                         'Costo por unidad reducido respecto al precio original.')
-        else:
-            msg_extra = ''
 
     else:
         msg_extra = ''
@@ -543,6 +786,187 @@ def dashboard_ventas():
     return render_template('estudiante/ventas/dashboard.html',
                          simulacion=simulacion,
                          empresa=empresa)
+
+
+def _obtener_aprobaciones_ventas_dia(empresa_id, dia_simulacion):
+    """Obtiene mapa de aprobaciones guardadas por Ventas para el día actual."""
+    decision = Decision.query.filter_by(
+        empresa_id=empresa_id,
+        tipo_decision='ventas_aprobacion_diaria',
+        semana_simulacion=dia_simulacion
+    ).order_by(Decision.created_at.desc()).first()
+
+    mapa = {}
+    if not decision or not decision.datos_decision:
+        return mapa
+
+    for item in decision.datos_decision.get('aprobaciones', []):
+        pid = int(item.get('producto_id', 0))
+        region = item.get('region')
+        cant = int(item.get('cantidad_aprobada', 0))
+        if pid and region:
+            mapa[(pid, region)] = max(0, cant)
+    return mapa
+
+
+@bp.route('/api/ventas/pedidos-dia')
+@login_required
+@estudiante_required
+def api_ventas_pedidos_dia():
+    """API: pedidos solicitados por región (demanda) y cantidades aprobadas por Ventas."""
+    try:
+        empresa = current_user.empresa
+        simulacion = Simulacion.query.filter_by(activa=True).first()
+
+        if not simulacion:
+            return jsonify({'success': False, 'message': 'No hay simulación activa'}), 404
+
+        dia = simulacion.dia_actual
+        productos = Producto.query.filter_by(activo=True).all()
+        inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
+        inv_map = {inv.producto_id: int(round(inv.cantidad_actual or 0)) for inv in inventarios}
+
+        filas_demanda = DemandaMercadoDiaria.query.filter_by(
+            simulacion_id=simulacion.id,
+            dia_simulacion=dia,
+        ).all()
+
+        demanda_map = {(f.producto_id, f.region): int(f.demanda_base or 0) for f in filas_demanda}
+        aprobaciones = _obtener_aprobaciones_ventas_dia(empresa.id, dia)
+
+        productos_data = []
+        for p in productos:
+            regiones = []
+            total_solicitado = 0
+            total_aprobado = 0
+            for region in REGIONES_CANONICAS:
+                solicitado = int(demanda_map.get((p.id, region), 0))
+                aprobado = int(aprobaciones.get((p.id, region), 0))
+                aprobado = max(0, min(aprobado, solicitado))
+                regiones.append({
+                    'region': region,
+                    'solicitado': solicitado,
+                    'aprobado': aprobado,
+                })
+                total_solicitado += solicitado
+                total_aprobado += aprobado
+
+            productos_data.append({
+                'producto_id': p.id,
+                'producto_nombre': p.nombre,
+                'inventario_actual': int(inv_map.get(p.id, 0)),
+                'total_solicitado': total_solicitado,
+                'total_aprobado': total_aprobado,
+                'regiones': regiones,
+            })
+
+        return jsonify({
+            'success': True,
+            'dia_actual': dia,
+            'productos': productos_data,
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@bp.route('/api/ventas/aprobar-pedidos', methods=['POST'])
+@login_required
+@estudiante_required
+@rol_required('ventas')
+def api_ventas_aprobar_pedidos():
+    """Guarda las cantidades aprobadas por Ventas para el día actual."""
+    try:
+        data = request.get_json(silent=True) or {}
+        aprobaciones = data.get('aprobaciones', [])
+
+        empresa = current_user.empresa
+        simulacion = Simulacion.query.filter_by(activa=True).first()
+        if not simulacion:
+            return jsonify({'success': False, 'message': 'No hay simulación activa'}), 404
+
+        dia = simulacion.dia_actual
+        filas_demanda = DemandaMercadoDiaria.query.filter_by(
+            simulacion_id=simulacion.id,
+            dia_simulacion=dia,
+        ).all()
+
+        demanda_map = {(f.producto_id, f.region): int(f.demanda_base or 0) for f in filas_demanda}
+        if not demanda_map:
+            return jsonify({'success': False, 'message': f'No hay base de demanda para el día {dia}.'}), 400
+
+        inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
+        inv_map = {inv.producto_id: int(round(inv.cantidad_actual or 0)) for inv in inventarios}
+
+        validado = []
+        total_por_producto = {}
+
+        for item in aprobaciones:
+            producto_id = int(item.get('producto_id', 0))
+            region = (item.get('region') or '').strip()
+            cantidad_aprobada = int(item.get('cantidad_aprobada', 0))
+
+            if producto_id <= 0 or region not in REGIONES_CANONICAS:
+                continue
+
+            solicitado = int(demanda_map.get((producto_id, region), 0))
+            if solicitado <= 0:
+                continue
+
+            if cantidad_aprobada < 0:
+                return jsonify({'success': False, 'message': 'No se permiten aprobaciones negativas.'}), 400
+            if cantidad_aprobada > solicitado:
+                return jsonify({
+                    'success': False,
+                    'message': f'No puedes aprobar más de lo solicitado ({region}).'
+                }), 400
+
+            total_por_producto[producto_id] = total_por_producto.get(producto_id, 0) + cantidad_aprobada
+            validado.append({
+                'producto_id': producto_id,
+                'region': region,
+                'cantidad_solicitada': solicitado,
+                'cantidad_aprobada': cantidad_aprobada,
+            })
+
+        for producto_id, total_aprobado in total_por_producto.items():
+            stock_actual = int(inv_map.get(producto_id, 0))
+            if total_aprobado > stock_actual:
+                producto = Producto.query.get(producto_id)
+                nombre = producto.nombre if producto else f'Producto {producto_id}'
+                return jsonify({
+                    'success': False,
+                    'message': (
+                        f'{nombre}: aprobación total ({total_aprobado}) supera inventario actual ({stock_actual}).'
+                    )
+                }), 400
+
+        # Reemplazar decisión del día para mantener una sola versión activa.
+        Decision.query.filter_by(
+            empresa_id=empresa.id,
+            tipo_decision='ventas_aprobacion_diaria',
+            semana_simulacion=dia
+        ).delete(synchronize_session=False)
+
+        decision = Decision(
+            usuario_id=current_user.id,
+            empresa_id=empresa.id,
+            semana_simulacion=dia,
+            tipo_decision='ventas_aprobacion_diaria',
+            datos_decision={
+                'dia': dia,
+                'aprobaciones': validado,
+            }
+        )
+        db.session.add(decision)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': f'Aprobaciones guardadas para el día {dia}.',
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 @bp.route('/api/ventas/dashboard')
@@ -716,22 +1140,8 @@ def api_ventas_analisis_regiones():
                 Venta.region.in_(variantes_region(region)),
                 Venta.semana_simulacion >= max(1, simulacion.dia_actual - 7)
             ).all()
-            
-            # Ventas 7 d�as anteriores para calcular tendencia
-            ventas_anteriores = Venta.query.filter(
-                Venta.empresa_id == empresa.id,
-                Venta.region.in_(variantes_region(region)),
-                Venta.semana_simulacion >= max(1, simulacion.dia_actual - 14),
-                Venta.semana_simulacion < max(1, simulacion.dia_actual - 7)
-            ).all()
-            
+
             ingresos_recientes = sum([v.ingreso_total for v in ventas_recientes])
-            ingresos_anteriores = sum([v.ingreso_total for v in ventas_anteriores])
-            
-            # Calcular tendencia
-            tendencia = 0
-            if ingresos_anteriores > 0:
-                tendencia = int(((ingresos_recientes - ingresos_anteriores) / ingresos_anteriores) * 100)
             
             # Producto m�s vendido
             from sqlalchemy import func
@@ -747,7 +1157,6 @@ def api_ventas_analisis_regiones():
                 'nombre': region,
                 'ventas_totales': len(ventas_recientes),
                 'ingresos': int(ingresos_recientes),
-                'tendencia': tendencia,
                 'top_producto': top[0] if top else 'N/A',
                 'ventas_perdidas': int(sum([v.cantidad_perdida for v in ventas_recientes]))
             })
@@ -1058,28 +1467,61 @@ def api_ventas_demanda_mercado():
         return jsonify({'error': 'No hay simulacion activa'}), 404
 
     dias = int(request.args.get('dias', 30))
-    desde = max(1, simulacion.dia_actual - dias)
+    dia_hasta = simulacion.dia_actual
+    desde = max(1, dia_hasta - dias + 1)
+    dias_list = list(range(desde, dia_hasta + 1))
 
     ventas_rango = Venta.query.filter(
         Venta.empresa_id == empresa_id,
-        Venta.semana_simulacion >= desde
-    ).order_by(Venta.semana_simulacion).all()
+        Venta.semana_simulacion >= desde,
+        Venta.semana_simulacion <= dia_hasta,
+    ).all()
 
-    dias_map = {}
+    demanda_rango = db.session.query(
+        DemandaMercadoDiaria.dia_simulacion,
+        func.sum(DemandaMercadoDiaria.demanda_base).label('total_demanda')
+    ).filter(
+        DemandaMercadoDiaria.simulacion_id == simulacion.id,
+        DemandaMercadoDiaria.dia_simulacion >= desde,
+        DemandaMercadoDiaria.dia_simulacion <= dia_hasta,
+    ).group_by(DemandaMercadoDiaria.dia_simulacion).all()
+
+    decisiones_rango = Decision.query.filter(
+        Decision.empresa_id == empresa_id,
+        Decision.tipo_decision == 'ventas_aprobacion_diaria',
+        Decision.semana_simulacion >= desde,
+        Decision.semana_simulacion <= dia_hasta,
+    ).order_by(Decision.semana_simulacion.asc(), Decision.created_at.asc()).all()
+
+    demanda_por_dia = {d: 0 for d in dias_list}
+    asignada_por_dia = {d: 0 for d in dias_list}
+    vendida_por_dia = {d: 0 for d in dias_list}
+
+    for row in demanda_rango:
+        demanda_por_dia[int(row.dia_simulacion)] = int(round(row.total_demanda or 0))
+
+    ultima_decision_dia = {}
+    for dec in decisiones_rango:
+        ultima_decision_dia[dec.semana_simulacion] = dec
+
+    for dia, dec in ultima_decision_dia.items():
+        if not dec.datos_decision:
+            continue
+        asignada_por_dia[dia] = int(sum(
+            int(item.get('cantidad_aprobada', 0) or 0)
+            for item in dec.datos_decision.get('aprobaciones', [])
+        ))
+
     for v in ventas_rango:
-        d = v.semana_simulacion
-        if d not in dias_map:
-            dias_map[d] = {'demanda_mercado': 0, 'cantidad_asignada': 0, 'cantidad_vendida': 0}
-        dias_map[d]['demanda_mercado'] += v.demanda_mercado_total or 0
-        dias_map[d]['cantidad_asignada'] += v.cantidad_solicitada or 0
-        dias_map[d]['cantidad_vendida'] += v.cantidad_vendida or 0
+        d = int(v.semana_simulacion)
+        if d in vendida_por_dia:
+            vendida_por_dia[d] += int(round(v.cantidad_vendida or 0))
 
-    dias_list = sorted(dias_map.keys())
     return jsonify({
         'dias': dias_list,
-        'demanda_mercado': [round(dias_map[d]['demanda_mercado'], 1) for d in dias_list],
-        'cantidad_asignada': [round(dias_map[d]['cantidad_asignada'], 1) for d in dias_list],
-        'cantidad_vendida': [round(dias_map[d]['cantidad_vendida'], 1) for d in dias_list]
+        'demanda_mercado': [round(demanda_por_dia[d], 1) for d in dias_list],
+        'cantidad_asignada': [round(asignada_por_dia[d], 1) for d in dias_list],
+        'cantidad_vendida': [round(vendida_por_dia[d], 1) for d in dias_list]
     })
 
 
@@ -1271,41 +1713,67 @@ def api_historico_producto(producto_id):
     
     empresa_id = current_user.empresa_id
     
-    # Obtener ventas del producto
-    ventas = Venta.query.filter_by(
-        empresa_id=empresa_id,
-        producto_id=producto_id
-    ).order_by(Venta.semana_simulacion).all()
-    
-    # Agrupar por d�a
-    ventas_por_dia = {}
-    for venta in ventas:
-        dia = venta.semana_simulacion
-        if dia not in ventas_por_dia:
-            ventas_por_dia[dia] = {'solicitado': 0, 'vendido': 0, 'perdido': 0}
-        ventas_por_dia[dia]['solicitado'] += venta.cantidad_solicitada
-        ventas_por_dia[dia]['vendido'] += venta.cantidad_vendida
-        ventas_por_dia[dia]['perdido'] += venta.cantidad_perdida
-    
-    dias = sorted(ventas_por_dia.keys())
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    if not simulacion:
+        return jsonify({'error': 'No hay simulación activa'}), 404
+
+    dias = list(range(-30, simulacion.dia_actual + 1))
+    if 0 in dias:
+        dias.remove(0)
+
+    demanda_rows = db.session.query(
+        DemandaMercadoDiaria.dia_simulacion,
+        func.sum(DemandaMercadoDiaria.demanda_base).label('demanda_total')
+    ).filter(
+        DemandaMercadoDiaria.simulacion_id == simulacion.id,
+        DemandaMercadoDiaria.producto_id == producto_id,
+        DemandaMercadoDiaria.dia_simulacion >= -30,
+        DemandaMercadoDiaria.dia_simulacion <= simulacion.dia_actual,
+    ).group_by(DemandaMercadoDiaria.dia_simulacion).all()
+
+    ventas_rows = db.session.query(
+        Venta.semana_simulacion,
+        func.sum(Venta.cantidad_vendida).label('vendido_total'),
+        func.sum(Venta.cantidad_perdida).label('perdido_total')
+    ).filter(
+        Venta.empresa_id == empresa_id,
+        Venta.producto_id == producto_id,
+        Venta.semana_simulacion >= -30,
+        Venta.semana_simulacion <= simulacion.dia_actual,
+    ).group_by(Venta.semana_simulacion).all()
+
+    demanda_por_dia = {d: 0 for d in dias}
+    vendido_por_dia = {d: 0 for d in dias}
+    perdido_por_dia = {d: 0 for d in dias}
+
+    for row in demanda_rows:
+        dia = int(row.dia_simulacion)
+        if dia in demanda_por_dia:
+            demanda_por_dia[dia] = int(round(row.demanda_total or 0))
+
+    for row in ventas_rows:
+        dia = int(row.semana_simulacion)
+        if dia in vendido_por_dia:
+            vendido_por_dia[dia] = int(round(row.vendido_total or 0))
+            perdido_por_dia[dia] = int(round(row.perdido_total or 0))
     
     resultado = {
         'labels': dias,
         'datasets': [{
             'label': 'Demanda (Solicitado)',
-            'data': [ventas_por_dia[dia]['solicitado'] for dia in dias],
+            'data': [demanda_por_dia[dia] for dia in dias],
             'borderColor': '#3498db',
             'backgroundColor': 'rgba(52, 152, 219, 0.1)',
             'tension': 0.4
         }, {
             'label': 'Vendido',
-            'data': [ventas_por_dia[dia]['vendido'] for dia in dias],
+            'data': [vendido_por_dia[dia] for dia in dias],
             'borderColor': '#2ecc71',
             'backgroundColor': 'rgba(46, 204, 113, 0.1)',
             'tension': 0.4
         }, {
             'label': 'Perdido',
-            'data': [ventas_por_dia[dia]['perdido'] for dia in dias],
+            'data': [perdido_por_dia[dia] for dia in dias],
             'borderColor': '#e74c3c',
             'backgroundColor': 'rgba(231, 76, 60, 0.1)',
             'tension': 0.4
@@ -1333,36 +1801,6 @@ def dashboard_compras():
     inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
     inventarios_dict = {inv.producto_id: inv for inv in inventarios}
     
-    # Analizar cada producto
-    analisis_productos = []
-    for producto in productos:
-        inventario = inventarios_dict.get(producto.id)
-        
-        if inventario:
-            # Obtener ventas recientes
-            ventas = Venta.query.filter_by(
-                empresa_id=empresa.id,
-                producto_id=producto.id
-            ).order_by(Venta.semana_simulacion.desc()).limit(14).all()
-            
-            # Analizar inventario
-            analisis = analizar_inventario(inventario, ventas)
-            
-            analisis_productos.append({
-                'producto': producto,
-                'inventario': inventario,
-                **analisis
-            })
-    
-    # Priorizar productos
-    productos_priorizados = priorizar_productos_compra(analisis_productos)
-    
-    # Requerimientos de Planeaci�n pendientes
-    requerimientos = RequerimientoCompra.query.filter_by(
-        empresa_id=empresa.id,
-        estado='pendiente'
-    ).order_by(RequerimientoCompra.created_at.desc()).all()
-    
     # �rdenes de compra recientes
     ordenes_compra = Compra.query.filter_by(empresa_id=empresa.id)\
         .order_by(Compra.semana_orden.desc())\
@@ -1377,61 +1815,101 @@ def dashboard_compras():
     # Capital comprometido
     capital_comprometido = sum([o.costo_total for o in ordenes_transito])
     capital_libre = empresa.capital_actual - capital_comprometido
-    
-    # Histórico de 30 días (antes de la simulación activa)
-    historico_ventas = Venta.query.filter_by(
-        empresa_id=empresa.id
-    ).filter(
-        Venta.semana_simulacion < 0
-    ).order_by(Venta.semana_simulacion.desc()).all()
-    
-    total_ventas_historico = sum(v.cantidad_vendida for v in historico_ventas) if historico_ventas else 0
-    promedio_diario_historico = total_ventas_historico / 30 if historico_ventas else 0
+
+    disrupcion_retraso_activa = _disrupcion_retraso_proveedor_activa(simulacion, empresa.id)
     
     return render_template('estudiante/compras/dashboard.html',
                          simulacion=simulacion,
                          empresa=empresa,
                          productos=productos,
                          inventarios_dict=inventarios_dict,
-                         productos_priorizados=productos_priorizados,
-                         requerimientos=requerimientos,
                          ordenes_compra=ordenes_compra,
                          ordenes_transito=ordenes_transito,
                          capital_comprometido=capital_comprometido,
                          capital_libre=capital_libre,
-                         historico_ventas=historico_ventas,
-                         total_ventas_historico=total_ventas_historico,
-                         promedio_diario_historico=promedio_diario_historico)
+                         disrupcion_retraso_activa=disrupcion_retraso_activa)
 
 
 @bp.route('/compras/exportar-ventas-csv')
 @login_required
 @estudiante_required
 def exportar_ventas_csv():
-    """Exporta ventas para pronóstico externo (día, producto, unidades vendidas, región)."""
+    """Exporta demanda base + operación de la empresa para análisis diario."""
     empresa = current_user.empresa
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    if not simulacion:
+        flash('No hay simulación activa para exportar datos.', 'warning')
+        return redirect(url_for('estudiante.dashboard_general'))
 
-    ventas = Venta.query.filter(
+    dia_hasta = int(simulacion.dia_actual or 1)
+
+    demanda_rows = DemandaMercadoDiaria.query.filter(
+        DemandaMercadoDiaria.simulacion_id == simulacion.id,
+        DemandaMercadoDiaria.dia_simulacion >= -30,
+        DemandaMercadoDiaria.dia_simulacion <= dia_hasta,
+        DemandaMercadoDiaria.dia_simulacion != 0,
+    ).order_by(
+        DemandaMercadoDiaria.dia_simulacion.asc(),
+        DemandaMercadoDiaria.producto_id.asc(),
+        DemandaMercadoDiaria.region.asc(),
+    ).all()
+
+    ventas_rows = db.session.query(
+        Venta.semana_simulacion,
+        Venta.producto_id,
+        Venta.region,
+        func.sum(Venta.cantidad_solicitada).label('pedidos_demandados'),
+        func.sum(Venta.cantidad_vendida).label('unidades_vendidas'),
+        func.sum(Venta.cantidad_perdida).label('unidades_perdidas'),
+        func.sum(Venta.ingreso_total).label('ingreso_total')
+    ).filter(
         Venta.empresa_id == empresa.id,
-        Venta.cantidad_vendida > 0
-    ).order_by(Venta.semana_simulacion.asc(), Venta.producto_id.asc()).all()
+        Venta.semana_simulacion >= -30,
+        Venta.semana_simulacion <= dia_hasta,
+        Venta.semana_simulacion != 0,
+    ).group_by(
+        Venta.semana_simulacion,
+        Venta.producto_id,
+        Venta.region,
+    ).all()
+
+    ventas_map = {
+        (int(v.semana_simulacion), int(v.producto_id), v.region): {
+            'pedidos_demandados': int(round(v.pedidos_demandados or 0)),
+            'unidades_vendidas': int(round(v.unidades_vendidas or 0)),
+            'unidades_perdidas': int(round(v.unidades_perdidas or 0)),
+            'ingreso_total': float(v.ingreso_total or 0),
+        }
+        for v in ventas_rows
+    }
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['dia_venta', 'producto', 'unidades_vendidas', 'region'])
+    writer.writerow([
+        'dia_simulacion',
+        'producto',
+        'region',
+        'demanda_base',
+    ])
 
-    for venta in ventas:
+    for row in demanda_rows:
+        key = (int(row.dia_simulacion), int(row.producto_id), row.region)
+        v = ventas_map.get(key, {})
+        producto_nombre = row.producto.nombre if row.producto else row.producto_id
+
         writer.writerow([
-            venta.semana_simulacion,
-            venta.producto.nombre if venta.producto else venta.producto_id,
-            int(round(venta.cantidad_vendida or 0)),
-            venta.region,
+            int(row.dia_simulacion),
+            producto_nombre,
+            row.region,
+            int(round(row.demanda_base or 0)),
         ])
 
     response = make_response(output.getvalue())
     output.close()
     response.headers['Content-Type'] = 'text/csv; charset=utf-8'
-    response.headers['Content-Disposition'] = 'attachment; filename=ventas_para_pronostico.csv'
+    response.headers['Content-Disposition'] = (
+        f'attachment; filename=demanda_ventas_empresa_{empresa.id}_hasta_dia_{dia_hasta}.csv'
+    )
     return response
 
 
@@ -1704,30 +2182,6 @@ def crear_pedido_general():
         if not solicitudes:
             flash('Debes ingresar al menos una cantidad mayor a 0 para crear el pedido general.', 'warning')
             return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
-
-        # Validar mínimos de pedido por tamaño de producto
-        for producto_id, cantidad in solicitudes:
-            producto = productos_activos.get(producto_id)
-            if not producto:
-                continue
-
-            # Determinar si es 750ml o 1L según el código
-            es_750ml = '750' in producto.codigo
-            es_1l = '1L' in producto.codigo or 'L' in producto.codigo.upper()
-
-            pedido_minimo = 0
-            if es_750ml:
-                pedido_minimo = 50
-            elif es_1l:
-                pedido_minimo = 40
-
-            if pedido_minimo > 0 and cantidad < pedido_minimo:
-                flash(
-                    f'El producto {producto.nombre} tiene un pedido mínimo de {pedido_minimo} unidades. '
-                    f'Has ingresado {cantidad:.0f}.',
-                    'error'
-                )
-                return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
 
         ordenes_preparadas = []
         for producto_id, cantidad in solicitudes:
@@ -2329,9 +2783,8 @@ def crear_despacho_regional():
 
         dias_entrega_efectivos = max(1, dias_entrega_region + delay_f)
         semana_entrega = simulacion.dia_actual + dias_entrega_efectivos
-        costo_base_transporte = round(
-            cantidad * COSTO_TRANSPORTE_POR_UNIDAD_DIA * dias_entrega_efectivos * mult
-        )
+        tarifa_region = _tarifa_transporte_region(region)
+        costo_base_transporte = round(cantidad * tarifa_region * mult)
 
         # Crear despacho
         despacho = DespachoRegional(
@@ -2924,6 +3377,7 @@ def api_generar_todas_ordenes():
 @bp.route('/api/logistica/stock')
 @login_required
 @estudiante_required
+@rol_required('logistica')
 def api_logistica_stock():
     """Obtener stock disponible para despachos"""
     empresa = current_user.empresa
@@ -2968,6 +3422,63 @@ def api_logistica_stock():
             'sobrestock_total': sobrestock_total,
             'costo_sobrestock_total': round(costo_sobrestock_total, 2)
         }
+    })
+
+
+@bp.route('/api/logistica/pedidos-dia')
+@login_required
+@estudiante_required
+@rol_required('logistica')
+def api_logistica_pedidos_dia():
+    """Retorna pedidos del día agrupados por región según aprobaciones de Ventas."""
+    empresa = current_user.empresa
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+
+    if not simulacion:
+        return jsonify({'success': False, 'message': 'No hay simulación activa'}), 400
+
+    aprobaciones = _obtener_aprobaciones_ventas_dia(empresa.id, simulacion.dia_actual)
+    producto_ids = sorted({pid for (pid, _region) in aprobaciones.keys()})
+    productos = Producto.query.filter(Producto.id.in_(producto_ids)).all() if producto_ids else []
+    productos_map = {p.id: p for p in productos}
+
+    pedidos_region = {}
+    for (producto_id, region), cantidad_aprobada in aprobaciones.items():
+        cantidad_aprobada = int(round(cantidad_aprobada or 0))
+        if cantidad_aprobada <= 0:
+            continue
+        region_info = pedidos_region.setdefault(region, {
+            'region': region,
+            'unidades_solicitadas': 0,
+            'detalle_productos': [],
+        })
+        producto = productos_map.get(producto_id)
+        region_info['unidades_solicitadas'] += cantidad_aprobada
+        region_info['detalle_productos'].append({
+            'producto_id': producto_id,
+            'producto_nombre': producto.nombre if producto else f'Producto {producto_id}',
+            'unidades_solicitadas': cantidad_aprobada,
+        })
+
+    pedidos = []
+    for region in REGIONES_CANONICAS:
+        if region in pedidos_region:
+            info = pedidos_region[region]
+            info['detalle_productos'] = sorted(
+                info['detalle_productos'],
+                key=lambda item: item['producto_nombre']
+            )
+            pedidos.append(info)
+
+    catalogo_vehiculos = _obtener_capacidades_vehiculos(simulacion, empresa.id)
+
+    return jsonify({
+        'success': True,
+        'dia_actual': simulacion.dia_actual,
+        'pedidos': pedidos,
+        'vehiculos': _serializar_vehiculos(catalogo_vehiculos),
+        'falla_flota_activa': _disrupcion_falla_flota_activa(simulacion, empresa.id),
+        'falla_flota_opcion': _opcion_falla_flota(simulacion, empresa.id),
     })
 
 
@@ -3022,9 +3533,8 @@ def api_logistica_despachar():
 
     dias_entrega_efectivos = max(1, dias_entrega_region + delay_f)
     dia_llegada = simulacion.dia_actual + dias_entrega_efectivos
-    costo_base_transporte = round(
-        cantidad * COSTO_TRANSPORTE_POR_UNIDAD_DIA * dias_entrega_efectivos * mult
-    )
+    tarifa_region = _tarifa_transporte_region(region)
+    costo_base_transporte = round(cantidad * tarifa_region * mult)
 
     # Crear despacho
     despacho = DespachoRegional(
@@ -3083,157 +3593,326 @@ def api_logistica_despachar():
 @bp.route('/api/logistica/despachar-multiple', methods=['POST'])
 @login_required
 @estudiante_required
+@rol_required('logistica')
 def api_logistica_despachar_multiple():
-    """Crear m�ltiples despachos a diferentes regiones en una sola operaci�n"""
+    """Guarda asignaciones diarias de logística por vehículo para todos los pedidos."""
     try:
         data = request.get_json()
-        producto_id = data.get('producto_id')
-        despachos_data = data.get('despachos', [])  # [{region: 'Andina', cantidad: 50}, ...]
-        
-        if not producto_id or not despachos_data:
+        asignaciones = data.get('asignaciones', [])
+
+        if not asignaciones:
             return jsonify({
                 'success': False,
-                'message': 'Datos incompletos'
+                'message': 'No se recibieron asignaciones para procesar.'
             }), 400
-        
-        # Validar que hay al menos un despacho
-        if len(despachos_data) == 0:
-            return jsonify({
-                'success': False,
-                'message': 'Debe especificar al menos una regi�n con cantidad'
-            }), 400
-        
+
         empresa = current_user.empresa
         if not empresa:
             return jsonify({
                 'success': False,
                 'message': 'No tienes una empresa asignada'
             }), 400
-            
+
         simulacion = Simulacion.query.filter_by(activa=True).first()
         if not simulacion:
             return jsonify({
                 'success': False,
                 'message': 'No hay simulaci�n activa'
             }), 400
-            
-        producto = Producto.query.get(producto_id)
-        inventario = Inventario.query.filter_by(
+
+        decision_existente = Decision.query.filter_by(
             empresa_id=empresa.id,
-            producto_id=producto_id
+            tipo_decision='logistica_asignacion_vehiculos',
+            semana_simulacion=simulacion.dia_actual,
         ).first()
-        
-        if not producto or not inventario:
+        if decision_existente:
             return jsonify({
                 'success': False,
-                'message': 'Producto no encontrado en inventario'
-            }), 404
-        
-        # Calcular cantidad total
-        cantidad_total = sum(d.get('cantidad', 0) for d in despachos_data)
-        
-        # Validar stock suficiente
-        if inventario.cantidad_actual < cantidad_total:
-            return jsonify({
-                'success': False,
-                'message': f'Stock insuficiente. Disponible: {inventario.cantidad_actual}, Solicitado: {cantidad_total}'
+                'message': 'Las asignaciones logísticas de este día ya fueron registradas.'
             }), 400
-        
-        # Tiempos de entrega seg�n regi�n
-        despachos_creados = []
 
-        # Efecto disrupcion 3 (falla_flota) — se aplica a todos los despachos del lote
-        from utils.procesamiento_dias import obtener_efecto_logistico_empresa
-        efecto_flota = obtener_efecto_logistico_empresa(simulacion.id, empresa.id)
-
-        # Crear cada despacho
-        for despacho_info in despachos_data:
-            region = despacho_info.get('region')
-            cantidad = despacho_info.get('cantidad', 0)
-
+        aprobaciones = _obtener_aprobaciones_ventas_dia(empresa.id, simulacion.dia_actual)
+        demanda_por_region = {}
+        demanda_por_producto_region = {}
+        for (producto_id, region), cantidad_aprobada in aprobaciones.items():
+            cantidad = int(round(cantidad_aprobada or 0))
             if cantidad <= 0:
                 continue
+            demanda_por_region[region] = demanda_por_region.get(region, 0) + cantidad
+            demanda_por_producto_region[(producto_id, region)] = cantidad
 
+        if not demanda_por_region:
+            return jsonify({
+                'success': False,
+                'message': 'No hay aprobaciones de Ventas para el día actual.'
+            }), 400
+
+        vehiculos_catalogo = _obtener_capacidades_vehiculos(simulacion, empresa.id)
+        from utils.procesamiento_dias import obtener_efecto_logistico_empresa
+        efecto_flota = obtener_efecto_logistico_empresa(simulacion.id, empresa.id)
+        opcion_falla_flota = _opcion_falla_flota(simulacion, empresa.id)
+        uso_por_vehiculo = {codigo: 0 for codigo in vehiculos_catalogo.keys()}
+        vehiculos_usados = set()
+        regiones_enviadas = set()
+        total_por_producto = {}
+        total_por_region = {}
+
+        for item in asignaciones:
+            region = item.get('region')
+            vehiculo = (item.get('vehiculo') or '').strip().upper()
+            solicitadas = int(item.get('unidades_solicitadas', 0))
+            enviar = int(item.get('unidades_enviar', 0))
+
+            if region not in demanda_por_region:
+                return jsonify({
+                    'success': False,
+                    'message': f'Asignación inválida para región {region}.'
+                }), 400
+
+            demanda_real = demanda_por_region[region]
+            if solicitadas <= 0:
+                return jsonify({
+                    'success': False,
+                    'message': f'Debes definir una cantidad mayor a cero para {region}.'
+                }), 400
+
+            if solicitadas > demanda_real:
+                return jsonify({
+                    'success': False,
+                    'message': f'Las unidades de {region} no pueden superar la demanda disponible ({demanda_real}).'
+                }), 400
+
+            if vehiculo not in vehiculos_catalogo:
+                return jsonify({
+                    'success': False,
+                    'message': f'Vehículo {vehiculo} no válido.'
+                }), 400
+
+            if vehiculo != 'EXTERNO' and vehiculo in vehiculos_usados:
+                return jsonify({
+                    'success': False,
+                    'message': f'El vehículo {vehiculo} ya fue asignado a otra región.'
+                }), 400
+            if vehiculo != 'EXTERNO':
+                vehiculos_usados.add(vehiculo)
+
+            if opcion_falla_flota == 'B' and vehiculo == 'EXTERNO':
+                return jsonify({
+                    'success': False,
+                    'message': 'Con la opción B de falla de flota, no se permite usar vehículo externo.'
+                }), 400
+
+            conf_vehiculo = vehiculos_catalogo[vehiculo]
+            if not conf_vehiculo['disponible']:
+                return jsonify({
+                    'success': False,
+                    'message': f'El {conf_vehiculo["nombre"]} está fuera de operación por disrupción activa.'
+                }), 400
+
+            if vehiculo != 'EXTERNO':
+                uso_por_vehiculo[vehiculo] += enviar
+            if vehiculo != 'EXTERNO' and conf_vehiculo['capacidad'] is not None and uso_por_vehiculo[vehiculo] > conf_vehiculo['capacidad']:
+                return jsonify({
+                    'success': False,
+                    'message': (
+                        f'Capacidad excedida en {conf_vehiculo["nombre"]}: '
+                        f'{uso_por_vehiculo[vehiculo]} / {conf_vehiculo["capacidad"]}.'
+                    )
+                }), 400
+
+            total_por_region[region] = enviar
+            regiones_enviadas.add(region)
+
+        faltantes = [
+            region for region in demanda_por_region.keys()
+            if region not in regiones_enviadas
+        ]
+        if faltantes:
+            return jsonify({
+                'success': False,
+                'message': 'Debes asignar vehículo y envío para todos los pedidos del día.'
+            }), 400
+
+        # Validación por producto: el stock debe alcanzar para cumplir todo el día.
+        inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
+        inventario_map = {inv.producto_id: inv for inv in inventarios}
+        productos = Producto.query.filter(Producto.id.in_([pid for (pid, _r) in demanda_por_producto_region.keys()])).all()
+        productos_map = {p.id: p for p in productos}
+
+        for (producto_id, region), cantidad in demanda_por_producto_region.items():
+            inventario = inventario_map.get(producto_id)
+            if not inventario or int(round(inventario.cantidad_actual or 0)) < cantidad:
+                producto = Producto.query.get(producto_id)
+                nombre = producto.nombre if producto else f'Producto {producto_id}'
+                return jsonify({
+                    'success': False,
+                    'message': f'Stock insuficiente para {nombre} en {region}.'
+                }), 400
+
+        # Una asignación por región puede contener varias referencias. Se registran internamente.
+        detalle_despachos = []
+        movimientos_por_producto = {}
+
+        for item in asignaciones:
+            region = item.get('region')
+            vehiculo = (item.get('vehiculo') or '').strip().upper()
+            cantidad_total_region = int(item.get('unidades_enviar', 0))
+            solicitadas = int(item.get('unidades_solicitadas', 0))
+
+            if region not in demanda_por_region:
+                continue
+
+            demandas_region = [
+                {
+                    'producto_id': pid,
+                    'cantidad': cant,
+                }
+                for (pid, reg), cant in demanda_por_producto_region.items()
+                if reg == region and int(round(cant or 0)) > 0
+            ]
             dias_entrega_region = calcular_tiempo_entrega_region(region)
+            capacidad_vehiculo = vehiculos_catalogo.get(vehiculo, {}).get('capacidad')
+
+            if vehiculo == 'EXTERNO':
+                unidades_externo_region = cantidad_total_region
+                unidades_principal_region = 0
+            else:
+                capacidad_vehiculo = capacidad_vehiculo or 0
+                unidades_principal_region = min(cantidad_total_region, capacidad_vehiculo)
+                unidades_externo_region = max(0, cantidad_total_region - unidades_principal_region)
+
+            if opcion_falla_flota == 'B' and unidades_externo_region > 0:
+                return jsonify({
+                    'success': False,
+                    'message': (
+                        f'La región {region} excede la capacidad interna del vehículo asignado. '
+                        'Con opción B no se permite transporte externo.'
+                    )
+                }), 400
+
             delay_f = 0
             mult = 1.0
-
             if efecto_flota:
                 mult = efecto_flota.get('costo_multiplicador', 1.0)
                 delay_f = efecto_flota.get('delay_semanas', 0)
 
             dias_entrega_efectivos = max(1, dias_entrega_region + delay_f)
             dia_llegada = simulacion.dia_actual + dias_entrega_efectivos
-            costo_t = round(
-                cantidad * COSTO_TRANSPORTE_POR_UNIDAD_DIA * dias_entrega_efectivos * mult
-            )
 
-            # Crear despacho
-            despacho = DespachoRegional(
+            restante_externo = unidades_externo_region
+            restante_principal = unidades_principal_region
+
+            for idx, demanda in enumerate(demandas_region):
+                cantidad = int(round(demanda.get('cantidad') or 0))
+                if cantidad <= 0:
+                    continue
+                producto_id = int(demanda.get('producto_id'))
+                producto = productos_map.get(producto_id)
+
+                if cantidad_total_region > 0:
+                    if idx == len(demandas_region) - 1:
+                        cantidad_externa = restante_externo
+                        cantidad_principal = cantidad - cantidad_externa
+                    else:
+                        cantidad_externa = int(round(cantidad * (unidades_externo_region / cantidad_total_region))) if unidades_externo_region > 0 else 0
+                        cantidad_externa = min(cantidad_externa, restante_externo)
+                        cantidad_principal = cantidad - cantidad_externa
+                        cantidad_principal = min(cantidad_principal, restante_principal)
+                        cantidad_externa = cantidad - cantidad_principal
+                    restante_externo -= cantidad_externa
+                    restante_principal -= cantidad_principal
+                else:
+                    cantidad_principal = cantidad
+                    cantidad_externa = 0
+
+                tarifa_region = _tarifa_transporte_region(region)
+                costo_t = round(
+                    (cantidad_principal * tarifa_region * mult)
+                    + (cantidad_externa * tarifa_region * mult * 2)
+                )
+
+                despacho = DespachoRegional(
+                    empresa_id=empresa.id,
+                    producto_id=producto_id,
+                    region=region,
+                    cantidad=cantidad,
+                    semana_despacho=simulacion.dia_actual,
+                    semana_entrega_estimado=dia_llegada,
+                    costo_transporte=costo_t,
+                    estado='en_transito',
+                    usuario_logistica_id=current_user.id,
+                    ventas_asociadas={
+                        'vehiculo': vehiculo,
+                        'vehiculo_externo': 'EXTERNO' if cantidad_externa > 0 or vehiculo == 'EXTERNO' else None,
+                        'region_total': cantidad_total_region,
+                        'cantidad_principal': cantidad_principal,
+                        'cantidad_externa': cantidad_externa,
+                        'unidades_solicitadas': solicitadas,
+                    },
+                    observaciones=f'Asignación logística día {simulacion.dia_actual}. Región: {region}. Vehículo: {vehiculo}.'
+                )
+                db.session.add(despacho)
+
+                detalle_despachos.append({
+                    'producto_id': producto_id,
+                    'producto_nombre': producto.nombre if producto else f'Producto {producto_id}',
+                    'region': region,
+                    'vehiculo': vehiculo,
+                    'vehiculo_externo': 'EXTERNO' if cantidad_externa > 0 or vehiculo == 'EXTERNO' else None,
+                    'cantidad': cantidad,
+                    'cantidad_principal': cantidad_principal,
+                    'cantidad_externa': cantidad_externa,
+                    'dia_llegada': dia_llegada,
+                })
+
+                movimientos_por_producto[producto_id] = movimientos_por_producto.get(producto_id, 0) + cantidad
+
+        for producto_id, total_cantidad in movimientos_por_producto.items():
+            inventario = inventario_map.get(producto_id)
+            saldo_anterior = int(round(inventario.cantidad_actual or 0))
+            inventario.cantidad_actual = max(0, saldo_anterior - total_cantidad)
+            saldo_nuevo = int(round(inventario.cantidad_actual or 0))
+
+            movimiento = MovimientoInventario(
                 empresa_id=empresa.id,
                 producto_id=producto_id,
-                region=region,
-                cantidad=cantidad,
-                semana_despacho=simulacion.dia_actual,
-                semana_entrega_estimado=dia_llegada,
-                costo_transporte=costo_t,
-                estado='en_transito',
-                usuario_logistica_id=current_user.id
+                tipo_movimiento='salida_despacho',
+                cantidad=total_cantidad,
+                saldo_anterior=saldo_anterior,
+                saldo_nuevo=saldo_nuevo,
+                semana_simulacion=simulacion.dia_actual,
+                observaciones='Despacho diario por asignación de vehículos',
+                usuario_id=current_user.id
             )
+            db.session.add(movimiento)
 
-            db.session.add(despacho)
-            despachos_creados.append({
-                'region': region,
-                'cantidad': cantidad,
-                'dia_llegada': dia_llegada
-            })
-        
-        # Actualizar inventario una sola vez con el total
-        saldo_anterior = inventario.cantidad_actual
-        inventario.cantidad_actual = max(0, int(round((inventario.cantidad_actual or 0) - cantidad_total)))
-        saldo_nuevo = inventario.cantidad_actual
-        
-        # Registrar movimiento total
-        regiones_str = ', '.join([f"{d['region']}: {d['cantidad']}" for d in despachos_creados])
-        movimiento = MovimientoInventario(
-            empresa_id=empresa.id,
-            producto_id=producto_id,
-            tipo_movimiento='salida_despacho',
-            cantidad=cantidad_total,
-            saldo_anterior=saldo_anterior,
-            saldo_nuevo=saldo_nuevo,
-            semana_simulacion=simulacion.dia_actual,
-            observaciones=f'Despachos m�ltiples ({regiones_str})',
-            usuario_id=current_user.id
-        )
-        
-        # Registrar decisi�n
+        cantidad_total = sum(d['cantidad'] for d in detalle_despachos)
+
         decision = Decision(
             usuario_id=current_user.id,
             empresa_id=empresa.id,
-            tipo_decision='despacho_regional_multiple',
+            tipo_decision='logistica_asignacion_vehiculos',
             semana_simulacion=simulacion.dia_actual,
             datos_decision={
-                'producto_id': producto_id,
-                'producto_nombre': producto.nombre,
                 'cantidad_total': cantidad_total,
-                'despachos': despachos_creados,
-                'descripcion': f'Despachos de {cantidad_total} unidades de {producto.nombre} a {len(despachos_creados)} regiones'
+                'despachos': detalle_despachos,
+                'uso_vehiculos': uso_por_vehiculo,
+                'descripcion': f'Asignación logística diaria: {len(detalle_despachos)} envíos y {cantidad_total} unidades.'
             }
         )
-        
-        db.session.add(movimiento)
+
         db.session.add(decision)
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
-            'message': f'{len(despachos_creados)} despachos creados exitosamente',
-            'despachos_creados': len(despachos_creados),
+            'message': f'Asignación guardada: {len(detalle_despachos)} despachos creados.',
+            'despachos_creados': len(detalle_despachos),
             'cantidad_total': cantidad_total,
-            'despachos': despachos_creados
+            'despachos': detalle_despachos,
+            'uso_vehiculos': uso_por_vehiculo,
         })
-    
+
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -3245,9 +3924,13 @@ def api_logistica_despachar_multiple():
 @bp.route('/api/logistica/transito')
 @login_required
 @estudiante_required
+@rol_required('logistica')
 def api_logistica_transito():
     """Obtener compras y despachos en tr�nsito"""
     empresa = current_user.empresa
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    if not simulacion:
+        return jsonify({'success': False, 'message': 'No hay simulación activa'}), 400
     
     # Compras en tr�nsito
     compras = Compra.query.filter_by(
@@ -3262,7 +3945,9 @@ def api_logistica_transito():
             'producto_id': compra.producto_id,
             'producto_nombre': compra.producto.nombre,
             'cantidad': compra.cantidad,
-            'semana_entrega': compra.semana_entrega
+            'semana_orden': compra.semana_orden,
+            'semana_entrega': compra.semana_entrega,
+            'lista_para_recibir': compra.semana_entrega <= simulacion.dia_actual,
         })
     
     # Despachos en tr�nsito
@@ -3273,13 +3958,19 @@ def api_logistica_transito():
     
     despachos_data = []
     for despacho in despachos:
+        vehiculo = 'N/A'
+        if isinstance(despacho.ventas_asociadas, dict):
+            vehiculo = despacho.ventas_asociadas.get('vehiculo', vehiculo)
+
         despachos_data.append({
             'id': despacho.id,
             'producto_id': despacho.producto_id,
             'producto_nombre': despacho.producto.nombre,
             'cantidad': despacho.cantidad,
             'region_destino': despacho.region,
-            'dia_llegada': despacho.semana_entrega_estimado
+            'dia_llegada': despacho.semana_entrega_estimado,
+            'semana_llegada': despacho.semana_entrega_estimado,
+            'vehiculo': vehiculo,
         })
     
     return jsonify({
@@ -3294,7 +3985,7 @@ def api_logistica_transito():
 @estudiante_required
 @rol_required('logistica')
 def api_logistica_fill_rate_region():
-    """API: Fill rate (nivel de servicio) acumulado por región"""
+    """API: Fill rate (nivel de servicio) acumulado desde el día 1 por región"""
     empresa_id = current_user.empresa_id
     simulacion = Simulacion.query.filter_by(activa=True).first()
     if not simulacion:
@@ -3309,6 +4000,9 @@ def api_logistica_fill_rate_region():
         ventas_region = Venta.query.filter_by(
             empresa_id=empresa_id,
             region=region
+        ).filter(
+            Venta.semana_simulacion >= 1,
+            Venta.semana_simulacion <= simulacion.dia_actual,
         ).all()
         total_solicitado = sum(v.cantidad_solicitada for v in ventas_region)
         total_vendido = sum(v.cantidad_vendida for v in ventas_region)
