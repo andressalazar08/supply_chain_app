@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from sqlalchemy import func
 from models import (Usuario, Empresa, Simulacion, Inventario, Venta, Compra, Decision,
                     Producto, Pronostico, RequerimientoCompra, MovimientoInventario, DespachoRegional,
-                    DisrupcionEmpresa, DemandaMercadoDiaria)
+                    DisrupcionEmpresa, DemandaMercadoDiaria, DisponibilidadVehiculo)
 from extensions import db
 from datetime import datetime
 from utils.pronosticos import (
@@ -26,8 +26,10 @@ from utils.inventario import (
 from utils.logistica import (
     calcular_tiempo_entrega_region, procesar_recepcion_compra, validar_despacho_region,
     distribuir_stock_por_demanda, analizar_cobertura_regional, generar_alertas_logistica,
-    sugerir_redistribucion, calcular_stock_disponible_despacho
+    sugerir_redistribucion, calcular_stock_disponible_despacho,
+    obtener_ciclo_region, seleccionar_vehiculos_optimos
 )
+from utils.parametros_iniciales import FLOTA_VEHICULOS
 bp = Blueprint('estudiante', __name__, url_prefix='/estudiante')
 
 # Tarifa base de transporte por unidad según región (flota propia).
@@ -92,12 +94,18 @@ PROVEEDORES_COMPRA = {
 }
 
 VEHICULOS_LOGISTICA = {
-    'V1': {'nombre': 'Vehículo 1', 'capacidad': 270, 'externo': False},
-    'V2': {'nombre': 'Vehículo 2', 'capacidad': 440, 'externo': False},
-    'V3': {'nombre': 'Vehículo 3', 'capacidad': 385, 'externo': False},
-    'V4': {'nombre': 'Vehículo 4', 'capacidad': 305, 'externo': False},
-    'V5': {'nombre': 'Vehículo 5', 'capacidad': 340, 'externo': False},
-    'EXTERNO': {'nombre': 'Vehículo externo', 'capacidad': None, 'externo': True},
+    codigo: {
+        'nombre': f'Vehículo {codigo}',
+        'capacidad': conf.get('capacidad'),
+        'externo': bool(conf.get('por_unidad', False)),
+    }
+    for codigo, conf in FLOTA_VEHICULOS.items()
+    if codigo != 'V_EXTERNO'
+}
+VEHICULOS_LOGISTICA['EXTERNO'] = {
+    'nombre': 'Vehículo externo',
+    'capacidad': None,
+    'externo': True,
 }
 
 
@@ -138,7 +146,24 @@ def _obtener_capacidades_vehiculos(simulacion, empresa_id):
             'capacidad': conf['capacidad'],
             'externo': conf['externo'],
             'disponible': True,
+            'dia_retorno': None,
         }
+
+    # Marcar vehículos ocupados por ciclo de uso.
+    if simulacion:
+        ocupados = db.session.query(
+            DisponibilidadVehiculo.vehiculo_id,
+            db.func.max(DisponibilidadVehiculo.dia_disponible_retorno).label('dia_retorno')
+        ).filter(
+            DisponibilidadVehiculo.empresa_id == empresa_id,
+            DisponibilidadVehiculo.dia_disponible_retorno >= simulacion.dia_actual,
+        ).group_by(
+            DisponibilidadVehiculo.vehiculo_id
+        ).all()
+        for vehiculo_id, dia_retorno in ocupados:
+            if vehiculo_id in catalogo:
+                catalogo[vehiculo_id]['disponible'] = False
+                catalogo[vehiculo_id]['dia_retorno'] = int(dia_retorno)
 
     if _disrupcion_falla_flota_activa(simulacion, empresa_id):
         propios = [
@@ -154,6 +179,14 @@ def _obtener_capacidades_vehiculos(simulacion, empresa_id):
     return catalogo
 
 
+def _codigos_propios_disponibles(simulacion, empresa_id):
+    catalogo = _obtener_capacidades_vehiculos(simulacion, empresa_id)
+    return [
+        codigo for codigo, conf in catalogo.items()
+        if conf['disponible'] and not conf['externo'] and conf['capacidad']
+    ]
+
+
 def _serializar_vehiculos(catalogo):
     return [
         {
@@ -162,6 +195,7 @@ def _serializar_vehiculos(catalogo):
             'capacidad': v['capacidad'],
             'externo': v['externo'],
             'disponible': v['disponible'],
+            'dia_retorno': v.get('dia_retorno'),
         }
         for v in catalogo.values()
     ]
@@ -790,11 +824,19 @@ def dashboard_ventas():
 
 def _obtener_aprobaciones_ventas_dia(empresa_id, dia_simulacion):
     """Obtiene mapa de aprobaciones guardadas por Ventas para el día actual."""
-    decision = Decision.query.filter_by(
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+
+    query = Decision.query.filter_by(
         empresa_id=empresa_id,
         tipo_decision='ventas_aprobacion_diaria',
         semana_simulacion=dia_simulacion
-    ).order_by(Decision.created_at.desc()).first()
+    )
+
+    # Aislar decisiones de ventas a la simulación activa (evita arrastre entre reinicios).
+    if simulacion and simulacion.fecha_inicio:
+        query = query.filter(Decision.created_at >= simulacion.fecha_inicio)
+
+    decision = query.order_by(Decision.created_at.desc()).first()
 
     mapa = {}
     if not decision or not decision.datos_decision:
@@ -807,6 +849,36 @@ def _obtener_aprobaciones_ventas_dia(empresa_id, dia_simulacion):
         if pid and region:
             mapa[(pid, region)] = max(0, cant)
     return mapa
+
+
+def _saldo_despachable_por_ventas(empresa_id, dia_simulacion, producto_id, region):
+    """Retorna (aprobado, ya_despachado, saldo_pendiente) para producto-región del día."""
+    aprobaciones = _obtener_aprobaciones_ventas_dia(empresa_id, dia_simulacion)
+    aprobado = int(aprobaciones.get((int(producto_id), region), 0) or 0)
+
+    ya_despachado = db.session.query(
+        db.func.coalesce(db.func.sum(DespachoRegional.cantidad), 0)
+    ).filter(
+        DespachoRegional.empresa_id == empresa_id,
+        DespachoRegional.producto_id == int(producto_id),
+        DespachoRegional.region == region,
+        DespachoRegional.semana_despacho == dia_simulacion,
+    ).scalar() or 0
+
+    ya_despachado = int(round(float(ya_despachado)))
+    saldo = max(0, aprobado - ya_despachado)
+    return aprobado, ya_despachado, saldo
+
+
+def _vehiculo_ocupado_por_ciclo(empresa_id, vehiculo_id, dia_actual):
+    """Retorna día de retorno si el vehículo está ocupado por ciclo en el día actual."""
+    return db.session.query(
+        db.func.max(DisponibilidadVehiculo.dia_disponible_retorno)
+    ).filter(
+        DisponibilidadVehiculo.empresa_id == empresa_id,
+        DisponibilidadVehiculo.vehiculo_id == vehiculo_id,
+        DisponibilidadVehiculo.dia_disponible_retorno >= dia_actual,
+    ).scalar()
 
 
 @bp.route('/api/ventas/pedidos-dia')
@@ -1812,9 +1884,10 @@ def dashboard_compras():
         estado='en_transito'
     ).order_by(Compra.semana_entrega.asc()).all()
 
-    # Capital comprometido
+    # Capital en Compras: se muestra el capital actual real de la empresa.
+    # Las órdenes en tránsito se informan, pero no descuentan nuevamente en este panel.
     capital_comprometido = sum([o.costo_total for o in ordenes_transito])
-    capital_libre = empresa.capital_actual - capital_comprometido
+    capital_libre = float(empresa.capital_actual or 0)
 
     disrupcion_retraso_activa = _disrupcion_retraso_proveedor_activa(simulacion, empresa.id)
     
@@ -2768,6 +2841,28 @@ def crear_despacho_regional():
             flash(validacion['recomendacion'], 'error')
             return redirect(url_for('estudiante.vista_despacho'))
         
+        # Restringir despacho al aprobado por Ventas en el día actual
+        aprobado, ya_despachado, saldo = _saldo_despachable_por_ventas(
+            current_user.empresa_id,
+            simulacion.dia_actual,
+            producto_id,
+            region,
+        )
+        cantidad_int = int(round(cantidad or 0))
+        if aprobado <= 0:
+            flash(f'No hay venta aprobada para {region} en este producto.', 'error')
+            return redirect(url_for('estudiante.vista_despacho'))
+        if saldo <= 0:
+            flash(f'Ya despachaste todo lo aprobado por Ventas para {region} ({aprobado} unds).', 'error')
+            return redirect(url_for('estudiante.vista_despacho'))
+        if cantidad_int > saldo:
+            flash(
+                f'Despacho excede lo aprobado por Ventas en {region}. '
+                f'Aprobado: {aprobado}, ya despachado: {ya_despachado}, saldo: {saldo}.',
+                'error'
+            )
+            return redirect(url_for('estudiante.vista_despacho'))
+
         # Calcular tiempo de entrega
         dias_entrega_region = calcular_tiempo_entrega_region(region)
         semana_entrega = simulacion.dia_actual + dias_entrega_region
@@ -2783,8 +2878,12 @@ def crear_despacho_regional():
 
         dias_entrega_efectivos = max(1, dias_entrega_region + delay_f)
         semana_entrega = simulacion.dia_actual + dias_entrega_efectivos
-        tarifa_region = _tarifa_transporte_region(region)
-        costo_base_transporte = round(cantidad * tarifa_region * mult)
+        codigos_disponibles = _codigos_propios_disponibles(simulacion, current_user.empresa_id)
+        seleccion_vehiculos = seleccionar_vehiculos_optimos(cantidad, region, codigos_disponibles)
+
+        costo_base_transporte = round(seleccion_vehiculos['costo_total'] * mult)
+
+        vehiculos_asignados = seleccion_vehiculos['vehiculos']
 
         # Crear despacho
         despacho = DespachoRegional(
@@ -2796,6 +2895,7 @@ def crear_despacho_regional():
             semana_entrega_estimado=semana_entrega,
             cantidad=cantidad,
             costo_transporte=costo_base_transporte,
+            vehiculos_asignados=vehiculos_asignados,
             estado='en_transito'
         )
         
@@ -2816,12 +2916,43 @@ def crear_despacho_regional():
             observaciones=f"Despacho a regi�n {region}"
         )
         
+        if 'V_EXTERNO' in vehiculos_asignados:
+            despacho.costo_unitario_externo = 3000.0
+
         db.session.add(despacho)
         db.session.add(movimiento)
         db.session.flush()
         
         # Vincular movimiento con despacho
         movimiento.despacho_id = despacho.id
+        # Registrar uso de vehículos propios hasta su día de retorno
+        dia_retorno = simulacion.dia_actual + obtener_ciclo_region(region)
+        for codigo_vehiculo in vehiculos_asignados:
+            if codigo_vehiculo == 'V_EXTERNO':
+                continue
+            ocupacion_vigente = _vehiculo_ocupado_por_ciclo(
+                current_user.empresa_id,
+                codigo_vehiculo,
+                simulacion.dia_actual,
+            )
+            if ocupacion_vigente:
+                flash(
+                    f'El vehículo {codigo_vehiculo} está fuera de servicio por ciclo. '
+                    f'Disponible desde el día {int(ocupacion_vigente) + 1}.',
+                    'error'
+                )
+                db.session.rollback()
+                return redirect(url_for('estudiante.vista_despacho'))
+            uso = DisponibilidadVehiculo(
+                empresa_id=current_user.empresa_id,
+                vehiculo_id=codigo_vehiculo,
+                dia_disponible_retorno=dia_retorno,
+            )
+            db.session.add(uso)
+
+        # Restar costo de transporte del capital
+        empresa = current_user.empresa
+        empresa.capital_actual = max(0, float(empresa.capital_actual or 0) - costo_base_transporte)
         
         # Registrar decisi�n
         decision = Decision(
@@ -2833,7 +2964,8 @@ def crear_despacho_regional():
                 'producto_id': producto_id,
                 'region': region,
                 'cantidad': cantidad,
-                'semana_entrega': semana_entrega
+                'semana_entrega': semana_entrega,
+                'costo_transporte': costo_base_transporte
             }
         )
         
@@ -2843,7 +2975,7 @@ def crear_despacho_regional():
         if validacion.get('alerta_stock_bajo'):
             flash(f'Despacho creado. {validacion["recomendacion"]}', 'warning')
         else:
-            flash(f'Despacho creado: {cantidad:.0f} unidades a {region}. Llegada estimada: d�a {semana_entrega}', 'success')
+            flash(f"Despacho a {region} creado exitosamente. Vehículos: {len(vehiculos_asignados)}. Costo: ${costo_base_transporte:,.0f}", "success")
         
         return redirect(url_for('estudiante.vista_despacho'))
     
@@ -3517,6 +3649,33 @@ def api_logistica_despachar():
             'success': False, 
             'message': f'Stock insuficiente. Disponible: {inventario.cantidad_actual}'
         }), 400
+
+    # Restringir despacho al aprobado por Ventas en el día actual
+    aprobado, ya_despachado, saldo = _saldo_despachable_por_ventas(
+        empresa.id,
+        simulacion.dia_actual,
+        producto_id,
+        region,
+    )
+    cantidad_int = int(round(float(cantidad or 0)))
+    if aprobado <= 0:
+        return jsonify({
+            'success': False,
+            'message': f'No hay venta aprobada para {region} en este producto.'
+        }), 400
+    if saldo <= 0:
+        return jsonify({
+            'success': False,
+            'message': f'Ya despachaste todo lo aprobado por Ventas para {region} ({aprobado} unds).'
+        }), 400
+    if cantidad_int > saldo:
+        return jsonify({
+            'success': False,
+            'message': (
+                f'Despacho excede lo aprobado por Ventas en {region}. '
+                f'Aprobado: {aprobado}, ya despachado: {ya_despachado}, saldo: {saldo}.'
+            )
+        }), 400
     
     # Calcular tiempo de entrega segun region
     dias_entrega_region = calcular_tiempo_entrega_region(region)
@@ -3533,8 +3692,12 @@ def api_logistica_despachar():
 
     dias_entrega_efectivos = max(1, dias_entrega_region + delay_f)
     dia_llegada = simulacion.dia_actual + dias_entrega_efectivos
-    tarifa_region = _tarifa_transporte_region(region)
-    costo_base_transporte = round(cantidad * tarifa_region * mult)
+    codigos_disponibles = _codigos_propios_disponibles(simulacion, empresa.id)
+    seleccion_vehiculos = seleccionar_vehiculos_optimos(cantidad, region, codigos_disponibles)
+
+    costo_base_transporte = round(seleccion_vehiculos['costo_total'] * mult)
+
+    vehiculos_asignados = seleccion_vehiculos['vehiculos']
 
     # Crear despacho
     despacho = DespachoRegional(
@@ -3545,12 +3708,15 @@ def api_logistica_despachar():
         semana_despacho=simulacion.dia_actual,
         semana_entrega_estimado=dia_llegada,
         costo_transporte=costo_base_transporte,
+        vehiculos_asignados=vehiculos_asignados,
         estado='en_transito',
         usuario_logistica_id=current_user.id
     )
     
     # Actualizar inventario
+    saldo_anterior = int(round(inventario.cantidad_actual or 0))
     inventario.cantidad_actual = max(0, int(round((inventario.cantidad_actual or 0) - cantidad)))
+    saldo_nuevo = int(round(inventario.cantidad_actual or 0))
     
     # Registrar movimiento
     movimiento = MovimientoInventario(
@@ -3559,7 +3725,9 @@ def api_logistica_despachar():
         tipo_movimiento='salida_despacho',
         cantidad=cantidad,
         semana_simulacion=simulacion.dia_actual,
-        descripcion=f'Despacho a {region}',
+        saldo_anterior=saldo_anterior,
+        saldo_nuevo=saldo_nuevo,
+        observaciones=f'Despacho a {region}',
         usuario_id=current_user.id
     )
     
@@ -3579,6 +3747,35 @@ def api_logistica_despachar():
         }
     )
     
+    if 'V_EXTERNO' in vehiculos_asignados:
+        despacho.costo_unitario_externo = 3000.0
+
+    # Restar costo de transporte del capital
+    empresa.capital_actual = max(0, float(empresa.capital_actual or 0) - costo_base_transporte)
+
+    dia_retorno = simulacion.dia_actual + obtener_ciclo_region(region)
+    for codigo_vehiculo in vehiculos_asignados:
+        if codigo_vehiculo == 'V_EXTERNO':
+            continue
+        ocupacion_vigente = _vehiculo_ocupado_por_ciclo(
+            empresa.id,
+            codigo_vehiculo,
+            simulacion.dia_actual,
+        )
+        if ocupacion_vigente:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'El vehículo {codigo_vehiculo} está fuera de servicio por ciclo. '
+                    f'Disponible desde el día {int(ocupacion_vigente) + 1}.'
+                )
+            }), 400
+        uso = DisponibilidadVehiculo(
+            empresa_id=empresa.id,
+            vehiculo_id=codigo_vehiculo,
+            dia_disponible_retorno=dia_retorno,
+        )
+        db.session.add(uso)
     db.session.add(despacho)
     db.session.add(movimiento)
     db.session.add(decision)
@@ -3586,7 +3783,7 @@ def api_logistica_despachar():
     
     return jsonify({
         'success': True, 
-        'message': f'Despacho creado exitosamente. Llegar� a {region} el d�a {dia_llegada}'
+        'message': f'Despacho creado: {cantidad} unidades a {region}, costo transporte: ${costo_base_transporte:,.0f}'
     })
 
 
@@ -3655,11 +3852,17 @@ def api_logistica_despachar_multiple():
         vehiculos_usados = set()
         regiones_enviadas = set()
         total_por_producto = {}
-        total_por_region = {}
 
         for item in asignaciones:
             region = item.get('region')
-            vehiculo = (item.get('vehiculo') or '').strip().upper()
+            # Soportar array de vehículos o vehículo singular (compatibilidad hacia atrás)
+            vehiculos_item = item.get('vehiculos', [])
+            if isinstance(vehiculos_item, str):
+                vehiculos_item = [vehiculos_item]
+            if not vehiculos_item and item.get('vehiculo'):
+                vehiculos_item = [item.get('vehiculo')]
+            vehiculos_item = [v.strip().upper() for v in vehiculos_item if v]
+            
             solicitadas = int(item.get('unidades_solicitadas', 0))
             enviar = int(item.get('unidades_enviar', 0))
 
@@ -3676,51 +3879,91 @@ def api_logistica_despachar_multiple():
                     'message': f'Debes definir una cantidad mayor a cero para {region}.'
                 }), 400
 
-            if solicitadas > demanda_real:
-                return jsonify({
-                    'success': False,
-                    'message': f'Las unidades de {region} no pueden superar la demanda disponible ({demanda_real}).'
-                }), 400
-
-            if vehiculo not in vehiculos_catalogo:
-                return jsonify({
-                    'success': False,
-                    'message': f'Vehículo {vehiculo} no válido.'
-                }), 400
-
-            if vehiculo != 'EXTERNO' and vehiculo in vehiculos_usados:
-                return jsonify({
-                    'success': False,
-                    'message': f'El vehículo {vehiculo} ya fue asignado a otra región.'
-                }), 400
-            if vehiculo != 'EXTERNO':
-                vehiculos_usados.add(vehiculo)
-
-            if opcion_falla_flota == 'B' and vehiculo == 'EXTERNO':
-                return jsonify({
-                    'success': False,
-                    'message': 'Con la opción B de falla de flota, no se permite usar vehículo externo.'
-                }), 400
-
-            conf_vehiculo = vehiculos_catalogo[vehiculo]
-            if not conf_vehiculo['disponible']:
-                return jsonify({
-                    'success': False,
-                    'message': f'El {conf_vehiculo["nombre"]} está fuera de operación por disrupción activa.'
-                }), 400
-
-            if vehiculo != 'EXTERNO':
-                uso_por_vehiculo[vehiculo] += enviar
-            if vehiculo != 'EXTERNO' and conf_vehiculo['capacidad'] is not None and uso_por_vehiculo[vehiculo] > conf_vehiculo['capacidad']:
+            if solicitadas != demanda_real:
                 return jsonify({
                     'success': False,
                     'message': (
-                        f'Capacidad excedida en {conf_vehiculo["nombre"]}: '
-                        f'{uso_por_vehiculo[vehiculo]} / {conf_vehiculo["capacidad"]}.'
+                        f'La asignación de {region} debe coincidir con Ventas '
+                        f'({demanda_real} unidades aprobadas).'
                     )
                 }), 400
 
-            total_por_region[region] = enviar
+            if enviar != demanda_real:
+                return jsonify({
+                    'success': False,
+                    'message': (
+                        f'El despacho de {region} debe ser exactamente {demanda_real} '
+                        'unidades aprobadas por Ventas.'
+                    )
+                }), 400
+
+            # Validar que se hayan asignado vehículos
+            if not vehiculos_item:
+                return jsonify({
+                    'success': False,
+                    'message': f'Debes asignar al menos un vehículo para {region}.'
+                }), 400
+
+            # Validar cada vehículo
+            capacidad_total = 0
+            usa_externo = False
+            for vehiculo in vehiculos_item:
+                if vehiculo not in vehiculos_catalogo:
+                    return jsonify({
+                        'success': False,
+                        'message': f'Vehículo {vehiculo} no válido.'
+                    }), 400
+
+                if vehiculo == 'EXTERNO':
+                    usa_externo = True
+                    continue
+
+                if vehiculo in vehiculos_usados:
+                    return jsonify({
+                        'success': False,
+                        'message': f'El vehículo {vehiculo} ya fue asignado a otra región.'
+                    }), 400
+
+                if opcion_falla_flota == 'B' and usa_externo:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Con la opción B de falla de flota, no se permite usar vehículo externo.'
+                    }), 400
+
+                conf_vehiculo = vehiculos_catalogo[vehiculo]
+                if not conf_vehiculo['disponible']:
+                    dia_retorno = conf_vehiculo.get('dia_retorno')
+                    if dia_retorno:
+                        return jsonify({
+                            'success': False,
+                            'message': f'El {conf_vehiculo["nombre"]} está ocupado por ciclo de transporte. Disponible a partir del día {dia_retorno}.'
+                        }), 400
+                    else:
+                        return jsonify({
+                            'success': False,
+                            'message': f'El {conf_vehiculo["nombre"]} está fuera de operación por disrupción activa.'
+                        }), 400
+
+                # Validación dura en BD: si está ocupado por ciclo hoy, no se puede reasignar.
+                ocupacion_vigente = db.session.query(
+                    db.func.max(DisponibilidadVehiculo.dia_disponible_retorno)
+                ).filter(
+                    DisponibilidadVehiculo.empresa_id == empresa.id,
+                    DisponibilidadVehiculo.vehiculo_id == vehiculo,
+                    DisponibilidadVehiculo.dia_disponible_retorno >= simulacion.dia_actual,
+                ).scalar()
+                if ocupacion_vigente:
+                    return jsonify({
+                        'success': False,
+                        'message': (
+                            f'El vehículo {vehiculo} está fuera de servicio por ciclo de transporte. '
+                            f'Disponible desde el día {int(ocupacion_vigente) + 1}.'
+                        )
+                    }), 400
+                
+                vehiculos_usados.add(vehiculo)
+                capacidad_total += int(conf_vehiculo.get('capacidad') or 0)
+
             regiones_enviadas.add(region)
 
         faltantes = [
@@ -3752,10 +3995,19 @@ def api_logistica_despachar_multiple():
         # Una asignación por región puede contener varias referencias. Se registran internamente.
         detalle_despachos = []
         movimientos_por_producto = {}
+        vehiculos_bloqueados_dia = set()
+        costo_total_logistica = 0.0  # Acumular costos de transporte para restar del capital
 
         for item in asignaciones:
             region = item.get('region')
-            vehiculo = (item.get('vehiculo') or '').strip().upper()
+            # Soportar array de vehículos o vehículo singular (compatibilidad hacia atrás)
+            vehiculos_item = item.get('vehiculos', [])
+            if isinstance(vehiculos_item, str):
+                vehiculos_item = [vehiculos_item]
+            if not vehiculos_item and item.get('vehiculo'):
+                vehiculos_item = [item.get('vehiculo')]
+            vehiculos_item = [v.strip().upper() for v in vehiculos_item if v]
+            
             cantidad_total_region = int(item.get('unidades_enviar', 0))
             solicitadas = int(item.get('unidades_solicitadas', 0))
 
@@ -3771,15 +4023,49 @@ def api_logistica_despachar_multiple():
                 if reg == region and int(round(cant or 0)) > 0
             ]
             dias_entrega_region = calcular_tiempo_entrega_region(region)
-            capacidad_vehiculo = vehiculos_catalogo.get(vehiculo, {}).get('capacidad')
+            vehiculos_propios_region = []
+            cargas_por_vehiculo = {}
+            capacidad_total_propios = 0
+            unidades_externo_region = 0
 
-            if vehiculo == 'EXTERNO':
-                unidades_externo_region = cantidad_total_region
-                unidades_principal_region = 0
-            else:
-                capacidad_vehiculo = capacidad_vehiculo or 0
-                unidades_principal_region = min(cantidad_total_region, capacidad_vehiculo)
+            # Procesar múltiples vehículos seleccionados para esta región
+            for vehiculo in vehiculos_item:
+                if vehiculo == 'EXTERNO':
+                    unidades_externo_region = cantidad_total_region
+                else:
+                    if vehiculo in vehiculos_bloqueados_dia:
+                        return jsonify({
+                            'success': False,
+                            'message': f'El vehículo {vehiculo} ya fue consumido en otra asignación del día.'
+                        }), 400
+
+                    vehiculos_propios_region.append(vehiculo)
+                    vehiculos_bloqueados_dia.add(vehiculo)
+                    capacidad_vehiculo = int((vehiculos_catalogo.get(vehiculo, {}) or {}).get('capacidad') or 0)
+                    capacidad_total_propios += capacidad_vehiculo
+
+            # Calcular cuánto transporta cada tipo de vehículo
+            if vehiculos_propios_region:
+                unidades_principal_region = min(cantidad_total_region, capacidad_total_propios)
                 unidades_externo_region = max(0, cantidad_total_region - unidades_principal_region)
+            else:
+                unidades_principal_region = 0
+                unidades_externo_region = cantidad_total_region
+
+            restante_por_asignar = unidades_principal_region
+            for codigo_prop in vehiculos_propios_region:
+                capacidad_prop = int((vehiculos_catalogo.get(codigo_prop, {}) or {}).get('capacidad') or 0)
+                if capacidad_prop <= 0 or restante_por_asignar <= 0:
+                    cargas_por_vehiculo[codigo_prop] = 0
+                    continue
+                carga = min(capacidad_prop, restante_por_asignar)
+                cargas_por_vehiculo[codigo_prop] = carga
+                uso_por_vehiculo[codigo_prop] = uso_por_vehiculo.get(codigo_prop, 0) + carga
+                restante_por_asignar -= carga
+
+            costo_base_vehiculo_region = 0.0
+            for codigo_prop in vehiculos_propios_region:
+                costo_base_vehiculo_region += float(FLOTA_VEHICULOS.get(codigo_prop, {}).get('costo', 0))
 
             if opcion_falla_flota == 'B' and unidades_externo_region > 0:
                 return jsonify({
@@ -3799,8 +4085,19 @@ def api_logistica_despachar_multiple():
             dias_entrega_efectivos = max(1, dias_entrega_region + delay_f)
             dia_llegada = simulacion.dia_actual + dias_entrega_efectivos
 
+            # Bloquear vehículos propios usados hasta su retorno según ciclo de región.
+            for codigo_prop in vehiculos_propios_region:
+                uso_vehiculo = DisponibilidadVehiculo(
+                    empresa_id=empresa.id,
+                    vehiculo_id=codigo_prop,
+                    dia_disponible_retorno=simulacion.dia_actual + obtener_ciclo_region(region),
+                )
+                db.session.add(uso_vehiculo)
+
             restante_externo = unidades_externo_region
             restante_principal = unidades_principal_region
+            restante_costo_fijo_region = costo_base_vehiculo_region
+            restante_costo_externo_region = float(unidades_externo_region * 3000)
 
             for idx, demanda in enumerate(demandas_region):
                 cantidad = int(round(demanda.get('cantidad') or 0))
@@ -3825,11 +4122,22 @@ def api_logistica_despachar_multiple():
                     cantidad_principal = cantidad
                     cantidad_externa = 0
 
-                tarifa_region = _tarifa_transporte_region(region)
-                costo_t = round(
-                    (cantidad_principal * tarifa_region * mult)
-                    + (cantidad_externa * tarifa_region * mult * 2)
-                )
+                if unidades_externo_region > 0 and cantidad_principal <= 0:
+                    costo_t = round(cantidad * 3000 * mult)
+                else:
+                    if idx == len(demandas_region) - 1:
+                        costo_fijo_item = restante_costo_fijo_region
+                        costo_externo_item = restante_costo_externo_region
+                    else:
+                        proporcion = (cantidad / cantidad_total_region) if cantidad_total_region > 0 else 0
+                        costo_fijo_item = round(costo_base_vehiculo_region * proporcion, 2)
+                        costo_externo_item = round((unidades_externo_region * 3000) * proporcion, 2)
+                        costo_fijo_item = min(costo_fijo_item, restante_costo_fijo_region)
+                        costo_externo_item = min(costo_externo_item, restante_costo_externo_region)
+
+                    restante_costo_fijo_region -= costo_fijo_item
+                    restante_costo_externo_region -= costo_externo_item
+                    costo_t = round((costo_fijo_item + costo_externo_item) * mult)
 
                 despacho = DespachoRegional(
                     empresa_id=empresa.id,
@@ -3839,26 +4147,34 @@ def api_logistica_despachar_multiple():
                     semana_despacho=simulacion.dia_actual,
                     semana_entrega_estimado=dia_llegada,
                     costo_transporte=costo_t,
+                    vehiculos_asignados=(vehiculos_propios_region + (['V_EXTERNO'] if unidades_externo_region > 0 else [])),
                     estado='en_transito',
                     usuario_logistica_id=current_user.id,
                     ventas_asociadas={
-                        'vehiculo': vehiculo,
-                        'vehiculo_externo': 'EXTERNO' if cantidad_externa > 0 or vehiculo == 'EXTERNO' else None,
+                        'vehiculos': vehiculos_propios_region,
+                        'vehiculos_propios': vehiculos_propios_region,
+                        'cargas_por_vehiculo': cargas_por_vehiculo,
+                        'vehiculo_externo': 'EXTERNO' if cantidad_externa > 0 else None,
                         'region_total': cantidad_total_region,
                         'cantidad_principal': cantidad_principal,
                         'cantidad_externa': cantidad_externa,
                         'unidades_solicitadas': solicitadas,
                     },
-                    observaciones=f'Asignación logística día {simulacion.dia_actual}. Región: {region}. Vehículo: {vehiculo}.'
+                    observaciones=f'Asignación logística día {simulacion.dia_actual}. Región: {region}. Vehículos: {", ".join(vehiculos_propios_region)}.'
                 )
+                if cantidad_externa > 0:
+                    despacho.costo_unitario_externo = 3000.0
                 db.session.add(despacho)
+                
+                # Acumular costo de transporte
+                costo_total_logistica += costo_t
 
                 detalle_despachos.append({
                     'producto_id': producto_id,
                     'producto_nombre': producto.nombre if producto else f'Producto {producto_id}',
                     'region': region,
-                    'vehiculo': vehiculo,
-                    'vehiculo_externo': 'EXTERNO' if cantidad_externa > 0 or vehiculo == 'EXTERNO' else None,
+                    'vehiculos': vehiculos_propios_region,
+                    'vehiculo_externo': 'EXTERNO' if cantidad_externa > 0 else None,
                     'cantidad': cantidad,
                     'cantidad_principal': cantidad_principal,
                     'cantidad_externa': cantidad_externa,
@@ -3887,6 +4203,9 @@ def api_logistica_despachar_multiple():
             db.session.add(movimiento)
 
         cantidad_total = sum(d['cantidad'] for d in detalle_despachos)
+        
+        # Restar costo total de transporte del capital de la empresa
+        empresa.capital_actual = max(0, float(empresa.capital_actual or 0) - costo_total_logistica)
 
         decision = Decision(
             usuario_id=current_user.id,
@@ -3895,9 +4214,10 @@ def api_logistica_despachar_multiple():
             semana_simulacion=simulacion.dia_actual,
             datos_decision={
                 'cantidad_total': cantidad_total,
+                'costo_total_transporte': round(costo_total_logistica, 2),
                 'despachos': detalle_despachos,
                 'uso_vehiculos': uso_por_vehiculo,
-                'descripcion': f'Asignación logística diaria: {len(detalle_despachos)} envíos y {cantidad_total} unidades.'
+                'descripcion': f'Asignación logística diaria: {len(detalle_despachos)} envíos, {cantidad_total} unidades, costo transporte ${costo_total_logistica:,.0f}'
             }
         )
 

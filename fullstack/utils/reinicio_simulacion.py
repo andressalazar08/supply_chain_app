@@ -3,14 +3,25 @@ Utilidades para reiniciar simulación manteniendo histórico
 """
 from models import (Simulacion, Empresa, Producto, Inventario,
                     Venta, Metrica, Compra, DespachoRegional,
-                    MovimientoInventario, DisrupcionEmpresa, RequerimientoCompra)
+                    MovimientoInventario, DisrupcionEmpresa, RequerimientoCompra,
+                    DisponibilidadVehiculo, Decision)
 from extensions import db
 from datetime import datetime
 from utils.demanda_central import generar_base_demanda_simulacion
+from utils.parametros_iniciales import (
+    CAPITAL_INICIAL_EMPRESA_DEFAULT,
+    INVENTARIO_INICIAL_750_DEFAULT,
+    INVENTARIO_INICIAL_1L_DEFAULT,
+    DURACION_SIMULACION_SEMANAS,
+    DIAS_HISTORICO_DEMANDA,
+    CATALOGO_PRODUCTOS_BASE,
+    inventario_inicial_por_producto,
+    calcular_parametros_demanda,
+)
 
 
-def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None,
-                         inv_750ml=120, inv_1l=80):
+def reiniciar_simulacion(capital_inicial=CAPITAL_INICIAL_EMPRESA_DEFAULT, nombre_simulacion=None,
+                         inv_750ml=INVENTARIO_INICIAL_750_DEFAULT, inv_1l=INVENTARIO_INICIAL_1L_DEFAULT):
     """
     Crea una nueva simulación reutilizando las mismas empresas ya existentes.
     No se crean empresas nuevas: las del profesor se re-vinculan a la nueva
@@ -52,7 +63,7 @@ def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None,
             dia_actual=1,
             estado='pausado',
             fecha_inicio=datetime.utcnow(),
-            duracion_semanas=30,
+            duracion_semanas=DURACION_SIMULACION_SEMANAS,
             capital_inicial_empresas=capital_inicial,
             activa=True
         )
@@ -63,43 +74,24 @@ def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None,
         productos = Producto.query.filter_by(activo=True).all()
 
         # ── Calibración automática de demanda ──────────────────────────────────
-        # El stock inicial debe durar exactamente DIAS_COBERTURA días, creando
-        # presión real: si Compras no hace pedidos en los primeros días, el
-        # inventario se agota y el nivel de servicio cae visiblemente.
-        #
-        # demanda_promedio es semanal por región. En el motor competitivo:
-        #   consumo diario empresa = (demanda_promedio / 7) × REGIONES
-        #   stock inicial          = DIAS_COBERTURA × consumo_diario
-        # → demanda_promedio = inv_inicial × 7 / (DIAS_COBERTURA × REGIONES)
-        DIAS_COBERTURA    = 5      # días que debe durar el stock inicial
-        REGIONES          = 5
-        DIAS_REORDEN      = 3      # reordenar cuando quedan 3 días de stock
-        DIAS_SEGURIDAD    = 1      # colchón de seguridad: 1 día
-        FACTOR_DESVIACION = 0.20   # variación estándar = 20% de la demanda promedio
-
         for producto in productos:
-            inv_inicial = inv_750ml if '750ml' in producto.nombre else inv_1l
+            base_producto = CATALOGO_PRODUCTOS_BASE.get((producto.codigo or '').upper())
+            if base_producto:
+                producto.precio_base = float(base_producto['precio_base'])
+                producto.precio_actual = float(base_producto['precio_base'])
+                producto.precio_sugerido = float(base_producto['precio_base'])
+                producto.costo_unitario = float(base_producto['costo_unitario'])
 
-            # demanda_promedio semanal por región para cobertura de DIAS_COBERTURA días
-            nueva_demanda = max(1, round(
-                inv_inicial * 7 / (DIAS_COBERTURA * REGIONES)
-            ))
-            nueva_desviacion = max(1, round(nueva_demanda * FACTOR_DESVIACION))
+            inv_inicial = inventario_inicial_por_producto(producto, inv_750ml, inv_1l)
+            params = calcular_parametros_demanda(inv_inicial)
 
-            # Consumo diario de la empresa (todas las regiones)
-            demanda_diaria_empresa = nueva_demanda / 7.0 * REGIONES
-
-            nuevo_punto_reorden   = max(1, round(demanda_diaria_empresa * DIAS_REORDEN))
-            nuevo_stock_seguridad = max(1, round(demanda_diaria_empresa * DIAS_SEGURIDAD))
-            nuevo_stock_maximo    = 1500  # techo fijo general para todos los productos
-
-            producto.demanda_promedio   = nueva_demanda
-            producto.desviacion_demanda = nueva_desviacion
-            producto.stock_maximo       = nuevo_stock_maximo
+            producto.demanda_promedio = params['demanda_promedio']
+            producto.desviacion_demanda = params['desviacion_demanda']
+            producto.stock_maximo = params['stock_maximo']
 
             # Guardar valores calculados para usarlos en inventarios
-            producto._punto_reorden_calc   = nuevo_punto_reorden
-            producto._stock_seguridad_calc = nuevo_stock_seguridad
+            producto._punto_reorden_calc = params['punto_reorden']
+            producto._stock_seguridad_calc = params['stock_seguridad']
 
         # ── Fin calibración ────────────────────────────────────────────────────
 
@@ -114,6 +106,8 @@ def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None,
             MovimientoInventario.query.filter(MovimientoInventario.empresa_id.in_(ids)).delete(synchronize_session=False)
             DisrupcionEmpresa.query.filter(DisrupcionEmpresa.empresa_id.in_(ids)).delete(synchronize_session=False)
             RequerimientoCompra.query.filter(RequerimientoCompra.empresa_id.in_(ids)).delete(synchronize_session=False)
+            DisponibilidadVehiculo.query.filter(DisponibilidadVehiculo.empresa_id.in_(ids)).delete(synchronize_session=False)
+            Decision.query.filter(Decision.empresa_id.in_(ids)).delete(synchronize_session=False)
 
         for empresa in empresas:
             empresa.simulacion_id = nueva_simulacion.id
@@ -122,7 +116,7 @@ def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None,
 
             # 4. Resetear inventarios (actualizar existentes, crear si faltan)
             for producto in productos:
-                cantidad_inicial    = inv_750ml if '750ml' in producto.nombre else inv_1l
+                cantidad_inicial = inventario_inicial_por_producto(producto, inv_750ml, inv_1l)
                 punto_reorden_calc  = getattr(producto, '_punto_reorden_calc',   50)
                 stock_seguridad_calc = getattr(producto, '_stock_seguridad_calc', 20)
 
@@ -155,7 +149,11 @@ def reiniciar_simulacion(capital_inicial=50000000, nombre_simulacion=None,
         db.session.commit()
 
         # 6. Generar base central de demanda (histórico + horizonte simulación)
-        demanda_ok, demanda_msg = generar_base_demanda_simulacion(nueva_simulacion, dias_historico=30, replace=True)
+        demanda_ok, demanda_msg = generar_base_demanda_simulacion(
+            nueva_simulacion,
+            dias_historico=DIAS_HISTORICO_DEMANDA,
+            replace=True,
+        )
         if not demanda_ok:
             raise RuntimeError(demanda_msg)
 

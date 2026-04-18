@@ -13,24 +13,140 @@ def _qty_int(value) -> int:
 
 
 def calcular_tiempo_entrega_region(region: str) -> int:
+    """Calcula tiempo de entrega/ciclo logístico por región."""
+    from utils.parametros_iniciales import CICLOS_REGION
+    return int(CICLOS_REGION.get(region, 2))
+
+def obtener_ciclo_region(region: str) -> int:
     """
-    Calcula el tiempo de entrega en días según la región de Colombia
+    Obtiene el ciclo de reutilización (días) para un vehículo según la región
     
     Args:
-        region: Nombre de la región (Andina, Caribe, Pacífica, Orinoquía, Amazonía)
+        region: Nombre de la región
     
     Returns:
-        Días de tránsito
+        Cantidad de días de ciclo
     """
-    tiempos_entrega = {
-        'Andina': 1,      # Región central - más rápido
-        'Caribe': 2,      # Costa norte
-        'Pacífica': 2,    # Costa oeste
-        'Orinoquía': 3,   # Llanos orientales
-        'Amazonía': 4     # Región más alejada
-    }
+    from utils.parametros_iniciales import CICLOS_REGION
+    return CICLOS_REGION.get(region, 2)
+
+
+def obtener_configuracion_vehiculo(codigo_vehiculo: str) -> Dict[str, Any]:
+    """
+    Obtiene la configuración de un vehículo (capacidad, costo, etc.)
     
-    return tiempos_entrega.get(region, 2)
+    Args:
+        codigo_vehiculo: Código del vehículo (ej: 'V_350_1')
+    
+    Returns:
+        Diccionario con capacidad, costo y otras propiedades
+    """
+    from utils.parametros_iniciales import FLOTA_VEHICULOS
+    return FLOTA_VEHICULOS.get(codigo_vehiculo, {})
+
+
+def calcular_costo_transporte_vehiculo(codigo_vehiculo: str, cantidad: float = None) -> Dict[str, Any]:
+    """
+    Calcula el costo de transporte para un vehículo específico
+    
+    Args:
+        codigo_vehiculo: Código del vehículo
+        cantidad: Cantidad a transportar (solo usado para vehículo externo)
+    
+    Returns:
+        Diccionario con costo_total, es_por_unidad, y detalles
+    """
+    config = obtener_configuracion_vehiculo(codigo_vehiculo)
+    
+    if not config:
+        return {'error': 'Vehículo no encontrado', 'costo_total': 0}
+    
+    # Vehículo externo: costo por unidad
+    if config.get('por_unidad', False):
+        if cantidad is None:
+            return {'error': 'Cantidad requerida para vehículo externo', 'costo_total': 0}
+        costo = round(cantidad * config['costo'])
+        return {
+            'costo_total': costo,
+            'es_por_unidad': True,
+            'cantidad': cantidad,
+            'costo_unitario': config['costo']
+        }
+    
+    # Vehículos propios: costo plano
+    return {
+        'costo_total': config['costo'],
+        'es_por_unidad': False,
+        'capacidad': config['capacidad'],
+        'grupo': config.get('grupo', '')
+    }
+
+
+def seleccionar_vehiculos_optimos(cantidad: float, region: str, vehiculos_disponibles: List[str] = None) -> Dict[str, Any]:
+    """
+    Sugiere qué vehículos usar para transportar una cantidad a una región
+    
+    Args:
+        cantidad: Cantidad a transportar
+        region: Región destino
+    
+    Returns:
+        Diccionario con lista de vehículos recomendados y costos
+    """
+    from utils.parametros_iniciales import FLOTA_VEHICULOS
+
+    disponibles_set = set(vehiculos_disponibles or [])
+    
+    # Vehículos propios ordenados por capacidad descendente
+    vehiculos_propios = [
+        (cod, conf)
+        for cod, conf in sorted(FLOTA_VEHICULOS.items(), key=lambda x: x[1].get('capacidad', 0), reverse=True)
+        if conf.get('capacidad') is not None
+        and not conf.get('por_unidad', False)
+        and (not disponibles_set or cod in disponibles_set)
+    ]
+    
+    seleccion = []
+    cantidad_pendiente = cantidad
+    costo_total = 0
+    
+    # Intentar llenar con vehículos propios
+    for cod, conf in vehiculos_propios:
+        if cantidad_pendiente <= 0:
+            break
+        if cantidad_pendiente <= conf['capacidad']:
+            seleccion.append(cod)
+            costo_total += conf['costo']
+            cantidad_pendiente = 0
+            break
+        else:
+            seleccion.append(cod)
+            costo_total += conf['costo']
+            cantidad_pendiente -= conf['capacidad']
+    
+    # Si hay cantidad pendiente, usar vehículo externo
+    if cantidad_pendiente > 0:
+        externo_config = FLOTA_VEHICULOS.get('V_EXTERNO', {})
+        costo_externo = round(cantidad_pendiente * externo_config.get('costo', 3000))
+        seleccion.append('V_EXTERNO')
+        costo_total += costo_externo
+        return {
+            'vehiculos': seleccion,
+            'costo_total': costo_total,
+            'cantidad_vehiculos_propios': len([v for v in seleccion if v != 'V_EXTERNO']),
+            'cantidad_externo': cantidad_pendiente,
+            'costo_externo': costo_externo,
+            'usa_externo': True
+        }
+    
+    return {
+        'vehiculos': seleccion,
+        'costo_total': costo_total,
+        'cantidad_vehiculos_propios': len(seleccion),
+        'cantidad_externo': 0,
+        'costo_externo': 0,
+        'usa_externo': False
+    }
 
 
 def procesar_recepcion_compra(compra, inventario) -> Dict[str, Any]:

@@ -198,11 +198,11 @@
                                     <label class="form-label"><strong>Región Destino</strong></label>
                                     <select class="form-select" id="region" name="region" required onchange="actualizarTiempoEntrega()">
                                         <option value="">Seleccione región</option>
-                                        <option value="Andina" data-dias="1">Región Andina (1 día)</option>
-                                        <option value="Caribe" data-dias="2">Región Caribe (2 días)</option>
-                                        <option value="Pacífica" data-dias="2">Región Pacífica (2 días)</option>
-                                        <option value="Orinoquía" data-dias="3">Región Orinoquía (3 días)</option>
-                                        <option value="Amazonía" data-dias="4">Región Amazonía (4 días)</option>
+                                        <option value="Andina" data-dias="2">Región Andina (2 días)</option>
+                                        <option value="Caribe" data-dias="4">Región Caribe (4 días)</option>
+                                        <option value="Pacífica" data-dias="4">Región Pacífica (4 días)</option>
+                                        <option value="Orinoquía" data-dias="5">Región Orinoquía (5 días)</option>
+                                        <option value="Amazonía" data-dias="6">Región Amazonía (6 días)</option>
                                     </select>
                                 </div>
                                 
@@ -236,10 +236,10 @@
                                     <span class="badge badge-region region-{{ region|lower }}">{{ region }}</span>
                                     <small class="text-muted ms-2">
                                         <i class="fas fa-clock me-1"></i>
-                                        {% if region == 'Andina' %}1 día
-                                        {% elif region in ['Caribe', 'Pacífica'] %}2 días
-                                        {% elif region == 'Orinoquía' %}3 días
-                                        {% else %}4 días
+                                        {% if region == 'Andina' %}2 días
+                                        {% elif region in ['Caribe', 'Pacífica'] %}4 días
+                                        {% elif region == 'Orinoquía' %}5 días
+                                        {% else %}6 días
                                         {% endif %}
                                     </small>
                                 </div>

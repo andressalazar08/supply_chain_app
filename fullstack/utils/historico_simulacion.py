@@ -5,6 +5,11 @@ import random
 from datetime import datetime, timedelta
 from models import (Simulacion, Empresa, Producto, Inventario, Venta, Compra, DemandaMercadoDiaria)
 from extensions import db
+from utils.parametros_iniciales import (
+    DIAS_ARRANQUE_PEDIDOS,
+    MAX_UNIDADES_ORDENES_ARRANQUE,
+    DEMANDA_DIARIA_MEDIA_ARRANQUE,
+)
 
 
 def generar_historico_30dias(simulacion, empresas):
@@ -110,8 +115,9 @@ def generar_historico_30dias(simulacion, empresas):
 
 def generar_ordenes_iniciales(simulacion, empresas):
     """
-    Genera órdenes de compra que llegarán el Día 1.
-    Cantidad: 2-3 días de demanda promedio total (sin exceder 1500 unidades totales)
+    Genera órdenes de compra que llegarán en los Días 1, 2 y 3.
+    Cantidad diaria por producto: perfil objetivo definido por DEMANDA_DIARIA_MEDIA_ARRANQUE,
+    respetando capacidad máxima diaria MAX_UNIDADES_ORDENES_ARRANQUE.
     Estas órdenes aportan el "colchón inicial" para que no fallen en los primeros días.
     
     Args:
@@ -128,33 +134,40 @@ def generar_ordenes_iniciales(simulacion, empresas):
             return False, "No hay productos activos para generar órdenes iniciales"
         
         ordenes_creadas = 0
+        dias_entrega_iniciales = list(DIAS_ARRANQUE_PEDIDOS)
+        perfil_diario = {
+            codigo.upper(): int(cantidad)
+            for codigo, cantidad in DEMANDA_DIARIA_MEDIA_ARRANQUE.items()
+            if int(cantidad) > 0
+        }
+
+        total_perfil = sum(perfil_diario.values())
+        if total_perfil <= 0:
+            return False, 'El perfil de arranque está vacío.'
+
+        factor_ajuste = min(1.0, float(MAX_UNIDADES_ORDENES_ARRANQUE) / float(total_perfil))
         
         for empresa in empresas:
-            # Calcular demanda total promedio: suma de todas las demandas semanales / 7 (para convertir a diaria)
-            demanda_diaria_total = sum(p.demanda_promedio for p in PRODUCTOS) / 7
-            
-            # Cantidad a pedir: 2.5 días de demanda (para dar colchón de 2-3 días)
-            dias_cobertura = 2.5
-            cantidad_total_deseada = demanda_diaria_total * dias_cobertura
-            
-            # Limitar a máximo 1500 unidades totales
-            cantidad_total_a_pedir = min(cantidad_total_deseada, 1500)
-            
-            # Distribuir proporcionalmente por demanda de cada producto
-            for producto in PRODUCTOS:
-                proporcion = (producto.demanda_promedio / sum(p.demanda_promedio for p in PRODUCTOS))
-                cantidad_producto = int(round(cantidad_total_a_pedir * proporcion))
-                
-                if cantidad_producto > 0:
+            productos_por_codigo = {(p.codigo or '').upper(): p for p in PRODUCTOS}
+
+            for dia_entrega in dias_entrega_iniciales:
+                for codigo, cantidad_objetivo in perfil_diario.items():
+                    producto = productos_por_codigo.get(codigo)
+                    if not producto:
+                        continue
+
+                    cantidad_producto = int(round(cantidad_objetivo * factor_ajuste))
+                    if cantidad_producto <= 0:
+                        continue
+
                     costo_unitario = producto.costo_unitario
                     costo_total = cantidad_producto * costo_unitario
-                    
-                    # Orden llega el día 1 (semana_entrega = 1)
+
                     compra = Compra(
                         empresa_id=empresa.id,
                         producto_id=producto.id,
                         semana_orden=-1,  # "Ordenado" antes de empezar
-                        semana_entrega=1,  # Llega día 1
+                        semana_entrega=dia_entrega,
                         cantidad=cantidad_producto,
                         costo_unitario=costo_unitario,
                         costo_total=round(costo_total, 2),
@@ -164,7 +177,7 @@ def generar_ordenes_iniciales(simulacion, empresas):
                     ordenes_creadas += 1
         
         db.session.commit()
-        return True, f"Órdenes iniciales generadas: {ordenes_creadas} compras para Día 1"
+        return True, f"Órdenes iniciales generadas: {ordenes_creadas} compras distribuidas en Días 1, 2 y 3"
     
     except Exception as e:
         db.session.rollback()

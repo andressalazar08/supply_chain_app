@@ -19,6 +19,13 @@ from utils.procesamiento_dias import (
 )
 from utils.reinicio_simulacion import reiniciar_simulacion
 from utils.demanda_central import exportar_demanda_csv, importar_demanda_csv, generar_base_demanda_simulacion
+from utils.parametros_iniciales import (
+    CAPITAL_INICIAL_EMPRESA_DEFAULT,
+    INVENTARIO_INICIAL_750_DEFAULT,
+    INVENTARIO_INICIAL_1L_DEFAULT,
+    DURACION_SIMULACION_SEMANAS,
+    DIAS_HISTORICO_DEMANDA,
+)
 
 bp = Blueprint('profesor', __name__, url_prefix='/profesor')
 
@@ -65,12 +72,13 @@ def dashboard():
             dia_actual=1,
             estado='pausado',
             activa=True,
-            capital_inicial_empresas=50000000.0
+            duracion_semanas=DURACION_SIMULACION_SEMANAS,
+            capital_inicial_empresas=CAPITAL_INICIAL_EMPRESA_DEFAULT
         )
         db.session.add(simulacion)
         db.session.commit()
 
-        ok, _ = generar_base_demanda_simulacion(simulacion, dias_historico=30, replace=True)
+        ok, _ = generar_base_demanda_simulacion(simulacion, dias_historico=DIAS_HISTORICO_DEMANDA, replace=True)
         if ok:
             db.session.commit()
     
@@ -100,6 +108,9 @@ def dashboard():
                          total_estudiantes=total_estudiantes,
                          metricas_dia=metricas_dia,
                          disrupciones_sim=disrupciones_sim,
+                         capital_inicial_default=CAPITAL_INICIAL_EMPRESA_DEFAULT,
+                         inv_750_default=INVENTARIO_INICIAL_750_DEFAULT,
+                         inv_1l_default=INVENTARIO_INICIAL_1L_DEFAULT,
                          get_disrupcion=get_disrupcion)
 
 
@@ -168,7 +179,7 @@ def reiniciar_simulacion_endpoint():
     """Reinicia la simulación creando una nueva y manteniendo histórico"""
     try:
         # Obtener parámetros
-        capital_inicial = float(request.form.get('capital_inicial', 50000000))
+        capital_inicial = float(request.form.get('capital_inicial', CAPITAL_INICIAL_EMPRESA_DEFAULT))
         nombre_simulacion = request.form.get('nombre_simulacion', None)
         
         # Validar capital
@@ -177,8 +188,8 @@ def reiniciar_simulacion_endpoint():
             return redirect(url_for('profesor.dashboard'))
         
         # Parámetros de inventario inicial
-        inv_750ml = int(request.form.get('inv_750ml', 120))
-        inv_1l = int(request.form.get('inv_1l', 80))
+        inv_750ml = int(request.form.get('inv_750ml', INVENTARIO_INICIAL_750_DEFAULT))
+        inv_1l = int(request.form.get('inv_1l', INVENTARIO_INICIAL_1L_DEFAULT))
 
         # Ejecutar reinicio
         nueva_sim, mensaje = reiniciar_simulacion(

@@ -221,11 +221,11 @@
             </ul>
 
             <div class="tab-content" id="comprasTabsContent">
-                <div class="tab-pane fade" id="pedido-general" role="tabpanel">
+                <div class="tab-pane fade show active" id="pedido-general" role="tabpanel">
                     <div class="card mb-4">
                         <div class="card-body">
                             <div class="row mb-4">
-                                <div class="col-md-4">
+                                <div class="col-md-6">
                                     <div class="metric-card mb-0">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <div>
@@ -236,18 +236,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-4">
-                                    <div class="metric-card mb-0">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <p>Capital Comprometido</p>
-                                                <h3>${{ "{:,.0f}".format(capital_comprometido) }}</h3>
-                                            </div>
-                                            <i class="fas fa-lock text-warning"></i>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
+                                <div class="col-md-6">
                                     <div class="metric-card mb-0">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <div>
@@ -264,24 +253,15 @@
                                 <div class="card-body">
                                     <h5 class="card-title"><i class="fas fa-chart-pie me-2"></i>Gestión de Capital</h5>
                                     <div class="row align-items-center">
-                                        <div class="col-md-8">
+                                        <div class="col-md-12">
                                             <div class="capital-bar">
-                                                {% set porcentaje_libre = (capital_libre / empresa.capital_actual * 100) if empresa.capital_actual > 0 else 0 %}
-                                                {% set porcentaje_comprometido = (capital_comprometido / empresa.capital_actual * 100) if empresa.capital_actual > 0 else 0 %}
+                                                {% set porcentaje_disponible = (capital_libre / empresa.capital_inicial * 100) if empresa.capital_inicial > 0 else 0 %}
+                                                {% set porcentaje_disponible = 0 if porcentaje_disponible < 0 else porcentaje_disponible %}
+                                                {% set porcentaje_disponible_barra = 100 if porcentaje_disponible > 100 else porcentaje_disponible %}
 
-                                                <div class="capital-fill" style="width: {{ porcentaje_libre }}%;">
-                                                    {{ "%.1f"|format(porcentaje_libre) }}% Libre
+                                                <div class="capital-fill" style="width: {{ porcentaje_disponible_barra }}%;">
+                                                    {{ "%.1f"|format(porcentaje_disponible) }}% Disponible
                                                 </div>
-                                                <div class="capital-fill capital-comprometido" style="width: {{ porcentaje_comprometido }}%;">
-                                                    {{ "%.1f"|format(porcentaje_comprometido) }}% Comprometido
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-4 text-end">
-                                            <div><strong>Capital Total:</strong> ${{ "{:,.0f}".format(empresa.capital_actual) }}</div>
-                                            <div class="text-muted small">
-                                                Libre: ${{ "{:,.0f}".format(capital_libre) }} |
-                                                Comprometido: ${{ "{:,.0f}".format(capital_comprometido) }}
                                             </div>
                                         </div>
                                     </div>
@@ -302,15 +282,19 @@
                             <div class="alert alert-warning py-2">
                                 <strong>Disrupción activa: Retraso de proveedor estratégico.</strong><br>
                                 <small>
-                                    Proveedor actual: solo días pares y lead time 7 días.
-                                    Proveedor externo: lead time 3 días, +$5.000 por unidad.
+                                    Proveedor actual: solo días pares. Lead time según referencia: 4 días para Sangre de la Vid y Susurro Rosado, 6 días para los demás.
+                                    {% if proveedor_externo_habilitado %}
+                                    Proveedor externo: lead time 2 días para Sangre de la Vid y Susurro Rosado, 3 días para los demás, +$5.000 por unidad.
+                                    {% else %}
+                                    El proveedor externo no está habilitado con la decisión actual de la disrupción.
+                                    {% endif %}
                                     Revisa el mínimo indicado para cada producto.
                                 </small>
                             </div>
                             {% else %}
                             <div class="alert alert-info py-2">
                                 <small>
-                                    Operación normal: proveedor actual activo con lead time de 3 días.
+                                    Operación normal: lead time por referencia, 2 días para Sangre de la Vid y Susurro Rosado; 3 días para los demás.
                                 </small>
                             </div>
                             {% endif %}
@@ -321,8 +305,10 @@
                                     <div class="col-md-6">
                                         <label class="form-label">Proveedor para el pedido general</label>
                                         <select name="proveedor" id="pedidoGeneralProveedor" class="form-select" onchange="actualizarResumenPedidoGeneral()">
-                                            <option value="ACTUAL">Proveedor actual - días pares, lead time 7 días</option>
-                                            <option value="EXTERNO">Proveedor externo - +$5.000/u, lead time 3 días</option>
+                                            <option value="ACTUAL">Proveedor actual - días pares, lead time según referencia</option>
+                                            {% if proveedor_externo_habilitado %}
+                                            <option value="EXTERNO">Proveedor externo - +$5.000/u, lead time según referencia</option>
+                                            {% endif %}
                                         </select>
                                         <small class="text-muted">Esta opción aparece solo mientras la disrupción esté activa.</small>
                                     </div>
@@ -347,6 +333,8 @@
                                             {% for producto in productos %}
                                             {% set inv = inventarios_dict.get(producto.id) %}
                                             {% set minimo_externo = 60 if '750' in producto.codigo else (50 if '1L' in producto.codigo or 'L' in producto.codigo.upper() else 0) %}
+                                            {% set minimo_pedido = 30 if '750' in producto.codigo else (20 if '1L' in producto.codigo or 'L' in producto.codigo.upper() else 1) %}
+                                            {% set lead_time_base = 2 if 'SANGRE DE LA VID' in producto.nombre.upper() or 'SUSURRO ROSADO' in producto.nombre.upper() else 3 %}
                                             <tr>
                                                 <td>
                                                     <strong>{{ producto.nombre }}</strong><br>
@@ -354,7 +342,7 @@
                                                 </td>
                                                 <td>{{ "%.0f"|format(inv.cantidad_actual if inv else 0) }}</td>
                                                 <td>${{ "{:,.0f}".format(producto.costo_unitario) }}</td>
-                                                <td>3 días</td>
+                                                <td>{{ lead_time_base }} días</td>
                                                 <td>
                                                     {% if disrupcion_retraso_activa %}
                                                         {% if minimo_externo > 0 %}
@@ -371,14 +359,16 @@
                                                     <input
                                                         type="number"
                                                         min="0"
-                                                        step="1"
+                                                        step="{{ minimo_pedido }}"
                                                         name="qty_{{ producto.id }}"
                                                         class="form-control pedido-general-input"
                                                         data-costo="{{ producto.costo_unitario }}"
+                                                        data-minimo-pedido="{{ minimo_pedido }}"
                                                         data-minimo-externo="{{ minimo_externo }}"
                                                         data-producto="{{ producto.nombre }}"
                                                         placeholder="0"
                                                     >
+                                                    <small class="text-muted d-block mt-1">Si compras este producto, solo en bloques de {{ minimo_pedido }} unidades.</small>
                                                     <small class="text-danger d-none pedido-general-minimo-note"></small>
                                                 </td>
                                             </tr>
@@ -465,6 +455,7 @@
 {% block extra_js %}
 <script>
     const DISRUPCION_RETRASO_ACTIVA = {{ 'true' if disrupcion_retraso_activa else 'false' }};
+    const PROVEEDOR_EXTERNO_HABILITADO = {{ 'true' if proveedor_externo_habilitado else 'false' }};
     const DIA_ACTUAL = {{ simulacion.dia_actual }};
 
     const PROVEEDOR_CONFIG = {
@@ -489,6 +480,7 @@
         inputs.forEach((input) => {
             const cantidad = parseFloat(input.value) || 0;
             const costo = parseFloat(input.dataset.costo) || 0;
+            const minimoPedido = parseFloat(input.dataset.minimoPedido) || 1;
             const minimoExterno = parseFloat(input.dataset.minimoExterno) || 0;
             const producto = input.dataset.producto || 'Producto';
             const fila = input.closest('tr');
@@ -504,6 +496,17 @@
             }
             
             if (cantidad > 0) {
+                if (cantidad < minimoPedido || cantidad % minimoPedido !== 0) {
+                    hayError = true;
+                    errorMsg = `Las cantidades deben pedirse en bloques de ${minimoPedido} unidades por referencia.`;
+                    if (fila) {
+                        fila.classList.add('table-warning');
+                    }
+                    if (notaMinimo) {
+                        notaMinimo.textContent = `Bloques permitidos: ${minimoPedido} unidades.`;
+                        notaMinimo.classList.remove('d-none');
+                    }
+                }
                 // Mínimos solo aplican para proveedor externo en disrupción activa
                 if (DISRUPCION_RETRASO_ACTIVA && proveedor === 'EXTERNO' && minimoExterno > 0 && cantidad < minimoExterno) {
                     hayError = true;
@@ -526,6 +529,11 @@
         if (DISRUPCION_RETRASO_ACTIVA && proveedor === 'ACTUAL' && (DIA_ACTUAL % 2 !== 0) && items > 0) {
             hayError = true;
             errorMsg = 'Con disrupción activa, el proveedor actual solo recibe pedidos en días pares.';
+        }
+
+        if (DISRUPCION_RETRASO_ACTIVA && proveedor === 'EXTERNO' && !PROVEEDOR_EXTERNO_HABILITADO && items > 0) {
+            hayError = true;
+            errorMsg = 'El proveedor externo no está habilitado con la decisión actual de la disrupción.';
         }
 
         document.getElementById('pedidoGeneralItems').textContent = items;
