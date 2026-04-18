@@ -80,8 +80,12 @@ def _role_allowed(user_role, allowed_roles):
     return bool(_role_set_for_user(user_role).intersection(set(allowed_roles)))
 
 
-LEAD_TIME_COMPRA_BASE = 3
-LEAD_TIME_RETRASO_PROVEEDOR_ACTUAL = 7
+LEAD_TIME_BASE_REFERENCIA_ESPECIAL = 2
+LEAD_TIME_BASE_RESTO = 3
+LEAD_TIME_DISRUPCION_ACTUAL_REFERENCIA_ESPECIAL = 4
+LEAD_TIME_DISRUPCION_ACTUAL_RESTO = 6
+LEAD_TIME_DISRUPCION_EXTERNO_REFERENCIA_ESPECIAL = 2
+LEAD_TIME_DISRUPCION_EXTERNO_RESTO = 3
 COSTO_EXTRA_PROVEEDOR_EXTERNO = 5000
 
 PROVEEDORES_COMPRA = {
@@ -246,44 +250,86 @@ def _normalizar_proveedor(valor):
     return proveedor if proveedor in PROVEEDORES_COMPRA else 'ACTUAL'
 
 
+def _es_referencia_especial(producto):
+    nombre = (producto.nombre or '').upper()
+    return 'SANGRE DE LA VID' in nombre or 'SUSURRO ROSADO' in nombre
+
+
+def _calcular_lead_time_compra(producto, proveedor, dis_retraso_activa):
+    es_especial = _es_referencia_especial(producto)
+
+    if not dis_retraso_activa:
+        return LEAD_TIME_BASE_REFERENCIA_ESPECIAL if es_especial else LEAD_TIME_BASE_RESTO
+
+    if proveedor == 'ACTUAL':
+        return (
+            LEAD_TIME_DISRUPCION_ACTUAL_REFERENCIA_ESPECIAL
+            if es_especial
+            else LEAD_TIME_DISRUPCION_ACTUAL_RESTO
+        )
+
+    return (
+        LEAD_TIME_DISRUPCION_EXTERNO_REFERENCIA_ESPECIAL
+        if es_especial
+        else LEAD_TIME_DISRUPCION_EXTERNO_RESTO
+    )
+
+
+def _validar_multiplos_pedido(producto, cantidad):
+    """
+    Valida que la cantidad sea múltiplo correcto según tamaño del producto.
+    750mL: múltiplos de 30
+    1L: múltiplos de 20
+    Retorna: (es_valido, mensaje)
+    """
+    cantidad_int = int(cantidad) if cantidad == int(cantidad) else cantidad
+    
+    if '750' in producto.codigo:
+        if cantidad_int % 30 != 0:
+            return False, f"Productos de 750mL deben pedirse en múltiplos de 30 (ingresaste {cantidad_int})"
+    elif '1L' in producto.codigo or 'L' in producto.codigo.upper():
+        if cantidad_int % 20 != 0:
+            return False, f"Productos de 1L deben pedirse en múltiplos de 20 (ingresaste {cantidad_int})"
+    
+    return True, ""
+
+
 def _calcular_condiciones_compra(producto, cantidad, simulacion, empresa_id, proveedor):
     """Calcula costo/lead time según reglas operativas de Compras y disrupciones."""
     proveedor = _normalizar_proveedor(proveedor)
-    config = PROVEEDORES_COMPRA[proveedor]
+
+    # Validar múltiplos para ambos proveedores: 30 para 750mL, 20 para 1L
+    multiplo_valido, mensaje_multiplo = _validar_multiplos_pedido(producto, cantidad)
+    if not multiplo_valido:
+        return {
+            'ok': False,
+            'mensaje': f'{mensaje_multiplo} ({proveedor})'
+        }
 
     dis_retraso_activa = _disrupcion_retraso_proveedor_activa(simulacion, empresa_id)
+    opcion_retraso = _opcion_retraso_proveedor(simulacion, empresa_id)
 
-    # Sin disrupción: opera solo proveedor actual con lead time fijo de 3 días.
+    # Sin disrupción: opera solo proveedor actual.
     if not dis_retraso_activa:
         proveedor = 'ACTUAL'
-        config = PROVEEDORES_COMPRA[proveedor]
+    elif opcion_retraso == 'B':
+        proveedor = 'ACTUAL'
+
+    config = PROVEEDORES_COMPRA[proveedor]
 
     costo_unitario = float(producto.costo_unitario)
-    tiempo_entrega = LEAD_TIME_COMPRA_BASE
-    opcion_retraso = _opcion_retraso_proveedor(simulacion, empresa_id)
+    tiempo_entrega = _calcular_lead_time_compra(producto, proveedor, dis_retraso_activa)
 
     # Disrupción activa de retraso de proveedor estratégico.
     if dis_retraso_activa:
-        if opcion_retraso == 'B':
-            proveedor = 'ACTUAL'
-
         if proveedor == 'ACTUAL':
             if simulacion.dia_actual % 2 != 0:
                 return {
                     'ok': False,
                     'mensaje': 'Con disrupción activa, el proveedor actual solo recibe pedidos en días pares.'
                 }
-            tiempo_entrega = LEAD_TIME_RETRASO_PROVEEDOR_ACTUAL
         elif proveedor == 'EXTERNO':
-            tiempo_entrega = LEAD_TIME_COMPRA_BASE
             costo_unitario += COSTO_EXTRA_PROVEEDOR_EXTERNO
-
-            pedido_minimo = _pedido_minimo_externo(producto)
-            if pedido_minimo > 0 and cantidad < pedido_minimo:
-                return {
-                    'ok': False,
-                    'mensaje': f'Proveedor externo exige pedido mínimo de {pedido_minimo} unidades para {producto.nombre}.'
-                }
 
     delay_extra = 0
 
@@ -2232,7 +2278,6 @@ def crear_pedido_general():
     try:
         simulacion = Simulacion.query.filter_by(activa=True).first()
         empresa = current_user.empresa
-        proveedor = _normalizar_proveedor(request.form.get('proveedor', 'A'))
 
         productos_activos = {
             p.id: p for p in Producto.query.filter_by(activo=True).all()
@@ -2240,27 +2285,37 @@ def crear_pedido_general():
 
         solicitudes = []
         for key, value in request.form.items():
-            if not key.startswith('qty_'):
-                continue
+            # Procesa qty_actual_<id> y qty_externo_<id>
+            if key.startswith('qty_actual_') or key.startswith('qty_externo_'):
+                try:
+                    if key.startswith('qty_actual_'):
+                        producto_id = int(key.split('_', 2)[2])
+                        proveedor = 'ACTUAL'
+                    else:
+                        producto_id = int(key.split('_', 2)[2])
+                        proveedor = 'EXTERNO'
+                    cantidad = float(value or 0)
+                except (ValueError, TypeError, IndexError):
+                    continue
 
-            try:
-                producto_id = int(key.split('_', 1)[1])
-                cantidad = float(value or 0)
-            except (ValueError, TypeError):
-                continue
-
-            if cantidad > 0:
-                solicitudes.append((producto_id, cantidad))
+                if cantidad > 0:
+                    solicitudes.append((producto_id, cantidad, proveedor))
 
         if not solicitudes:
             flash('Debes ingresar al menos una cantidad mayor a 0 para crear el pedido general.', 'warning')
             return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
 
         ordenes_preparadas = []
-        for producto_id, cantidad in solicitudes:
+        for producto_id, cantidad, proveedor in solicitudes:
             producto = productos_activos.get(producto_id)
             if not producto:
                 flash(f'Producto inválido en pedido general: {producto_id}', 'error')
+                return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
+            # Validar múltiplos: 30 para 750mL, 20 para 1L
+            multiplo_valido, mensaje_multiplo = _validar_multiplos_pedido(producto, cantidad)
+            if not multiplo_valido:
+                flash(f"{producto.nombre} ({proveedor}): {mensaje_multiplo}", 'error')
                 return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
 
             condiciones = _calcular_condiciones_compra(
@@ -2271,7 +2326,7 @@ def crear_pedido_general():
                 proveedor=proveedor,
             )
             if not condiciones['ok']:
-                flash(f"{producto.nombre}: {condiciones['mensaje']}", 'error')
+                flash(f"{producto.nombre} ({proveedor}): {condiciones['mensaje']}", 'error')
                 return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
 
             costo_unitario = condiciones['costo_unitario']
@@ -2337,7 +2392,6 @@ def crear_pedido_general():
                     }
                     for item in ordenes_preparadas
                 ],
-                'proveedor_aplicado': proveedor,
                 'costo_total_general': costo_total_general
             }
         )
@@ -2345,7 +2399,67 @@ def crear_pedido_general():
         db.session.commit()
 
         flash(
-            f'Pedido general creado con proveedor {proveedor} y {len(ordenes_preparadas)} órdenes. '
+            f'Pedido general creado con {len(ordenes_preparadas)} órdenes. '
+            f'Costo total: ${costo_total_general:,.0f}.',
+            'success'
+        )
+        return redirect(url_for('estudiante.dashboard_compras') + '#ordenes')
+
+        costo_total_general = sum(item['costo_total'] for item in ordenes_preparadas)
+        ordenes_pendientes = Compra.query.filter_by(
+            empresa_id=empresa.id,
+            estado='en_transito'
+        ).all()
+
+        validacion = validar_capacidad_compra(
+            empresa.capital_actual,
+            costo_total_general,
+            ordenes_pendientes
+        )
+        if not validacion['puede_comprar']:
+            flash(f"Capital insuficiente para pedido general. {validacion['sugerencia']}", 'error')
+            return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
+
+        for item in ordenes_preparadas:
+            compra = Compra(
+                empresa_id=current_user.empresa_id,
+                producto_id=item['producto'].id,
+                semana_orden=simulacion.dia_actual,
+                semana_entrega=item['semana_entrega'],
+                cantidad=item['cantidad'],
+                costo_unitario=item['costo_unitario'],
+                costo_total=item['costo_total'],
+                estado='en_transito'
+            )
+            db.session.add(compra)
+
+        empresa.capital_actual -= costo_total_general
+
+        decision = Decision(
+            usuario_id=current_user.id,
+            empresa_id=current_user.empresa_id,
+            semana_simulacion=simulacion.dia_actual,
+            tipo_decision='orden_compra_general',
+            datos_decision={
+                'ordenes': [
+                    {
+                        'producto_id': item['producto'].id,
+                        'producto': item['producto'].nombre,
+                        'proveedor': item['proveedor'],
+                        'cantidad': item['cantidad'],
+                        'costo_total': item['costo_total'],
+                        'semana_entrega': item['semana_entrega']
+                    }
+                    for item in ordenes_preparadas
+                ],
+                'costo_total_general': costo_total_general
+            }
+        )
+        db.session.add(decision)
+        db.session.commit()
+
+        flash(
+            f'Pedido general creado con {len(ordenes_preparadas)} órdenes. '
             f'Costo total: ${costo_total_general:,.0f}.',
             'success'
         )
