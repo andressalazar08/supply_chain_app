@@ -147,6 +147,20 @@
         outline: none;
     }
     
+    .vehiculo-select {
+        min-height: 120px;
+        padding: 8px;
+    }
+    
+    .vehiculo-select option {
+        padding: 8px;
+    }
+    
+    .vehiculo-select option:checked {
+        background: #4facfe;
+        color: white;
+    }
+
     #matrizDespachos .producto-row:hover {
         background-color: #f8f9fa;
     }
@@ -613,9 +627,15 @@ async function cargarMatrizDespachos() {
                             <small class="text-muted">Demanda disponible: ${pedido.unidades_solicitadas.toLocaleString('es-CO')} unds</small>
                         </td>
                         <td class="text-center">
-                            <select class="form-select vehiculo-select" data-index="${index}">
-                                ${renderOpcionesVehiculo(null)}
-                            </select>
+                            <div class="vehiculo-grid">
+                                <select class="form-select vehiculo-select" data-index="${index}" data-slot="1">
+                                    ${renderOpcionesVehiculo(null)}
+                                </select>
+                                <select class="form-select vehiculo-select mt-2" data-index="${index}" data-slot="2">
+                                    ${renderOpcionesVehiculo(null)}
+                                </select>
+                            </div>
+                            <small class="text-muted d-block mt-2">Selecciona hasta 2 vehículos por región</small>
                         </td>
                         <td class="text-center">
                             <span class="badge bg-primary">${pedido.unidades_solicitadas.toLocaleString('es-CO')} unds</span>
@@ -679,7 +699,9 @@ function renderOpcionesVehiculo(defaultVehiculo) {
     let html = '<option value="">-- Seleccionar vehículo --</option>';
     html += Object.values(vehiculosLogistica).map(v => {
         const capacidadTxt = v.capacidad === null ? 'Sin límite' : `${v.capacidad} unds`;
-        const estadoTxt = v.disponible ? '' : ' (Fuera de servicio)';
+        const estadoTxt = v.disponible
+            ? ''
+            : (v.dia_retorno ? ` (Fuera de servicio hasta día ${v.dia_retorno})` : ' (Fuera de servicio)');
         const selected = v.codigo === defaultVehiculo ? 'selected' : '';
         const disabled = v.disponible ? '' : 'disabled';
         return `<option value="${v.codigo}" ${selected} ${disabled}>${v.codigo} - ${capacidadTxt}${estadoTxt}</option>`;
@@ -714,11 +736,11 @@ function asignarVehiculosIniciales() {
 }
 
 function renderResumenSeleccion() {
-    const seleccionados = new Set();
+    const todosSeleccionados = new Set();
     document.querySelectorAll('.vehiculo-select').forEach(select => {
         const codigo = (select.value || '').toUpperCase();
         if (codigo && codigo !== 'EXTERNO') {
-            seleccionados.add(codigo);
+            todosSeleccionados.add(codigo);
         }
     });
 
@@ -729,7 +751,8 @@ function renderResumenSeleccion() {
             const conf = vehiculosLogistica[codigo];
             if (!conf) return;
 
-            option.disabled = (!conf.disponible) || (codigo !== 'EXTERNO' && seleccionados.has(codigo) && codigo !== actual);
+            const yaSeleccionadoEnOtro = codigo !== 'EXTERNO' && todosSeleccionados.has(codigo) && codigo !== actual;
+            option.disabled = (!conf.disponible) || yaSeleccionadoEnOtro;
         });
     });
 }
@@ -762,62 +785,69 @@ function validarCapacidadesVehiculos() {
         row.classList.remove('table-danger');
         const index = Number(row.getAttribute('data-index'));
         const demanda = Number(row.getAttribute('data-demanda')) || 0;
-        const selectVehiculo = row.querySelector('.vehiculo-select');
-        const vehiculo = (selectVehiculo?.value || '').toUpperCase();
-        const conf = vehiculosLogistica[vehiculo];
-        const capacidad = conf ? conf.capacidad : null;
+        const selectVehiculos = Array.from(row.querySelectorAll('.vehiculo-select'));
+        const vehiculosSeleccionados = selectVehiculos
+            .map(select => (select.value || '').toUpperCase())
+            .filter(v => v);
 
-        if (!vehiculo) {
+        if (!vehiculosSeleccionados.length) {
             hayErrores = true;
             row.classList.add('table-danger');
             return;
         }
 
-        if (vehiculo !== 'EXTERNO' && usedVehicles.has(vehiculo)) {
+        if (new Set(vehiculosSeleccionados).size !== vehiculosSeleccionados.length) {
+            hayErrores = true;
+            row.classList.add('table-danger');
+            return;
+        }
+
+        // Validar que cada vehículo no esté duplicado en otros rows
+        let tieneExterno = false;
+        let capacidadTotal = 0;
+        
+        for (let vehiculo of vehiculosSeleccionados) {
+            if (vehiculo === 'EXTERNO') {
+                tieneExterno = true;
+            } else {
+                const conf = vehiculosLogistica[vehiculo];
+                if (!conf) {
+                    hayErrores = true;
+                    continue;
+                }
+                
+                if (!conf.disponible) {
+                    hayErrores = true;
+                }
+                
+                if (usedVehicles.has(vehiculo)) {
+                    hayErrores = true;
+                    row.classList.add('table-danger');
+                }
+                usedVehicles.add(vehiculo);
+                capacidadTotal += conf.capacidad || 0;
+            }
+        }
+
+        if (tieneExterno && vehiculosSeleccionados.length > 1) {
             hayErrores = true;
             row.classList.add('table-danger');
         }
-        if (vehiculo !== 'EXTERNO') {
-            usedVehicles.add(vehiculo);
-        }
 
         let envioExterno = 0;
-        if (vehiculo === 'EXTERNO') {
+        if (tieneExterno) {
             envioExterno = demanda;
-        } else if (capacidad !== null && demanda > capacidad) {
-            envioExterno = demanda - capacidad;
+        } else if (capacidadTotal > 0 && demanda > capacidadTotal) {
+            envioExterno = demanda - capacidadTotal;
         }
 
         const badge = document.getElementById(`external-${index}`);
         const label = document.getElementById(`external-text-${index}`);
         if (badge && label) {
             badge.textContent = envioExterno.toLocaleString('es-CO');
-            label.textContent = vehiculo === 'EXTERNO'
+            label.textContent = tieneExterno
                 ? 'Todo el envío usa vehículo externo'
                 : (envioExterno > 0 ? 'Se activa vehículo externo automáticamente' : 'No aplica vehículo externo');
-        }
-
-        if (conf && !conf.disponible) {
-            hayErrores = true;
-        }
-
-        if (vehiculo !== 'EXTERNO') {
-            usoPorVehiculo[vehiculo] = (usoPorVehiculo[vehiculo] || 0) + Math.min(demanda, capacidad || demanda);
-            if (capacidad !== null && usoPorVehiculo[vehiculo] > capacidad) {
-                hayErrores = true;
-                row.classList.add('table-danger');
-            }
-        }
-    });
-
-    Object.entries(usoPorVehiculo).forEach(([codigo, uso]) => {
-        const conf = vehiculosLogistica[codigo];
-        if (!conf) return;
-        if (!conf.disponible) {
-            hayErrores = true;
-        }
-        if (conf.capacidad !== null && uso > conf.capacidad) {
-            hayErrores = true;
         }
     });
 
@@ -834,29 +864,54 @@ function validarCapacidadesVehiculos() {
 async function realizarDespachoGeneral() {
     const validacion = validarCapacidadesVehiculos();
     if (validacion.hayErrores) {
-        alert('⚠️ Selecciona un vehículo para cada región. No repitas vehículos V1-V5 (puedes usar EXTERNO varias veces).');
+        alert('⚠️ Selecciona un vehículo válido para cada región y no repitas vehículos propios en el mismo día.');
         return;
     }
 
     const asignaciones = [];
+    let errorFormulario = false;
     document.querySelectorAll('.pedido-row').forEach(row => {
         const index = Number(row.getAttribute('data-index'));
         const demanda = Number(row.getAttribute('data-demanda')) || 0;
         const pedido = pedidosDia[index];
-        const vehiculo = row.querySelector('.vehiculo-select')?.value || '';
-        const capacidad = vehiculosLogistica[vehiculo]?.capacidad ?? null;
-        const unidadesExternas = vehiculo === 'EXTERNO'
+        const selectVehiculos = Array.from(row.querySelectorAll('.vehiculo-select'));
+        const vehiculosSeleccionados = selectVehiculos
+            .map(select => (select.value || '').toUpperCase())
+            .filter(v => v);
+        
+        if (!vehiculosSeleccionados.length) {
+            alert(`Debes seleccionar al menos un vehículo para ${pedido.region}`);
+            errorFormulario = true;
+            return;
+        }
+        
+        // Calcular capacidad total de los vehículos seleccionados
+        let capacidadTotal = 0;
+        let tieneExterno = false;
+        for (let v of vehiculosSeleccionados) {
+            if (v === 'EXTERNO') {
+                tieneExterno = true;
+            } else {
+                capacidadTotal += vehiculosLogistica[v]?.capacidad ?? 0;
+            }
+        }
+        
+        const unidadesExternas = tieneExterno
             ? demanda
-            : (capacidad !== null && demanda > capacidad ? demanda - capacidad : 0);
+            : (capacidadTotal > 0 && demanda > capacidadTotal ? demanda - capacidadTotal : 0);
 
         asignaciones.push({
             region: pedido.region,
             unidades_solicitadas: demanda,
             unidades_enviar: demanda,
-            vehiculo: vehiculo,
+            vehiculos: vehiculosSeleccionados,
             unidades_externas: unidadesExternas,
         });
     });
+
+    if (errorFormulario) {
+        return;
+    }
 
     const total = asignaciones.reduce((acc, a) => acc + a.unidades_enviar, 0);
     if (!confirm(`¿Confirmar despacho diario de ${total.toLocaleString('es-CO')} unidades?`)) {

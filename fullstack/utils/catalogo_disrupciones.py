@@ -1,22 +1,22 @@
 """
 Catálogo estático de disrupciones de la simulación.
-Cada disrupción se activa automáticamente en su semana_trigger y dura duracion_semanas.
+Cada disrupción se activa automáticamente dentro de una ventana exacta de días.
 """
 
 CATALOGO_DISRUPCIONES = [
     {
         'key': 'retraso_proveedor',
         'nombre': 'Retraso en Proveedor Estratégico',
-        'semana_trigger': 2,
-        'duracion_semanas': 2,
+        'dia_inicio': 8,
+        'dia_fin': 21,
         'icono': 'fas fa-ship',
         'color': 'warning',
         'contexto_html': """
             <p><strong>El área de Compras</strong> recibe una notificación urgente de un proveedor clave:</p>
             <blockquote class="fst-italic border-start border-4 border-warning ps-3 my-3 text-muted">
-                "Debido a problemas operativos en puerto y retrasos aduaneros,
-                los nuevos pedidos tendrán un <strong>lead time de 7 días</strong>
-                y solo se recibirán órdenes en <strong>días pares</strong>."
+                "Debido a problemas operativos en puerto y retrasos en inspecciones aduaneras,
+                las compras que se realicen a partir de ahora tendrán un <strong>lead time de 7 días</strong>
+                y solo se recibirán pedidos en <strong>días pares</strong>."
             </blockquote>
             <p>Riesgos potenciales:</p>
             <div class="alert alert-danger py-2 mt-2 mb-1">
@@ -35,7 +35,7 @@ CATALOGO_DISRUPCIONES = [
         ),
         'opciones': {
             'A': {
-                'titulo': 'Activar proveedor alterno',
+                'titulo': 'Activar proveedor alterno inmediato',
                 'descripcion': (
                     'Lead time: 3 días. '
                     'Costo adicional: +$5.000 por unidad. '
@@ -63,15 +63,16 @@ CATALOGO_DISRUPCIONES = [
     {
         'key': 'aumento_demanda',
         'nombre': 'Aumento Inesperado en la Demanda',
-        'semana_trigger': 5,
-        'duracion_semanas': 2,
+        'dia_inicio': 29,
+        'dia_fin': 35,
         'icono': 'fas fa-chart-line',
         'color': 'success',
         'contexto_html': """
             <p>El área de <strong>Ventas</strong> detecta un cambio en el mercado:</p>
             <blockquote class="fst-italic border-start border-4 border-success ps-3 my-3 text-muted">
-                &ldquo;Un competidor presenta problemas de abastecimiento, generando un aumento
-                en solicitudes de cotización y pedidos en las últimas 48 horas.&rdquo;
+                &ldquo;Uno de los competidores principales ha presentado problemas de abastecimiento y
+                varios clientes están buscando nuevos proveedores para cubrir sus necesidades inmediatas.
+                En las últimas 48 horas se han recibido solicitudes de cotización superiores a lo habitual.&rdquo;
             </blockquote>
             <p>Riesgos potenciales:</p>
             <div class="alert alert-success py-2 mt-2 mb-1">
@@ -90,10 +91,10 @@ CATALOGO_DISRUPCIONES = [
         ),
         'opciones': {
             'A': {
-                'titulo': 'Atender toda la demanda',
+                'titulo': 'Aceptar todos los nuevos pedidos y aumentar compras inmediatamente',
                 'descripcion': (
-                    'Aceptar pedidos actuales y nuevos. '
-                    'Aumentar compras inmediatamente. '
+                    'Confirmar pedidos actuales y nuevos clientes. '
+                    'Emitir órdenes de compra adicionales para cubrir el incremento. '
                     'Riesgo de sobreinventario.'
                 ),
                 'icono': 'fas fa-bolt',
@@ -105,10 +106,10 @@ CATALOGO_DISRUPCIONES = [
                 },
             },
             'B': {
-                'titulo': 'Atender demanda de forma selectiva',
+                'titulo': 'Aceptar parcialmente el aumento de la demanda',
                 'descripcion': (
                     'Priorizar clientes estratégicos o de mayor margen. '
-                    'Limitar nuevos pedidos. '
+                    'Limitar el volumen aceptado a nuevos clientes. '
                     'Ajustar compras moderadamente.'
                 ),
                 'icono': 'fas fa-sliders-h',
@@ -119,10 +120,10 @@ CATALOGO_DISRUPCIONES = [
                 },
             },
             'C': {
-                'titulo': 'Mantener plan actual',
+                'titulo': 'Mantener el plan actual sin aceptar incrementos adicionales',
                 'descripcion': (
-                    'No aceptar incrementos adicionales. '
-                    'Mantener compras planeadas. '
+                    'No aceptar pedidos extraordinarios. '
+                    'Mantener plan de compras original. '
                     'Proteger estabilidad operativa.'
                 ),
                 'icono': 'fas fa-minus-circle',
@@ -136,8 +137,8 @@ CATALOGO_DISRUPCIONES = [
     {
         'key': 'falla_flota',
         'nombre': 'Reducción de Capacidad Logística por Fallas en Flota',
-        'semana_trigger': 8,
-        'duracion_semanas': 2,
+        'dia_inicio': 43,
+        'dia_fin': 56,
         'icono': 'fas fa-truck',
         'color': 'danger',
         'contexto_html': """
@@ -164,10 +165,10 @@ CATALOGO_DISRUPCIONES = [
         ),
         'opciones': {
             'A': {
-                'titulo': 'Contratar transporte externo',
+                'titulo': 'Contratar transporte tercerizado',
                 'descripcion': (
-                    'Activación inmediata del transporte externo. '
-                    'Incremento significativo en costos logísticos.'
+                    'Activar operador externo inmediatamente. '
+                    'Asumir incremento del doble en costo logístico por envío.'
                 ),
                 'icono': 'fas fa-shipping-fast',
                 'color': 'success',
@@ -178,11 +179,10 @@ CATALOGO_DISRUPCIONES = [
                 },
             },
             'B': {
-                'titulo': 'Ajustar operación a capacidad interna',
+                'titulo': 'Generar solo las ventas que cubran la capacidad de los vehículos internos',
                 'descripcion': (
-                    'Operar solo con flota disponible. '
-                    'Limitar ventas según capacidad. '
-                    'Evitar costos adicionales.'
+                    'Mantener operación solo con flota disponible. '
+                    'Evitar contratación externa.'
                 ),
                 'icono': 'fas fa-balance-scale',
                 'color': 'warning',
@@ -194,7 +194,6 @@ CATALOGO_DISRUPCIONES = [
             },
         },
     },
-    # Aquí se agregarán futuras disrupciones
 ]
 
 

@@ -109,10 +109,19 @@ Estos parámetros **NO se pueden cambiar** sin modificar el código:
 
 | Parámetro | Valor |
 |-----------|-------|
-| Duración estándar | 30 semanas (≈ 210 días) |
+| Duración estándar | 8 semanas (56 días) |
 | Día inicial | 1 |
 | Semana inicial | 1 |
 | Estado inicial | "pausado" (no avanza hasta que el admin lo inicie) |
+
+### **Base de Demanda Principal**
+
+| Parámetro | Valor |
+|-----------|-------|
+| Fuente principal de demanda | data/demanda_base_principal.csv |
+| Cobertura operativa usada | Histórico -30 a -1 y días 1 a 56 |
+| Combinaciones requeridas | día x producto x región |
+| Modo de respaldo | Generación sintética automática si falta cobertura |
 
 ---
 

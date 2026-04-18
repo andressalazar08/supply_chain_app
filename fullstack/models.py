@@ -368,6 +368,8 @@ class DespachoRegional(db.Model):
     
     cantidad = db.Column(db.Float, nullable=False)
     costo_transporte = db.Column(db.Float, default=0)
+    vehiculos_asignados = db.Column(db.JSON)  # Códigos de vehículos usados en el despacho
+    costo_unitario_externo = db.Column(db.Float, default=0)  # Solo aplica para soporte externo
     estado = db.Column(db.String(20), default='pendiente')  # pendiente, en_transito, entregado
     
     # Relación con ventas (puede estar asociado a ventas específicas)
@@ -455,3 +457,17 @@ class DemandaMercadoDiaria(db.Model):
 
     def __repr__(self):
         return f'<DemandaMercadoDiaria sim={self.simulacion_id} dia={self.dia_simulacion} prod={self.producto_id} reg={self.region}>'
+
+class DisponibilidadVehiculo(db.Model):
+    """Modelo de disponibilidad de flota propia - Control de viajes y retorno"""
+    __tablename__ = 'disponibilidad_vehiculos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empresa_id = db.Column(db.Integer, db.ForeignKey('empresas.id'), nullable=False)
+    vehiculo_id = db.Column(db.String(50), nullable=False)
+    dia_disponible_retorno = db.Column(db.Integer, nullable=False, default=1)
+
+    empresa = db.relationship('Empresa', backref='flota_disponibilidad')
+
+    def __repr__(self):
+        return f'<DisponibilidadVehiculo {self.vehiculo_id} - Empresa {self.empresa_id} - Libre el día {self.dia_disponible_retorno}>'

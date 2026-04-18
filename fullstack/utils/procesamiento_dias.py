@@ -190,19 +190,19 @@ def obtener_producto_mas_demandado(empresa):
 def verificar_y_activar_disrupciones(simulacion):
     """
     Revisa el catálogo y crea registros DisrupcionEmpresa para las empresas
-    que aún no tienen la disrupción cuyo semana_trigger ya fue alcanzada o pasada.
-    Usar >= permite crear disrupciones para empresas que se unieron tarde a la simulación.
+    que aún no tienen la disrupción cuya ventana de días está activa.
     """
     from utils.catalogo_disrupciones import CATALOGO_DISRUPCIONES
 
-    # Comparar semana_trigger (concepto de semana) con la semana derivada del día actual
-    semana_derivada = (simulacion.dia_actual - 1) // 7 + 1
     dia = simulacion.dia_actual
     empresas = Empresa.query.filter_by(activa=True, simulacion_id=simulacion.id).all()
     nuevas = []
 
     for definicion in CATALOGO_DISRUPCIONES:
-        if definicion['semana_trigger'] > semana_derivada:
+        dia_inicio = int(definicion.get('dia_inicio', 0))
+        dia_fin = int(definicion.get('dia_fin', 0))
+
+        if dia < dia_inicio or dia > dia_fin:
             continue
         for empresa in empresas:
             ya_existe = DisrupcionEmpresa.query.filter_by(
@@ -219,8 +219,8 @@ def verificar_y_activar_disrupciones(simulacion):
                 empresa_id=empresa.id,
                 disrupcion_key=definicion['key'],
                 producto_afectado_id=producto.id if producto else None,
-                semana_inicio=dia,
-                semana_fin=dia + int(definicion['duracion_semanas'] * 7) - 1,
+                semana_inicio=dia_inicio,
+                semana_fin=dia_fin,
                 activa=True,
             )
             db.session.add(nueva)
@@ -796,6 +796,17 @@ def avanzar_simulacion():
         # Procesar el día actual primero (incluye día 1 en el primer avance)
         dia_procesado = simulacion.dia_actual
         semana_procesada = (dia_procesado - 1) // 7 + 1
+        total_dias = int(simulacion.duracion_semanas or 0) * 7
+
+        if total_dias <= 0:
+            return False, "La simulación no tiene una duración válida configurada", None
+
+        if dia_procesado > total_dias:
+            simulacion.estado = 'finalizado'
+            if not simulacion.fecha_fin:
+                simulacion.fecha_fin = datetime.utcnow()
+            db.session.commit()
+            return False, f"La simulación ya finalizó en el día {total_dias}.", None
 
         cobertura_ok, cobertura_msg = validar_cobertura_demanda_dia(simulacion.id, dia_procesado)
         if not cobertura_ok:
@@ -808,20 +819,31 @@ def avanzar_simulacion():
         # Procesar día completo (los efectos activos se consultan dentro)
         resumen = procesar_semana_completa(simulacion)
 
-        # Activar nuevas disrupciones que tienen semana_trigger == semana actual
+        # Activar nuevas disrupciones cuya ventana de días incluye el día actual
         nuevas = verificar_y_activar_disrupciones(simulacion)
 
         resumen['disrupciones_activadas'] = len(nuevas)
         resumen['disrupciones_expiradas'] = len(expiradas)
 
         # Avanzar al siguiente día una vez finaliza el procesamiento actual.
-        simulacion.dia_actual = dia_procesado + 1
-        simulacion.semana_actual = (simulacion.dia_actual - 1) // 7 + 1
+        # Si se procesó el último día, cerrar simulación.
+        if dia_procesado >= total_dias:
+            simulacion.estado = 'finalizado'
+            simulacion.fecha_fin = datetime.utcnow()
+            simulacion.dia_actual = total_dias
+            simulacion.semana_actual = (simulacion.dia_actual - 1) // 7 + 1
+        else:
+            simulacion.dia_actual = dia_procesado + 1
+            simulacion.semana_actual = (simulacion.dia_actual - 1) // 7 + 1
 
         db.session.commit()
 
-        mensaje = (f"✅ Día {dia_procesado} (Semana {semana_procesada}) procesado exitosamente. "
-                   f"Siguiente día: {simulacion.dia_actual} (Semana {simulacion.semana_actual})")
+        if dia_procesado >= total_dias:
+            mensaje = (f"✅ Día {dia_procesado} (Semana {semana_procesada}) procesado exitosamente. "
+                       f"La simulación ha finalizado en el día {total_dias}.")
+        else:
+            mensaje = (f"✅ Día {dia_procesado} (Semana {semana_procesada}) procesado exitosamente. "
+                       f"Siguiente día: {simulacion.dia_actual} (Semana {simulacion.semana_actual})")
         if nuevas:
             mensaje += f" | ⚠️ {len(nuevas)} nueva(s) disrupción(es) activada(s)"
 

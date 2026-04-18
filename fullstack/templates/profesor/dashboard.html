@@ -228,7 +228,7 @@
                                 <tr>
                                     <th>Empresa</th>
                                     <th>Disrupción</th>
-                                    <th>Semanas</th>
+                                    <th>Días</th>
                                     <th>Estado</th>
                                     <th>Decisión del equipo</th>
                                 </tr>
@@ -345,7 +345,7 @@
                                         <i class="fas fa-dollar-sign me-2"></i>Capital Inicial por Empresa
                                     </label>
                                     <input type="number" name="capital_inicial" class="form-control" 
-                                           value="50000000" min="1000000" step="1000000" required>
+                                         value="{{ capital_inicial_default|int }}" min="1000000" step="1000000" required>
                                     <small class="text-muted">
                                         Capital con el que empezará cada empresa (mínimo $1,000,000)
                                     </small>
@@ -357,7 +357,7 @@
                                             <i class="fas fa-box me-2"></i>Inventario inicial — Productos 750ml
                                         </label>
                                         <input type="number" name="inv_750ml" class="form-control"
-                                               value="120" min="0" step="10" required>
+                                                 value="{{ inv_750_default|int }}" min="0" step="10" required>
                                         <small class="text-muted">Unidades por empresa</small>
                                     </div>
                                     <div class="col-md-6 mb-3">
@@ -365,7 +365,7 @@
                                             <i class="fas fa-box me-2"></i>Inventario inicial — Productos 1L
                                         </label>
                                         <input type="number" name="inv_1l" class="form-control"
-                                               value="80" min="0" step="10" required>
+                                                 value="{{ inv_1l_default|int }}" min="0" step="10" required>
                                         <small class="text-muted">Unidades por empresa</small>
                                     </div>
                                 </div>

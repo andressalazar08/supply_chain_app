@@ -4,6 +4,7 @@ from app import app
 from extensions import db
 from models import Simulacion, DemandaMercadoDiaria
 from utils.demanda_central import generar_base_demanda_simulacion
+from utils.parametros_iniciales import DIAS_HISTORICO_DEMANDA
 
 
 with app.app_context():
@@ -15,7 +16,7 @@ with app.app_context():
 
     ok, mensaje = generar_base_demanda_simulacion(
         simulacion,
-        dias_historico=30,
+        dias_historico=DIAS_HISTORICO_DEMANDA,
         replace=True,
     )
 

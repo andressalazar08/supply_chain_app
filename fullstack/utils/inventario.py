@@ -164,14 +164,14 @@ def validar_capacidad_compra(capital_disponible: float, costo_compra: float,
     Returns:
         Diccionario con validación y sugerencias
     """
-    # Calcular capital comprometido en pedidos pendientes
+    # Se informa capital comprometido para trazabilidad, pero no restringe la compra.
     capital_comprometido = sum([c.costo_total for c in pedidos_pendientes if c.estado == 'en_transito'])
-    
-    # Capital efectivamente disponible
-    capital_libre = capital_disponible - capital_comprometido
-    
+
+    # Regla operativa solicitada: comparar solo contra el capital disponible actual.
+    capital_libre = capital_disponible
+
     # Validar
-    puede_comprar = capital_libre >= costo_compra
+    puede_comprar = capital_disponible >= costo_compra
     
     # Calcular porcentaje de utilización
     pct_uso = (costo_compra / capital_disponible * 100) if capital_disponible > 0 else 0
@@ -182,13 +182,13 @@ def validar_capacidad_compra(capital_disponible: float, costo_compra: float,
         'capital_comprometido': capital_comprometido,
         'capital_libre': round(capital_libre, 2),
         'costo_compra': costo_compra,
-        'deficit': max(0, costo_compra - capital_libre),
+        'deficit': max(0, costo_compra - capital_disponible),
         'pct_uso_capital': round(pct_uso, 1)
     }
     
     # Sugerencias
     if not puede_comprar:
-        resultado['sugerencia'] = f'Reducir cantidad o esperar entrega de pedidos pendientes (${capital_comprometido:,.2f})'
+        resultado['sugerencia'] = 'Reducir cantidad o aumentar capital disponible.'
     elif pct_uso > 80:
         resultado['sugerencia'] = 'Alto uso de capital - Evaluar prioridades'
     elif pct_uso > 50:

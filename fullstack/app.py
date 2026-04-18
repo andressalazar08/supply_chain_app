@@ -8,7 +8,7 @@ from models import Usuario
 from flask import Flask, render_template, redirect, url_for
 from flask_login import LoginManager, current_user
 from werkzeug.security import generate_password_hash
-from extensions import db, mail
+from extensions import db, mail, migrate
 import os
 from dotenv import load_dotenv
 from config import DevelopmentConfig, ProductionConfig
@@ -26,6 +26,7 @@ else:
 # Inicializar extensiones
 db.init_app(app)
 mail.init_app(app)
+migrate.init_app(app, db)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
