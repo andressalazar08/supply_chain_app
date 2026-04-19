@@ -699,7 +699,7 @@ def dashboard_general():
 @login_required
 @estudiante_required
 def responder_disrupcion():
-    """Registra la opci�n elegida por el equipo ante una disrupci�n."""
+    """Registra la opcion elegida por el equipo ante una disrupcion."""
     empresa = current_user.empresa
     simulacion = Simulacion.query.filter_by(activa=True).first()
 
@@ -714,25 +714,25 @@ def responder_disrupcion():
         return redirect(url_for('estudiante.dashboard_general'))
 
     if dis.opcion_elegida:
-        flash('Ya se registr� una decisi�n para esta disrupci�n.', 'warning')
+        flash('Ya se registr\u00f3 una decisi\u00f3n para esta disrupci\u00f3n.', 'warning')
         return redirect(url_for('estudiante.dashboard_general'))
 
     from utils.catalogo_disrupciones import get_disrupcion
     definicion = get_disrupcion(dis.disrupcion_key)
     if not definicion or opcion not in definicion['opciones']:
-        flash('Opci�n inv�lida.', 'error')
+        flash('Opci\u00f3n inv\u00e1lida.', 'error')
         return redirect(url_for('estudiante.dashboard_general'))
 
     if dis.disrupcion_key == 'retraso_proveedor' and current_user.rol != 'compras':
-        flash('Solo el rol de Compras puede decidir esta disrupción.', 'error')
+        flash('Solo el rol de Compras puede decidir esta disrupci\u00f3n.', 'error')
         return redirect(url_for('estudiante.dashboard_general'))
 
     if dis.disrupcion_key == 'aumento_demanda' and current_user.rol != 'ventas':
-        flash('Solo el rol de Ventas puede decidir esta disrupción.', 'error')
+        flash('Solo el rol de Ventas puede decidir esta disrupci\u00f3n.', 'error')
         return redirect(url_for('estudiante.dashboard_general'))
 
     if dis.disrupcion_key == 'falla_flota' and current_user.rol != 'logistica':
-        flash('Solo el rol de Logística puede decidir esta disrupción.', 'error')
+        flash('Solo el rol de Log\u00edstica puede decidir esta disrupci\u00f3n.', 'error')
         return redirect(url_for('estudiante.dashboard_general'))
 
     # Registrar decisi�n
@@ -761,18 +761,20 @@ def responder_disrupcion():
         )
         db.session.add(orden_auto)
         dis.efecto_inicial_aplicado = True
-        msg_extra = (f' Se emiti\u00f3 autom\u00e1ticamente una orden de compra de {cantidad_auto} unidades '
-f'de {producto_afectado.nombre} (entrega día {simulacion.dia_actual + producto_afectado.tiempo_entrega}).')
+        msg_extra = (
+            f' Se emiti\u00f3 autom\u00e1ticamente una orden de compra de {cantidad_auto} unidades '
+            f'de {producto_afectado.nombre} (entrega d\u00eda {simulacion.dia_actual + producto_afectado.tiempo_entrega}).'
+        )
 
     # Efecto inmediato disrupcion 1 (retraso_proveedor): confirmar decisión de Compras.
     elif dis.disrupcion_key == 'retraso_proveedor' and not dis.efecto_inicial_aplicado:
         dis.efecto_inicial_aplicado = True
         if opcion == 'A':
-            msg_extra = (' Se activó proveedor alterno: lead time 3 días, '
-                         '+$5.000 por unidad y pedido mínimo por presentación.')
+            msg_extra = (' Se activ\u00f3 proveedor alterno: lead time 2 d\u00edas para Sangre de la Vid y Susurro Rosado '
+                         'y 3 d\u00edas para Elixir Dorado y Oceano Profundo, con +$5.000 por unidad.')
         else:
-            msg_extra = (' Se activó racionamiento de inventario: '
-                         'se mantiene proveedor actual y prioridad de clientes estratégicos.')
+            msg_extra = (' Se activ\u00f3 racionamiento de inventario: '
+                         'se mantiene proveedor actual y prioridad de clientes estrat\u00e9gicos.')
 
     # Efecto inmediato disrupcion 3 (falla_flota): retroactivo en despachos en tránsito
     elif dis.disrupcion_key == 'falla_flota' and not dis.efecto_inicial_aplicado:
@@ -798,19 +800,19 @@ f'de {producto_afectado.nombre} (entrega día {simulacion.dia_actual + producto_
         dis.efecto_inicial_aplicado = True
 
         if opcion == 'A':
-            msg_extra = (' Se habilitó transporte externo para cubrir faltantes de capacidad. '
-                         'Los despachos podrán usar flota tercerizada con costo por unidad al doble.')
+            msg_extra = (' Se habilit\u00f3 transporte externo para cubrir faltantes de capacidad. '
+                         'Los despachos podr\u00e1n usar flota tercerizada con costo por unidad de $3.000.')
         elif opcion == 'B':
-            msg_extra = (' Se restringió la operación a capacidad interna. '
-                         'No se permitirá transporte externo mientras esté activa la disrupción.')
+            msg_extra = (' Se restringi\u00f3 la operaci\u00f3n a capacidad interna. '
+                         'No se permitir\u00e1 transporte externo mientras est\u00e9 activa la disrupci\u00f3n.')
         elif delay_d:
-            msg_extra = (f' {len(despachos_activos)} despachos en tránsito retrasados '
-                         f'+{delay_d} día(s). Sin costo adicional.')
+            msg_extra = (f' {len(despachos_activos)} despachos en tr\u00e1nsito retrasados '
+                         f'+{delay_d} d\u00eda(s). Sin costo adicional.')
         else:
             pct = round((mult_costo - 1) * 100)
             msg_extra = (f' El costo de transporte de los {len(despachos_activos)} despachos '
-                         f'en tránsito aumentó un {pct}%. Los nuevos despachos también '
-                         'tendrán el costo adicional durante 2 semanas.')
+                         f'en tr\u00e1nsito aument\u00f3 un {pct}%. Los nuevos despachos tambi\u00e9n '
+                         'tendr\u00e1n el costo adicional durante 2 semanas.')
 
     else:
         msg_extra = ''
@@ -830,7 +832,7 @@ f'de {producto_afectado.nombre} (entrega día {simulacion.dia_actual + producto_
     db.session.add(decision)
     db.session.commit()
 
-    flash(f'? Decisi�n registrada: Opci�n {opcion} � {definicion["opciones"][opcion]["titulo"]}.{msg_extra}', 'success')
+    flash(f'\u2705 Decisi\u00f3n registrada: Opci\u00f3n {opcion} - {definicion["opciones"][opcion]["titulo"]}.{msg_extra}', 'success')
     return redirect(url_for('estudiante.dashboard_general'))
 
 
