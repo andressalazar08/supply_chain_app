@@ -146,7 +146,7 @@ CATALOGO_DISRUPCIONES = [
             <div class="alert alert-danger py-2 mt-2 mb-3">
                 <strong><i class="fas fa-exclamation-triangle me-1"></i>Situación actual:</strong>
                 <ul class="mb-0 mt-1">
-                    <li>El vehículo <strong>V2 (capacidad 440)</strong> queda fuera de operación por incumplimiento de mantenimiento.</li>
+                    <li>Los vehículos con <strong>capacidad 500</strong> quedan fuera de operación por incumplimiento de mantenimiento.</li>
                     <li>Tiempo estimado de reparación: <strong>2 semanas</strong>.</li>
                     <li>El transporte externo implica un costo por unidad <strong>2 veces mayor</strong>.</li>
                 </ul>
