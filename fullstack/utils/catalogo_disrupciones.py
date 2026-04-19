@@ -15,8 +15,10 @@ CATALOGO_DISRUPCIONES = [
             <p><strong>El área de Compras</strong> recibe una notificación urgente de un proveedor clave:</p>
             <blockquote class="fst-italic border-start border-4 border-warning ps-3 my-3 text-muted">
                 "Debido a problemas operativos en puerto y retrasos en inspecciones aduaneras,
-                las compras que se realicen a partir de ahora tendrán un <strong>lead time de 7 días</strong>
-                y solo se recibirán pedidos en <strong>días pares</strong>."
+                las compras que se realicen a partir de ahora para las referencias de <strong>Sangre de la Vid</strong>
+                y <strong>Susurro Rosado</strong> tendrán un <strong>lead time de 4 días</strong>,
+                para <strong>Elixir Dorado</strong> y <strong>Oceano Profundo</strong> tendrán un <strong>lead time de 6 días</strong>
+                y el proveedor solo se recibirá pedidos en <strong>días pares</strong>."
             </blockquote>
             <p>Riesgos potenciales:</p>
             <div class="alert alert-danger py-2 mt-2 mb-1">
@@ -37,9 +39,8 @@ CATALOGO_DISRUPCIONES = [
             'A': {
                 'titulo': 'Activar proveedor alterno inmediato',
                 'descripcion': (
-                    'Lead time: 3 días. '
+                    'Lead time: 2 días para Sangre de la Vid y Susurro Rosado; 3 días para Elixir Dorado y Oceano Profundo. '
                     'Costo adicional: +$5.000 por unidad. '
-                    'Pedido mínimo: 60 und (750 mL) / 50 und (1 L).'
                 ),
                 'icono': 'fas fa-handshake',
                 'color': 'success',
@@ -148,7 +149,7 @@ CATALOGO_DISRUPCIONES = [
                 <ul class="mb-0 mt-1">
                     <li>Los vehículos con <strong>capacidad 500</strong> quedan fuera de operación por incumplimiento de mantenimiento.</li>
                     <li>Tiempo estimado de reparación: <strong>2 semanas</strong>.</li>
-                    <li>El transporte externo implica un costo por unidad <strong>2 veces mayor</strong>.</li>
+                    <li>El transporte externo implica un costo por unidad de <strong>$3.000</strong>.</li>
                 </ul>
             </div>
             <p>Riesgos potenciales:</p>
@@ -168,7 +169,7 @@ CATALOGO_DISRUPCIONES = [
                 'titulo': 'Contratar transporte tercerizado',
                 'descripcion': (
                     'Activar operador externo inmediatamente. '
-                    'Asumir incremento del doble en costo logístico por envío.'
+                    'Asumir el incremento del costo logístico.'
                 ),
                 'icono': 'fas fa-shipping-fast',
                 'color': 'success',
