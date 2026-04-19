@@ -170,15 +170,10 @@ def _obtener_capacidades_vehiculos(simulacion, empresa_id):
                 catalogo[vehiculo_id]['dia_retorno'] = int(dia_retorno)
 
     if _disrupcion_falla_flota_activa(simulacion, empresa_id):
-        propios = [
-            (codigo, conf['capacidad'])
-            for codigo, conf in catalogo.items()
-            if not conf['externo'] and conf['capacidad'] is not None
-        ]
-        if propios:
-            vehiculo_fuera = max(propios, key=lambda x: x[1])[0]
-            catalogo[vehiculo_fuera]['disponible'] = False
-            catalogo[vehiculo_fuera]['capacidad'] = 0
+        for codigo, conf in catalogo.items():
+            if not conf['externo'] and conf['capacidad'] == 500:
+                catalogo[codigo]['disponible'] = False
+                catalogo[codigo]['dia_retorno'] = None
 
     return catalogo
 
@@ -750,7 +745,7 @@ def responder_disrupcion():
             and dis.producto_afectado_id and not dis.efecto_inicial_aplicado):
         from utils.catalogo_disrupciones import get_disrupcion as _gd2
         cat2 = _gd2(dis.disrupcion_key)
-        duracion = cat2['duracion_semanas'] if cat2 else 2
+        duracion = cat2.get('duracion_semanas', 2) if cat2 else 2
         producto_afectado = dis.producto_afectado
         compras_auto_factor = definicion['opciones']['A']['efectos'].get('compras_auto_factor', 0.40)
         cantidad_auto = round(producto_afectado.demanda_promedio * duracion * compras_auto_factor)
