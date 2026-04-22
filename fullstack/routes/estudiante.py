@@ -3624,6 +3624,7 @@ def api_generar_todas_ordenes():
 def api_logistica_stock():
     """Obtener stock disponible para despachos"""
     empresa = current_user.empresa
+    simulacion = Simulacion.query.filter_by(activa=True).first()
     
     inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
     
@@ -3632,18 +3633,23 @@ def api_logistica_stock():
     stock_maximo_total = 0
     sobrestock_total = 0
     costo_sobrestock_total = 0
+    valor_inventario_costo_referencia = 0.0
+    valor_inventario_costo_pagado = 0.0
 
     for inv in inventarios:
         stock_actual = int(round(inv.cantidad_actual or 0))
         stock_seguridad = int(round(inv.stock_seguridad or 0))
         stock_maximo = int(round(inv.producto.stock_maximo or 0)) if inv.producto else 0
         costo_referencia = inv.costo_promedio or (inv.producto.costo_unitario if inv.producto else 0)
+        costo_producto_referencia = inv.producto.costo_unitario if inv.producto else costo_referencia
         sobrestock = max(0, stock_actual - stock_maximo)
 
         stock_total += stock_actual
         stock_maximo_total += stock_maximo
         sobrestock_total += sobrestock
         costo_sobrestock_total += sobrestock * costo_referencia
+        valor_inventario_costo_referencia += stock_actual * float(costo_producto_referencia or 0)
+        valor_inventario_costo_pagado += stock_actual * float(costo_referencia or 0)
 
         stock_data.append({
             'producto_id': inv.producto_id,
@@ -3655,6 +3661,32 @@ def api_logistica_stock():
             'costo_referencia': round(costo_referencia, 2),
             'costo_sobrestock': round(sobrestock * costo_referencia, 2)
         })
+
+    periodo_dias = 30
+    ventas_mensuales_costo = 0.0
+    if simulacion:
+        dia_fin = simulacion.dia_actual
+        dia_inicio = max(1, dia_fin - (periodo_dias - 1))
+
+        ventas_periodo = Venta.query.filter(
+            Venta.empresa_id == empresa.id,
+            Venta.semana_simulacion >= dia_inicio,
+            Venta.semana_simulacion <= dia_fin,
+        ).all()
+
+        ventas_mensuales_costo = sum(
+            float(v.cantidad_vendida or 0) * float(v.costo_unitario or 0)
+            for v in ventas_periodo
+        )
+
+    # Indicadores en días según fórmula: (Inventario promedio mensual al costo / Ventas mensuales al costo) * 30
+    # Se usa el inventario actual como proxy del inventario promedio mensual por no existir snapshot diario histórico.
+    if ventas_mensuales_costo > 0:
+        rotacion_total_dias = (valor_inventario_costo_referencia / ventas_mensuales_costo) * periodo_dias
+        rotacion_neta_dias = (valor_inventario_costo_pagado / ventas_mensuales_costo) * periodo_dias
+    else:
+        rotacion_total_dias = None
+        rotacion_neta_dias = None
     
     return jsonify({
         'success': True,
@@ -3663,7 +3695,15 @@ def api_logistica_stock():
             'stock_total': stock_total,
             'stock_maximo_total': stock_maximo_total,
             'sobrestock_total': sobrestock_total,
-            'costo_sobrestock_total': round(costo_sobrestock_total, 2)
+            'costo_sobrestock_total': round(costo_sobrestock_total, 2),
+            'indicadores_rotacion': {
+                'periodo_dias': periodo_dias,
+                'inventario_promedio_mensual_costo_total': round(valor_inventario_costo_referencia, 2),
+                'inventario_promedio_mensual_costo_pagado': round(valor_inventario_costo_pagado, 2),
+                'ventas_mensuales_costo': round(ventas_mensuales_costo, 2),
+                'rotacion_total_dias': round(rotacion_total_dias, 2) if rotacion_total_dias is not None else None,
+                'rotacion_neta_dias': round(rotacion_neta_dias, 2) if rotacion_neta_dias is not None else None,
+            }
         }
     })
 

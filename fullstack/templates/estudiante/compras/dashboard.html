@@ -282,19 +282,18 @@
                             <div class="alert alert-warning py-2">
                                 <strong>Disrupción activa: Retraso de proveedor estratégico.</strong><br>
                                 <small>
-                                    Proveedor actual: solo días pares. Lead time según referencia: 4 días para Sangre de la Vid y Susurro Rosado, 6 días para los demás.
+                                    Proveedor actual: solo días pares. Lead time según referencia: 4 días para Sangre de la Vid y Susurro Rosado, 6 días para Elixir Dorado y Oceano Profundo.
                                     {% if proveedor_externo_habilitado %}
-                                    Proveedor externo: lead time 2 días para Sangre de la Vid y Susurro Rosado, 3 días para los demás, +$5.000 por unidad.
+                                    Proveedor externo: lead time 2 días para Sangre de la Vid y Susurro Rosado, 3 días para Elixir Dorado y Oceano Profundo, +$5.000 por unidad.
                                     {% else %}
                                     El proveedor externo no está habilitado con la decisión actual de la disrupción.
                                     {% endif %}
-                                    Revisa el mínimo indicado para cada producto.
                                 </small>
                             </div>
                             {% else %}
                             <div class="alert alert-info py-2">
                                 <small>
-                                    Operación normal: lead time por referencia, 2 días para Sangre de la Vid y Susurro Rosado; 3 días para los demás.
+                                    Operación normal: lead time por referencia, 2 días para Sangre de la Vid y Susurro Rosado; 3 días para Elixir Dorado y Oceano Profundo.
                                 </small>
                             </div>
                             {% endif %}

@@ -295,6 +295,23 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="row mb-4" id="stockIndicadoresRotacion">
+                        <div class="col-md-6 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Rotación del Inventario en Días (Total)</div>
+                                <div class="summary-value text-primary" style="font-size: 2rem;" id="rotacionTotalDiasValue">N/A</div>
+                                <div class="text-muted small" id="rotacionTotalDetalle">(Inventario promedio mensual al costo / Ventas mensuales al costo) x 30</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Rotación Neta del Inventario en Días</div>
+                                <div class="summary-value text-info" style="font-size: 2rem;" id="rotacionNetaDiasValue">N/A</div>
+                                <div class="text-muted small" id="rotacionNetaDetalle">(Inventario promedio mensual al costo pagado / Ventas mensuales al costo) x 30</div>
+                            </div>
+                        </div>
+                    </div>
                     
                     <div class="row" id="stockContainer">
                         <div class="col-12 text-center py-5">
@@ -557,6 +574,7 @@ async function cargarStock() {
 function mostrarStock(stock) {
     const container = document.getElementById('stockContainer');
     const resumen = window.stockResumen || {};
+    const indicadores = resumen.indicadores_rotacion || {};
 
     const totalStock = resumen.stock_total ?? stock.reduce((acc, item) => acc + Math.round(item.stock_actual || 0), 0);
     const totalSobrestock = resumen.sobrestock_total ?? stock.reduce((acc, item) => acc + Math.round(item.sobrestock || 0), 0);
@@ -565,6 +583,38 @@ function mostrarStock(stock) {
     document.getElementById('stockTotalValue').textContent = totalStock.toLocaleString('es-CO');
     document.getElementById('sobrestockTotalValue').textContent = totalSobrestock.toLocaleString('es-CO');
     document.getElementById('costoSobrestockValue').textContent = '$' + totalCostoSobrestock.toLocaleString('es-CO', {maximumFractionDigits: 0});
+
+    const rotacionTotal = indicadores.rotacion_total_dias;
+    const rotacionNeta = indicadores.rotacion_neta_dias;
+    const ventasMensualesCosto = indicadores.ventas_mensuales_costo || 0;
+
+    const rotacionTotalEl = document.getElementById('rotacionTotalDiasValue');
+    const rotacionNetaEl = document.getElementById('rotacionNetaDiasValue');
+    const rotacionTotalDetalle = document.getElementById('rotacionTotalDetalle');
+    const rotacionNetaDetalle = document.getElementById('rotacionNetaDetalle');
+
+    if (rotacionTotalEl) {
+        rotacionTotalEl.textContent = (rotacionTotal === null || rotacionTotal === undefined)
+            ? 'N/A'
+            : `${Number(rotacionTotal).toLocaleString('es-CO', { maximumFractionDigits: 2 })} días`;
+    }
+
+    if (rotacionNetaEl) {
+        rotacionNetaEl.textContent = (rotacionNeta === null || rotacionNeta === undefined)
+            ? 'N/A'
+            : `${Number(rotacionNeta).toLocaleString('es-CO', { maximumFractionDigits: 2 })} días`;
+    }
+
+    if (rotacionTotalDetalle && rotacionNetaDetalle) {
+        if (ventasMensualesCosto > 0) {
+            const ventasTxt = Number(ventasMensualesCosto).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+            rotacionTotalDetalle.textContent = `Base cálculo: ventas mensuales al costo = $${ventasTxt}.`;
+            rotacionNetaDetalle.textContent = `Periodo de cálculo: ${indicadores.periodo_dias || 30} días.`;
+        } else {
+            rotacionTotalDetalle.textContent = 'Sin ventas al costo en el periodo. No se puede calcular el indicador.';
+            rotacionNetaDetalle.textContent = 'Sin ventas al costo en el periodo. No se puede calcular el indicador.';
+        }
+    }
     
     if (!stock || stock.length === 0) {
         container.innerHTML = '<div class="col-12"><div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> No hay productos en inventario</div></div>';
