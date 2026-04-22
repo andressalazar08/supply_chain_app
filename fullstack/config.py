@@ -54,6 +54,8 @@ class Config:
     # Costos
     COSTO_ALMACENAMIENTO_POR_UNIDAD = 0.5  # Por día por unidad
     COSTO_FALTANTE_POR_UNIDAD = 10.0  # Penalización por venta perdida
+    TASA_MANTENIMIENTO_INVENTARIO_ANUAL = 0.20  # 20% anual
+    BASE_DIAS_MANTENIMIENTO = 365
 
     # Paginación
     ITEMS_POR_PAGINA = 20

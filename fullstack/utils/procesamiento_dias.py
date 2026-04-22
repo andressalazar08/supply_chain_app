@@ -7,6 +7,7 @@ from models import (Simulacion, Empresa, Producto, Inventario, Venta, Compra,
 from extensions import db
 from datetime import datetime
 from sqlalchemy import func
+from flask import current_app
 from utils.demanda_central import obtener_demanda_base, validar_cobertura_demanda_dia
 
 
@@ -523,7 +524,7 @@ def calcular_costos_operativos(simulacion, empresa):
     """
     Calcula y aplica costos operativos automáticos diarios:
     - Costos fijos: $800,000/día
-    - Mantenimiento de inventario: 0.3% del valor del inventario/día
+    - Mantenimiento de inventario: I_promedio * v * r (tasa anual convertida a diaria)
     - Penalización por ventas perdidas: 30% del precio de las unidades no vendidas
     
     Retorna un diccionario con el desglose de costos
@@ -533,12 +534,36 @@ def calcular_costos_operativos(simulacion, empresa):
     # 1. COSTOS FIJOS OPERACIONALES ($800,000/semana → $114,286/día)
     costos_fijos = round(800000 / 7)
     
-    # 2. COSTOS DE MANTENIMIENTO DE INVENTARIO (0.3%/semana → 0.0429%/día)
+    # 2. COSTOS DE MANTENIMIENTO DE INVENTARIO
+    # Formula: Costo = I_promedio * v * r_diaria
+    # donde r_diaria = tasa_anual / base_dias.
+    tasa_anual = float(current_app.config.get('TASA_MANTENIMIENTO_INVENTARIO_ANUAL', 0.20))
+    base_dias = int(current_app.config.get('BASE_DIAS_MANTENIMIENTO', 365) or 365)
+    tasa_diaria = tasa_anual / max(1, base_dias)
+
     inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()
-    valor_inventario = sum(
-        inv.cantidad_actual * (inv.costo_promedio or 0) for inv in inventarios
-    )
-    costos_mantenimiento = valor_inventario * (0.003 / 7)  # tasa diaria
+    valor_inventario = 0.0
+    costos_mantenimiento = 0.0
+    costos_mantenimiento_por_producto = []
+
+    for inv in inventarios:
+        cantidad_promedio = max(0.0, float(inv.cantidad_actual or 0))
+        valor_unitario = float(inv.costo_promedio or (inv.producto.costo_unitario if inv.producto else 0) or 0)
+
+        inversion_producto = cantidad_promedio * valor_unitario
+        costo_producto = inversion_producto * tasa_diaria
+
+        valor_inventario += inversion_producto
+        costos_mantenimiento += costo_producto
+        costos_mantenimiento_por_producto.append({
+            'producto_id': inv.producto_id,
+            'producto': inv.producto.nombre if inv.producto else f'Producto {inv.producto_id}',
+            'cantidad_promedio': round(cantidad_promedio, 2),
+            'valor_unitario': round(valor_unitario, 2),
+            'inversion_inventario': round(inversion_producto, 2),
+            'tasa_diaria': tasa_diaria,
+            'costo_mantenimiento': round(costo_producto, 2),
+        })
     
     # 2.1 PENALIZACIÓN POR SOBRESTOCK ($1000 por unidad excedente)
     penalizacion_sobrestock = 0
@@ -575,7 +600,10 @@ def calcular_costos_operativos(simulacion, empresa):
         'costos_mantenimiento': costos_mantenimiento - penalizacion_sobrestock,
         'penalizacion_sobrestock': penalizacion_sobrestock,
         'penalizacion_ventas_perdidas': penalizacion_ventas_perdidas,
-        'valor_inventario': valor_inventario
+        'valor_inventario': valor_inventario,
+        'tasa_mantenimiento_anual': tasa_anual,
+        'tasa_mantenimiento_diaria': tasa_diaria,
+        'costos_mantenimiento_por_producto': costos_mantenimiento_por_producto,
     }
 
 
