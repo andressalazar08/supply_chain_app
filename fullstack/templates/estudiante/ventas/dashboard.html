@@ -181,10 +181,34 @@
                             <div id="resumenPedidosDia" class="alert alert-light border mb-3">
                                 <strong>Día {{ simulacion.dia_actual }}:</strong> ajusta cantidades aprobadas por región según tu estrategia.
                             </div>
+
                             <div id="pedidosDiaContainer" class="table-responsive">
                                 <div class="text-center py-4">
                                     <div class="spinner-border text-primary"></div>
                                     <p class="text-muted mt-2">Cargando pedidos del día...</p>
+                                </div>
+                            </div>
+
+                            <!-- Resumen Global de Ingresos -->
+                            <div class="card mt-3 mb-3" id="resumenIngresosCard" style="display:none;">
+                                <div class="card-header bg-light">
+                                    <h6 class="mb-0"><i class="fas fa-money-bill-wave"></i> Resumen de Ingresos Potenciales</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <div class="small text-muted">Total Solicitado</div>
+                                            <div class="h5" id="resumenSolicitado">0 unds</div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="small text-muted">Total Aprobado</div>
+                                            <div class="h5" id="resumenAprobado">0 unds</div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="small text-muted">Ingreso Potencial (Aprobado)</div>
+                                            <div class="h5 text-success" id="resumenIngresoAprobado">$0</div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                             <div class="mt-3 d-flex gap-2">
@@ -219,9 +243,9 @@
                         </div>
                         <div class="col-md-4 mb-3">
                             <div class="metric-card">
-                                <h6 class="text-muted mb-2"><i class="fas fa-exclamation-triangle"></i> Ventas Perdidas</h6>
+                                <h6 class="text-muted mb-2"><i class="fas fa-exclamation-triangle"></i> Ventas Perdidas Acumuladas</h6>
                                 <div class="metric-value text-danger" id="ventasPerdidas">0</div>
-                                <small class="text-muted">unidades</small>
+                                <small class="text-muted">unidades acumuladas</small>
                             </div>
                         </div>
                     </div>
@@ -265,7 +289,7 @@
                                 <div class="card-header bg-white d-flex justify-content-between align-items-center">
                                     <div>
                                         <h5><i class="fas fa-chart-line"></i> Demanda de Mercado vs Ventas Reales</h5>
-                                        <small class="text-muted">Demanda total del mercado, cuota asignada a tu empresa y ventas efectivas</small>
+                                        <small class="text-muted">Demanda total del mercado y demanda aprobada</small>
                                     </div>
                                     <select id="diasDemandaMercado" class="form-select form-select-sm" style="width:120px;" onchange="cargarDemandaMercado()">
                                         <option value="14">14 días</option>
@@ -296,6 +320,48 @@
                             <p class="text-muted mt-3">Cargando datos...</p>
                         </div>
                     </div>
+
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h5><i class="fas fa-chart-bar"></i> Fill Rate por Región</h5>
+                                        <small class="text-muted">Nivel de servicio de Ventas: demanda aprobada frente a demanda total</small>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-lg-7 mb-4">
+                                            <canvas id="chartFillRateVentas" height="120"></canvas>
+                                        </div>
+                                        <div class="col-lg-5 mb-4">
+                                            <div class="table-responsive">
+                                                <table class="table table-sm align-middle mb-0">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th>Región</th>
+                                                            <th class="text-center">Fill Rate</th>
+                                                            <th class="text-center">Demanda</th>
+                                                            <th class="text-center">Aprobadas</th>
+                                                            <th class="text-center">Perdidas</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="tablaFillRateVentasBody">
+                                                        <tr>
+                                                            <td colspan="5" class="text-center py-3">
+                                                                <div class="spinner-border spinner-border-sm text-primary"></div>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
             </div>
@@ -313,6 +379,7 @@ document.addEventListener('DOMContentLoaded', function() {
     cargarDashboard();
     cargarAnalisisRegional();
     cargarDemandaMercado();
+    cargarFillRateVentas();
 });
 
 // ========== TAB 0: PEDIDOS DEL DIA ==========
@@ -341,12 +408,13 @@ function renderTablaPedidosDia() {
     }
 
     let html = '<table class="table table-bordered table-sm align-middle">';
-    html += '<thead class="table-light"><tr><th>Producto</th><th>Inventario Actual</th>';
-    html += '<th>Andina</th><th>Caribe</th><th>Pacífica</th><th>Orinoquía</th><th>Amazonía</th><th>Aprobación Rápida</th></tr></thead><tbody>';
+    html += '<thead class="table-light"><tr><th>Producto | Precio de Venta</th><th>Stock (unidades)</th>';
+    html += '<th>Andina</th><th>Caribe</th><th>Pacífica</th><th>Orinoquía</th><th>Amazonía</th><th>Aprobación Rápida</th><th>Ingresos Generados</th></tr></thead><tbody>';
 
     pedidosDiaData.forEach((p) => {
+        const ingresoPotencial = p.total_aprobado * p.precio_venta;
         html += `<tr data-producto-id="${p.producto_id}" data-inventario="${p.inventario_actual}">`;
-        html += `<td><strong>${p.producto_nombre}</strong><br><small class="text-muted">Solicitado: ${p.total_solicitado} | Aprobado: <span id="aprobado-total-${p.producto_id}">${p.total_aprobado}</span></small></td>`;
+        html += `<td><strong>${p.producto_nombre}</strong><br><small class="text-muted">$${p.precio_venta.toLocaleString('es-CO')}</small></td>`;
         html += `<td><span class="badge bg-dark" id="inv-${p.producto_id}">${p.inventario_actual}</span></td>`;
 
         p.regiones.forEach((r) => {
@@ -360,6 +428,7 @@ function renderTablaPedidosDia() {
         });
 
         html += `<td><button class="btn btn-outline-primary btn-sm" onclick="aprobarTodoProducto(${p.producto_id})"><i class="fas fa-bolt"></i> Aprobar todo</button></td>`;
+        html += `<td><strong class="text-success" id="ingresos-${p.producto_id}">$${ingresoPotencial.toLocaleString('es-CO')}</strong><br><small class="text-muted">${p.total_aprobado} unds</small></td>`;
         html += '</tr>';
     });
 
@@ -367,6 +436,37 @@ function renderTablaPedidosDia() {
     container.innerHTML = html;
 
     pedidosDiaData.forEach((p) => validarFilaProducto(p.producto_id));
+    
+    // Actualizar ingresos en la tabla
+    actualizarIngresosEnTabla();
+    actualizarResumenIngresos();
+}
+
+function actualizarIngresosEnTabla() {
+    // Esta función ya no es necesaria - los ingresos se actualizan en tiempo real en validarFilaProducto()
+    // Se mantiene aquí solo por compatibilidad
+}
+
+function actualizarResumenIngresos() {
+    if (!pedidosDiaData || pedidosDiaData.length === 0) {
+        document.getElementById('resumenIngresosCard').style.display = 'none';
+        return;
+    }
+
+    let totalSolicitado = 0;
+    let totalAprobado = 0;
+    let totalIngresoAprobado = 0;
+
+    pedidosDiaData.forEach((p) => {
+        totalSolicitado += p.total_solicitado;
+        totalAprobado += p.total_aprobado;
+        totalIngresoAprobado += p.total_aprobado * p.precio_venta;
+    });
+
+    document.getElementById('resumenSolicitado').textContent = totalSolicitado.toLocaleString('es-CO') + ' unds';
+    document.getElementById('resumenAprobado').textContent = totalAprobado.toLocaleString('es-CO') + ' unds';
+    document.getElementById('resumenIngresoAprobado').textContent = '$' + totalIngresoAprobado.toLocaleString('es-CO');
+    document.getElementById('resumenIngresosCard').style.display = 'block';
 }
 
 function aprobarRapido(key, solicitado, productoId) {
@@ -391,7 +491,6 @@ function aprobarTodoGlobal() {
 function validarFilaProducto(productoId) {
     const inputs = document.querySelectorAll(`input.aprobado-input[data-producto="${productoId}"]`);
     const invEl = document.getElementById(`inv-${productoId}`);
-    const totalEl = document.getElementById(`aprobado-total-${productoId}`);
     const inventario = parseInt(invEl ? invEl.textContent : '0') || 0;
 
     let totalAprobado = 0;
@@ -417,7 +516,19 @@ function validarFilaProducto(productoId) {
         totalAprobado = inventario;
     }
 
-    if (totalEl) totalEl.textContent = totalAprobado;
+    // Actualizar ingresos en la tabla
+    const productoData = pedidosDiaData.find(p => p.producto_id === productoId);
+    if (productoData) {
+        productoData.total_aprobado = totalAprobado;
+        const ingresoPotencial = totalAprobado * productoData.precio_venta;
+        const ingresosCell = document.getElementById(`ingresos-${productoId}`);
+        if (ingresosCell) {
+            ingresosCell.innerHTML = `<strong class="text-success">$${ingresoPotencial.toLocaleString('es-CO')}</strong><br><small class="text-muted">${totalAprobado} unds</small>`;
+        }
+    }
+    
+    // Actualizar el resumen de ingresos después de cambios
+    actualizarResumenIngresos();
 }
 
 async function guardarAprobacionesVentas() {
@@ -554,7 +665,7 @@ async function cargarAnalisisRegional() {
                             
                             ${region.ventas_perdidas > 0 ? `
                                 <div class="alert alert-warning py-2 px-3 mb-0 mt-2">
-                                    <small><i class="fas fa-exclamation-triangle"></i> ${region.ventas_perdidas} ventas perdidas por falta de stock</small>
+                                    <small><i class="fas fa-exclamation-triangle"></i> ${region.ventas_perdidas} ventas perdidas por demanda no atendida</small>
                                 </div>
                             ` : ''}
                         </div>
@@ -597,10 +708,10 @@ async function cargarDemandaMercado() {
                         borderWidth: 2
                     },
                     {
-                        label: 'Ventas Efectivas',
-                        data: data.cantidad_vendida,
+                        label: 'Demanda Aprobada',
+                        data: data.cantidad_asignada,
                         borderColor: '#2ecc71',
-                        backgroundColor: 'rgba(46,204,113,0.15)',
+                        backgroundColor: 'rgba(46,204,113,0.12)',
                         fill: true,
                         tension: 0.3,
                         borderWidth: 2
@@ -621,6 +732,60 @@ async function cargarDemandaMercado() {
         });
     } catch (error) {
         console.error('Error cargando demanda de mercado:', error);
+    }
+}
+
+let chartFillRateVentas = null;
+async function cargarFillRateVentas() {
+    try {
+        const response = await fetch('/estudiante/api/ventas/fill-rate-region');
+        const data = await response.json();
+
+        if (!data.success) return;
+
+        const ctx = document.getElementById('chartFillRateVentas');
+        if (ctx) {
+            if (chartFillRateVentas) chartFillRateVentas.destroy();
+            const bgColors = data.fill_rates.map(r => r >= 95 ? '#2ecc71' : r >= 80 ? '#f39c12' : '#e74c3c');
+            chartFillRateVentas = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.regiones,
+                    datasets: [{
+                        label: 'Fill Rate / Nivel de Servicio (%)',
+                        data: data.fill_rates,
+                        backgroundColor: bgColors,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, max: 100, title: { display: true, text: 'Fill Rate (%)' } }
+                    }
+                }
+            });
+        }
+
+        const tbody = document.getElementById('tablaFillRateVentasBody');
+        if (tbody) {
+            let html = '';
+            data.regiones.forEach((region, i) => {
+                const fr = data.fill_rates[i];
+                const badge = fr >= 95 ? 'success' : fr >= 80 ? 'warning' : 'danger';
+                html += `<tr>
+                    <td>${region}</td>
+                    <td class="text-center"><span class="badge bg-${badge}">${fr}%</span></td>
+                    <td class="text-center">${Number(data.demanda_totales[i] || 0).toLocaleString('es-CO')}</td>
+                    <td class="text-center">${Number(data.aprobadas_totales[i] || 0).toLocaleString('es-CO')}</td>
+                    <td class="text-center text-danger">${Number(data.perdidas_totales[i] || 0).toLocaleString('es-CO')}</td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('Error cargando fill rate de ventas:', error);
     }
 }
 </script>

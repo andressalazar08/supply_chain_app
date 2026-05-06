@@ -246,7 +246,14 @@ def _normalizar_proveedor(valor):
 
 
 def _es_referencia_especial(producto):
+    codigo = (producto.codigo or '').upper()
     nombre = (producto.nombre or '').upper()
+
+    # Lead time base de 2 dias para Sangre de la Vid (SV) y Susurro Rosado (SR)
+    # en ambas referencias (750ml y 1L).
+    if codigo.startswith('SV-') or codigo.startswith('SR-'):
+        return True
+
     return 'SANGRE DE LA VID' in nombre or 'SUSURRO ROSADO' in nombre
 
 
@@ -913,6 +920,57 @@ def _saldo_despachable_por_ventas(empresa_id, dia_simulacion, producto_id, regio
     return aprobado, ya_despachado, saldo
 
 
+def _calcular_ventas_perdidas_registradas(empresa_id, dia_inicio, dia_fin):
+    """Calcula ventas perdidas acumuladas como demanda total - demanda aprobada.
+
+    Solo cuenta días cerrados. La tarjeta debe seguir la demanda general de la
+    herramienta frente a lo aprobado por Ventas.
+    """
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    if not simulacion:
+        return 0
+
+    demanda_rango = db.session.query(
+        DemandaMercadoDiaria.dia_simulacion,
+        db.func.coalesce(db.func.sum(DemandaMercadoDiaria.demanda_base), 0).label('demanda_total')
+    ).filter(
+        DemandaMercadoDiaria.simulacion_id == simulacion.id,
+        DemandaMercadoDiaria.dia_simulacion >= dia_inicio,
+        DemandaMercadoDiaria.dia_simulacion <= dia_fin,
+    ).group_by(DemandaMercadoDiaria.dia_simulacion).all()
+
+    demanda_por_dia = {
+        int(row.dia_simulacion): int(round(float(row.demanda_total or 0)))
+        for row in demanda_rango
+    }
+
+    decisiones = Decision.query.filter(
+        Decision.empresa_id == empresa_id,
+        Decision.tipo_decision == 'ventas_aprobacion_diaria',
+        Decision.semana_simulacion >= dia_inicio,
+        Decision.semana_simulacion <= dia_fin,
+    ).order_by(Decision.semana_simulacion.asc(), Decision.created_at.asc()).all()
+
+    aprobada_por_dia = {}
+    for dec in decisiones:
+        if not dec.datos_decision:
+            continue
+        dia = int(dec.semana_simulacion)
+        aprobada_por_dia.setdefault(dia, 0)
+        aprobada_por_dia[dia] += sum(
+            int(item.get('cantidad_aprobada', 0) or 0)
+            for item in dec.datos_decision.get('aprobaciones', [])
+        )
+
+    total_perdidas = 0
+    for dia in range(dia_inicio, dia_fin + 1):
+        demanda = int(demanda_por_dia.get(dia, 0))
+        aprobada = int(aprobada_por_dia.get(dia, 0))
+        total_perdidas += max(0, demanda - aprobada)
+
+    return int(total_perdidas)
+
+
 def _vehiculo_ocupado_por_ciclo(empresa_id, vehiculo_id, dia_actual):
     """Retorna día de retorno si el vehículo está ocupado por ciclo en el día actual."""
     return db.session.query(
@@ -969,6 +1027,7 @@ def api_ventas_pedidos_dia():
             productos_data.append({
                 'producto_id': p.id,
                 'producto_nombre': p.nombre,
+                'precio_venta': float(p.precio_actual or 0),
                 'inventario_actual': int(inv_map.get(p.id, 0)),
                 'total_solicitado': total_solicitado,
                 'total_aprobado': total_aprobado,
@@ -1101,7 +1160,11 @@ def api_ventas_dashboard():
         
         total_unidades = sum([v.cantidad_vendida for v in ventas_hoy])
         total_ingresos = sum([v.ingreso_total for v in ventas_hoy])
-        total_perdidas = sum([v.cantidad_perdida for v in ventas_hoy])
+        total_perdidas = _calcular_ventas_perdidas_registradas(
+            empresa.id,
+            1,
+            max(1, simulacion.dia_actual - 1),
+        )
         
         # Calcular margen promedio
         margenes = [v.margen for v in ventas_hoy if v.margen > 0]
@@ -1249,11 +1312,15 @@ def api_ventas_analisis_regiones():
         regiones_data = []
         
         for region in regiones:
-            # Ventas �ltimos 7 d�as
+            dia_inicio = max(1, simulacion.dia_actual - 7)
+            dia_fin = max(1, simulacion.dia_actual - 1)
+
+            # Ventas cerradas de los �ltimos 7 d�as
             ventas_recientes = Venta.query.filter(
                 Venta.empresa_id == empresa.id,
                 Venta.region.in_(variantes_region(region)),
-                Venta.semana_simulacion >= max(1, simulacion.dia_actual - 7)
+                Venta.semana_simulacion >= dia_inicio,
+                Venta.semana_simulacion <= dia_fin,
             ).all()
 
             ingresos_recientes = sum([v.ingreso_total for v in ventas_recientes])
@@ -1267,13 +1334,51 @@ def api_ventas_analisis_regiones():
                 Venta.region.in_(variantes_region(region)),
                 Venta.semana_simulacion >= max(1, simulacion.dia_actual - 7)
             ).group_by(Producto.nombre).order_by(func.sum(Venta.cantidad_vendida).desc()).first()
+
+            demanda_rango = db.session.query(
+                DemandaMercadoDiaria.dia_simulacion,
+                db.func.coalesce(db.func.sum(DemandaMercadoDiaria.demanda_base), 0).label('demanda_total')
+            ).filter(
+                DemandaMercadoDiaria.simulacion_id == simulacion.id,
+                DemandaMercadoDiaria.dia_simulacion >= dia_inicio,
+                DemandaMercadoDiaria.dia_simulacion <= dia_fin,
+                DemandaMercadoDiaria.region.in_(variantes_region(region)),
+            ).group_by(DemandaMercadoDiaria.dia_simulacion).all()
+
+            demanda_por_dia = {
+                int(row.dia_simulacion): int(round(float(row.demanda_total or 0)))
+                for row in demanda_rango
+            }
+
+            decisiones = Decision.query.filter(
+                Decision.empresa_id == empresa.id,
+                Decision.tipo_decision == 'ventas_aprobacion_diaria',
+                Decision.semana_simulacion >= dia_inicio,
+                Decision.semana_simulacion <= dia_fin,
+            ).order_by(Decision.semana_simulacion.asc(), Decision.created_at.asc()).all()
+
+            aprobada_por_dia = {}
+            for dec in decisiones:
+                if not dec.datos_decision:
+                    continue
+                dia = int(dec.semana_simulacion)
+                aprobada_por_dia.setdefault(dia, 0)
+                aprobada_por_dia[dia] += sum(
+                    int(item.get('cantidad_aprobada', 0) or 0)
+                    for item in dec.datos_decision.get('aprobaciones', [])
+                    if (item.get('region') or '').strip() in variantes_region(region)
+                )
+
+            ventas_perdidas_region = 0
+            for dia in range(dia_inicio, dia_fin + 1):
+                ventas_perdidas_region += max(0, int(demanda_por_dia.get(dia, 0)) - int(aprobada_por_dia.get(dia, 0)))
             
             regiones_data.append({
                 'nombre': region,
                 'ventas_totales': len(ventas_recientes),
                 'ingresos': int(ingresos_recientes),
                 'top_producto': top[0] if top else 'N/A',
-                'ventas_perdidas': int(sum([v.cantidad_perdida for v in ventas_recientes]))
+                'ventas_perdidas': int(ventas_perdidas_region)
             })
         
         return jsonify({
@@ -1282,6 +1387,90 @@ def api_ventas_analisis_regiones():
         })
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@bp.route('/api/ventas/fill-rate-region')
+@login_required
+@estudiante_required
+@rol_required('ventas')
+def api_ventas_fill_rate_region():
+    """API: Fill rate por región calculado como nivel de servicio de Ventas.
+
+    Se define como demanda aprobada / demanda total del mercado, usando solo
+    días cerrados para no mezclar el día actual en curso.
+    """
+    empresa_id = current_user.empresa_id
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    if not simulacion:
+        return jsonify({'error': 'No hay simulacion activa'}), 404
+
+    dia_inicio = 1
+    dia_fin = max(1, simulacion.dia_actual - 1)
+    regiones = REGIONES_CANONICAS
+
+    fill_rates = []
+    demanda_totales = []
+    aprobadas_totales = []
+    perdidas_totales = []
+
+    decisiones = Decision.query.filter(
+        Decision.empresa_id == empresa_id,
+        Decision.tipo_decision == 'ventas_aprobacion_diaria',
+        Decision.semana_simulacion >= dia_inicio,
+        Decision.semana_simulacion <= dia_fin,
+    ).order_by(Decision.semana_simulacion.asc(), Decision.created_at.asc()).all()
+
+    aprobaciones_por_region_dia = {}
+    for dec in decisiones:
+        if not dec.datos_decision:
+            continue
+        dia = int(dec.semana_simulacion)
+        for item in dec.datos_decision.get('aprobaciones', []):
+            region = (item.get('region') or '').strip()
+            cantidad = int(item.get('cantidad_aprobada', 0) or 0)
+            if region not in REGIONES_CANONICAS:
+                continue
+            aprobaciones_por_region_dia.setdefault((region, dia), 0)
+            aprobaciones_por_region_dia[(region, dia)] += max(0, cantidad)
+
+    for region in regiones:
+        demanda_rango = db.session.query(
+            DemandaMercadoDiaria.dia_simulacion,
+            db.func.coalesce(db.func.sum(DemandaMercadoDiaria.demanda_base), 0).label('demanda_total')
+        ).filter(
+            DemandaMercadoDiaria.simulacion_id == simulacion.id,
+            DemandaMercadoDiaria.dia_simulacion >= dia_inicio,
+            DemandaMercadoDiaria.dia_simulacion <= dia_fin,
+            DemandaMercadoDiaria.region.in_(variantes_region(region)),
+        ).group_by(DemandaMercadoDiaria.dia_simulacion).all()
+
+        demanda_por_dia = {
+            int(row.dia_simulacion): int(round(float(row.demanda_total or 0)))
+            for row in demanda_rango
+        }
+
+        demanda_total = sum(demanda_por_dia.values())
+        aprobada_total = sum(
+            int(aprobaciones_por_region_dia.get((region, dia), 0))
+            for dia in range(dia_inicio, dia_fin + 1)
+        )
+        perdida_total = max(0, demanda_total - aprobada_total)
+        fill_rate = round((aprobada_total / demanda_total) * 100, 1) if demanda_total > 0 else 100.0
+
+        fill_rates.append(fill_rate)
+        demanda_totales.append(int(demanda_total))
+        aprobadas_totales.append(int(aprobada_total))
+        perdidas_totales.append(int(perdida_total))
+
+    return jsonify({
+        'success': True,
+        'regiones': regiones,
+        'fill_rates': fill_rates,
+        'demanda_totales': demanda_totales,
+        'aprobadas_totales': aprobadas_totales,
+        'perdidas_totales': perdidas_totales,
+        'dia_fin': dia_fin,
+    })
 
 
 @bp.route('/api/ventas/competitividad')
@@ -1575,7 +1764,10 @@ def api_ventas_por_producto():
 @estudiante_required
 @rol_required('ventas')
 def api_ventas_demanda_mercado():
-    """API: Demanda total del mercado vs asignacion vs ventas reales por dia"""
+    """API: Demanda total del mercado vs asignacion vs ventas efectivas por dia.
+
+    Para este dashboard, las ventas efectivas se alinean con lo aprobado por Ventas.
+    """
     empresa_id = current_user.empresa_id
     simulacion = Simulacion.query.filter_by(activa=True).first()
     if not simulacion:
@@ -1636,6 +1828,7 @@ def api_ventas_demanda_mercado():
         'dias': dias_list,
         'demanda_mercado': [round(demanda_por_dia[d], 1) for d in dias_list],
         'cantidad_asignada': [round(asignada_por_dia[d], 1) for d in dias_list],
+        'ventas_efectivas': [round(asignada_por_dia[d], 1) for d in dias_list],
         'cantidad_vendida': [round(vendida_por_dia[d], 1) for d in dias_list]
     })
 
@@ -3269,7 +3462,7 @@ def api_calcular_pronostico():
         return jsonify({'error': 'No hay datos hist�ricos para este producto'}), 400
     
     # Preparar serie temporal
-    demanda_historica = [v.cantidad_vendida + v.cantidad_perdida for v in ventas]
+    demanda_historica = [v.demanda_mercado_total for v in ventas]
     
     # Calcular pron�stico seg�n m�todo
     pronosticos = []
@@ -3318,7 +3511,7 @@ def api_calcular_pronostico():
                 mape = mape / len(errores)
     
     # Preparar datos hist�ricos para gr�fico
-    historico = [{'dia': v.semana_simulacion, 'demanda_real': v.cantidad_vendida + v.cantidad_perdida} for v in ventas]
+    historico = [{'dia': v.semana_simulacion, 'demanda_real': v.demanda_mercado_total} for v in ventas]
     
     return jsonify({
         'pronosticos': pronosticos,
@@ -3419,7 +3612,7 @@ def api_calcular_mrp():
             ).all()
             
             if ventas:
-                demanda_promedio = sum([v.cantidad_vendida + v.cantidad_perdida for v in ventas]) / len(ventas)
+                demanda_promedio = sum([v.demanda_mercado_total for v in ventas]) / len(ventas)
                 pronostico_total = demanda_promedio * 7
             else:
                 pronostico_total = 0
@@ -3751,6 +3944,8 @@ def api_logistica_pedidos_dia():
                 info['detalle_productos'],
                 key=lambda item: item['producto_nombre']
             )
+            # Agregar tarifa de transporte para la región
+            info['tarifa_region'] = _tarifa_transporte_region(region)
             pedidos.append(info)
 
     catalogo_vehiculos = _obtener_capacidades_vehiculos(simulacion, empresa.id)
@@ -3935,6 +4130,86 @@ def api_logistica_despachar():
     return jsonify({
         'success': True, 
         'message': f'Despacho creado: {cantidad} unidades a {region}, costo transporte: ${costo_base_transporte:,.0f}'
+    })
+
+
+@bp.route('/api/logistica/historial-despachos', methods=['GET'])
+@login_required
+@estudiante_required
+@rol_required('logistica')
+def api_logistica_historial_despachos():
+    """Obtiene el historial consolidado de despachos realizados en la simulación actual"""
+    empresa = current_user.empresa
+    simulacion = Simulacion.query.filter_by(activa=True).first()
+    
+    if not simulacion:
+        return jsonify({'success': False, 'message': 'No hay simulación activa'}), 400
+    
+    # Obtener todos los despachos de la empresa en la simulación actual
+    despachos = DespachoRegional.query.filter_by(
+        empresa_id=empresa.id
+    ).order_by(DespachoRegional.semana_despacho.desc()).all()
+    
+    # Agrupar despachos por (dia, region)
+    despachos_consolidados = {}
+    for despacho in despachos:
+        clave = (despacho.semana_despacho, despacho.region)
+        
+        if clave not in despachos_consolidados:
+            despachos_consolidados[clave] = {
+                'dia': despacho.semana_despacho,
+                'region': despacho.region,
+                'unidades_total': 0,
+                'vehiculos_set': set(),
+                'dia_entrega': despacho.semana_entrega_estimado,
+                'estado': despacho.estado,
+                'productos': []
+            }
+        
+        # Sumar unidades
+        despachos_consolidados[clave]['unidades_total'] += int(despacho.cantidad)
+        
+        # Consolidar vehículos
+        vehiculos_asignados = despacho.vehiculos_asignados or []
+        for veh in vehiculos_asignados:
+            despachos_consolidados[clave]['vehiculos_set'].add(veh)
+        
+        # Guardar información de productos
+        despachos_consolidados[clave]['productos'].append({
+            'nombre': despacho.producto.nombre,
+            'cantidad': int(despacho.cantidad),
+            'codigo': despacho.producto.codigo
+        })
+    
+    # Construir resultado
+    resultado = []
+    catalogo = _obtener_capacidades_vehiculos(simulacion, empresa.id)
+    
+    for (dia, region), datos in despachos_consolidados.items():
+        # Construir lista de vehículos con formato
+        vehiculos_info = []
+        for codigo_vehiculo in sorted(datos['vehiculos_set']):
+            if codigo_vehiculo == 'EXTERNO':
+                vehiculos_info.append('Proveedor Externo')
+            else:
+                vehiculos_info.append(codigo_vehiculo)
+        
+        resultado.append({
+            'dia': datos['dia'],
+            'region': datos['region'],
+            'unidades': datos['unidades_total'],
+            'vehiculos_asignados': ', '.join(vehiculos_info) if vehiculos_info else 'N/A',
+            'estado': datos['estado'],
+            'dia_entrega': datos['dia_entrega'],
+            'productos_detalles': datos['productos']
+        })
+    
+    # Ordenar por día descendente
+    resultado.sort(key=lambda x: x['dia'], reverse=True)
+    
+    return jsonify({
+        'success': True,
+        'despachos': resultado
     })
 
 
@@ -4456,7 +4731,11 @@ def api_logistica_transito():
 @estudiante_required
 @rol_required('logistica')
 def api_logistica_fill_rate_region():
-    """API: Fill rate (nivel de servicio) acumulado desde el día 1 por región"""
+    """API: Fill rate (nivel de servicio) acumulado desde el día 1 por región.
+
+    Se calcula como: total despachado / total aprobado por Ventas.
+    Esto refleja la capacidad de Logística para cumplir exactamente lo que Ventas autorizó.
+    """
     empresa_id = current_user.empresa_id
     simulacion = Simulacion.query.filter_by(activa=True).first()
     if not simulacion:
@@ -4467,17 +4746,35 @@ def api_logistica_fill_rate_region():
     ventas_totales = []
     ventas_perdidas = []
 
+    aprobaciones = Decision.query.filter(
+        Decision.empresa_id == empresa_id,
+        Decision.tipo_decision == 'ventas_aprobacion_diaria',
+        Decision.semana_simulacion >= 1,
+        Decision.semana_simulacion <= simulacion.dia_actual,
+    ).order_by(Decision.semana_simulacion.asc(), Decision.created_at.asc()).all()
+
+    aprobaciones_por_region = {region: 0 for region in regiones}
+    for dec in aprobaciones:
+        if not dec.datos_decision:
+            continue
+        for item in dec.datos_decision.get('aprobaciones', []):
+            region = item.get('region')
+            cantidad = int(item.get('cantidad_aprobada', 0) or 0)
+            if region in aprobaciones_por_region:
+                aprobaciones_por_region[region] += max(0, cantidad)
+
     for region in regiones:
-        ventas_region = Venta.query.filter_by(
+        despachos_region = DespachoRegional.query.filter_by(
             empresa_id=empresa_id,
             region=region
         ).filter(
-            Venta.semana_simulacion >= 1,
-            Venta.semana_simulacion <= simulacion.dia_actual,
+            DespachoRegional.semana_despacho >= 1,
+            DespachoRegional.semana_despacho <= simulacion.dia_actual,
         ).all()
-        total_solicitado = sum(v.cantidad_solicitada for v in ventas_region)
-        total_vendido = sum(v.cantidad_vendida for v in ventas_region)
-        total_perdido = sum(v.cantidad_perdida for v in ventas_region)
+
+        total_solicitado = int(aprobaciones_por_region.get(region, 0))
+        total_vendido = sum(int(round(d.cantidad or 0)) for d in despachos_region)
+        total_perdido = max(0, total_solicitado - total_vendido)
         fill_rate = round(total_vendido / total_solicitado * 100, 1) if total_solicitado > 0 else 100.0
         fill_rates.append(fill_rate)
         ventas_totales.append(round(total_vendido))

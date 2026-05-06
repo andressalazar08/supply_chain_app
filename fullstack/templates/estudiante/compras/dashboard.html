@@ -304,13 +304,21 @@
                                         <thead class="table-light">
                                             <tr>
                                                 <th>Producto</th>
-                                                <th>Stock Actual</th>
+                                                <th>Unidades Mínimas</th>
                                                 <th>Costo Unitario</th>
                                                 {% if disrupcion_retraso_activa %}
-                                                <th style="min-width: 180px;">Cantidad a Pedir<br><small class="text-muted">Proveedor Actual</small></th>
-                                                <th style="min-width: 180px;">Cantidad a Pedir<br><small class="text-muted">Proveedor Externo</small></th>
+                                                <th>Costo por Lote<br><small class="text-muted">Proveedor Actual</small></th>
+                                                <th>Stock<br><small class="text-muted">(unidades)</small></th>
+                                                <th style="min-width: 150px;">Lotes a Pedir<br><small class="text-muted">Proveedor Actual</small></th>
+                                                <th style="min-width: 150px;">Unidades<br><small class="text-muted">(Calculadas)</small></th>
+                                                <th>Costo por Lote<br><small class="text-muted">Proveedor Externo</small></th>
+                                                <th style="min-width: 150px;">Lotes a Pedir<br><small class="text-muted">Proveedor Externo</small></th>
+                                                <th style="min-width: 150px;">Unidades<br><small class="text-muted">(Calculadas)</small></th>
                                                 {% else %}
-                                                <th style="min-width: 180px;">Cantidad a Pedir</th>
+                                                <th>Costo por Lote</th>
+                                                <th>Stock<br><small class="text-muted">(unidades)</small></th>
+                                                <th style="min-width: 150px;">Lotes a Pedir</th>
+                                                <th style="min-width: 150px;">Unidades<br><small class="text-muted">(Calculadas)</small></th>
                                                 {% endif %}
                                             </tr>
                                         </thead>
@@ -318,62 +326,83 @@
                                             {% for producto in productos %}
                                             {% set inv = inventarios_dict.get(producto.id) %}
                                             {% set minimo_pedido = 30 if '750' in producto.codigo else (20 if '1L' in producto.codigo or 'L' in producto.codigo.upper() else 1) %}
+                                            {% set costo_lote = producto.costo_unitario * minimo_pedido %}
+                                            {% set costo_lote_externo = (producto.costo_unitario + 5000) * minimo_pedido %}
                                             <tr>
                                                 <td>
-                                                    <strong>{{ producto.nombre }}</strong><br>
-                                                    <small class="text-muted">{{ producto.codigo }} - Múltiplos de {{ minimo_pedido }} u.</small>
+                                                    <strong>{{ producto.nombre }}</strong>
                                                 </td>
-                                                <td>{{ "%.0f"|format(inv.cantidad_actual if inv else 0) }}</td>
+                                                <td>{{ minimo_pedido }}</td>
                                                 <td>${{ "{:,.0f}".format(producto.costo_unitario) }}</td>
                                                 {% if disrupcion_retraso_activa %}
+                                                <td>${{ "{:,.0f}".format(costo_lote) }}</td>
+                                                <td>{{ "%.0f"|format(inv.cantidad_actual if inv else 0) }}</td>
                                                 <td>
                                                     <input
                                                         type="number"
                                                         min="0"
-                                                        step="{{ minimo_pedido }}"
-                                                        name="qty_actual_{{ producto.id }}"
-                                                        class="form-control pedido-general-input"
+                                                        value="0"
+                                                        name="lotes_actual_{{ producto.id }}"
+                                                        class="form-control lotes-input"
                                                         data-costo="{{ producto.costo_unitario }}"
                                                         data-minimo-pedido="{{ minimo_pedido }}"
                                                         data-producto="{{ producto.nombre }}"
                                                         data-producto-id="{{ producto.id }}"
                                                         data-proveedor="ACTUAL"
+                                                        data-unidades-display="unidades_actual_{{ producto.id }}"
                                                         placeholder="0"
                                                     >
-                                                    <small class="text-muted d-block mt-1">Días pares, lead time según referencia</small>
                                                 </td>
+                                                <td>
+                                                    <div class="d-flex align-items-center">
+                                                        <span class="badge bg-info" id="unidades_actual_{{ producto.id }}">0 unds</span>
+                                                    </div>
+                                                </td>
+                                                <td>${{ "{:,.0f}".format(costo_lote_externo) }}<br><small class="text-muted">+$5.000/u</small></td>
                                                 <td>
                                                     <input
                                                         type="number"
                                                         min="0"
-                                                        step="{{ minimo_pedido }}"
-                                                        name="qty_externo_{{ producto.id }}"
-                                                        class="form-control pedido-general-input"
+                                                        value="0"
+                                                        name="lotes_externo_{{ producto.id }}"
+                                                        class="form-control lotes-input"
                                                         data-costo="{{ producto.costo_unitario }}"
                                                         data-minimo-pedido="{{ minimo_pedido }}"
                                                         data-producto="{{ producto.nombre }}"
                                                         data-producto-id="{{ producto.id }}"
                                                         data-proveedor="EXTERNO"
+                                                        data-unidades-display="unidades_externo_{{ producto.id }}"
                                                         placeholder="0"
                                                     >
-                                                    <small class="text-muted d-block mt-1">+$5.000/u, lead time según referencia</small>
+                                                </td>
+                                                <td>
+                                                    <div class="d-flex align-items-center">
+                                                        <span class="badge bg-info" id="unidades_externo_{{ producto.id }}">0 unds</span>
+                                                    </div>
                                                 </td>
                                                 {% else %}
+                                                <td>${{ "{:,.0f}".format(costo_lote) }}</td>
+                                                <td>{{ "%.0f"|format(inv.cantidad_actual if inv else 0) }}</td>
                                                 <td>
                                                     <input
                                                         type="number"
                                                         min="0"
-                                                        step="{{ minimo_pedido }}"
-                                                        name="qty_actual_{{ producto.id }}"
-                                                        class="form-control pedido-general-input"
+                                                        value="0"
+                                                        name="lotes_actual_{{ producto.id }}"
+                                                        class="form-control lotes-input"
                                                         data-costo="{{ producto.costo_unitario }}"
                                                         data-minimo-pedido="{{ minimo_pedido }}"
                                                         data-producto="{{ producto.nombre }}"
                                                         data-producto-id="{{ producto.id }}"
                                                         data-proveedor="ACTUAL"
+                                                        data-unidades-display="unidades_actual_{{ producto.id }}"
                                                         placeholder="0"
                                                     >
-                                                    <small class="text-muted d-block mt-1">Proveedor actual, lead time según referencia (2 o 3 días)</small>
+                                                </td>
+                                                <td>
+                                                    <div class="d-flex align-items-center">
+                                                        <span class="badge bg-info" id="unidades_actual_{{ producto.id }}">0 unds</span>
+                                                    </div>
                                                 </td>
                                                 {% endif %}
                                             </tr>
@@ -472,33 +501,41 @@
         return PROVEEDOR_CONFIG[codigo] || PROVEEDOR_CONFIG.ACTUAL;
     }
 
+    function actualizarUnidadesCalculadas(input) {
+        const lotes = parseFloat(input.value) || 0;
+        const minimoPedido = parseFloat(input.dataset.minimoPedido) || 1;
+        const unidadesDisplay = input.dataset.unidadesDisplay;
+        
+        const unidades = lotes * minimoPedido;
+        const badge = document.getElementById(unidadesDisplay);
+        if (badge) {
+            badge.textContent = unidades + ' unds';
+        }
+    }
+
     function actualizarResumenPedidoGeneral() {
-        const inputs = document.querySelectorAll('.pedido-general-input');
+        const inputs = document.querySelectorAll('.lotes-input');
         let items = 0;
         let costoTotal = 0;
         let hayError = false;
         let errorMsg = '';
 
         inputs.forEach((input) => {
-            const cantidad = parseFloat(input.value) || 0;
-            const costo = parseFloat(input.dataset.costo) || 0;
+            const lotes = parseFloat(input.value) || 0;
             const minimoPedido = parseFloat(input.dataset.minimoPedido) || 1;
+            const unidades = lotes * minimoPedido;
+            const costo = parseFloat(input.dataset.costo) || 0;
             const producto = input.dataset.producto || 'Producto';
             const proveedor = input.dataset.proveedor || 'ACTUAL';
             const productoId = input.dataset.productoId;
             const fila = input.closest('tr');
 
-            if (cantidad > 0) {
-                // Validar múltiplos: 30 para 750mL, 20 para 1L
-                if (cantidad % minimoPedido !== 0) {
-                    hayError = true;
-                    errorMsg = `${producto} (${proveedor}): cantidad debe ser múltiplo de ${minimoPedido}. Ingresaste ${cantidad}.`;
-                    input.classList.add('is-invalid');
-                    input.classList.remove('is-valid');
-                } else {
-                    input.classList.add('is-valid');
-                    input.classList.remove('is-invalid');
-                }
+            // Actualizar unidades calculadas
+            actualizarUnidadesCalculadas(input);
+
+            if (lotes > 0) {
+                input.classList.add('is-valid');
+                input.classList.remove('is-invalid');
 
                 // Validar restricción de día par para proveedor actual en disrupción
                 if (DISRUPCION_RETRASO_ACTIVA && proveedor === 'ACTUAL' && (DIA_ACTUAL % 2 !== 0)) {
@@ -509,7 +546,7 @@
 
                 items += 1;
                 const costoUnitario = costo + (proveedor === 'EXTERNO' ? 5000 : 0);
-                costoTotal += cantidad * costoUnitario;
+                costoTotal += unidades * costoUnitario;
             } else {
                 input.classList.remove('is-invalid', 'is-valid');
             }
@@ -538,34 +575,32 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        const inputs = document.querySelectorAll('.pedido-general-input');
+        const inputs = document.querySelectorAll('.lotes-input');
         inputs.forEach((input) => {
-            input.addEventListener('input', actualizarResumenPedidoGeneral);
+            input.addEventListener('input', function() {
+                actualizarUnidadesCalculadas(this);
+                actualizarResumenPedidoGeneral();
+            });
         });
 
-        // Validar antes de submit
+        // Validar antes de submit - convertir lotes a unidades en el formulario
         const form = document.querySelector('form[action*="crear_pedido_general"]');
         if (form) {
             form.addEventListener('submit', function(e) {
-                const inputs = document.querySelectorAll('.pedido-general-input');
-                let hayError = false;
-
+                const inputs = document.querySelectorAll('.lotes-input');
+                
                 inputs.forEach((input) => {
-                    const cantidad = parseFloat(input.value) || 0;
+                    const lotes = parseFloat(input.value) || 0;
                     const minimoPedido = parseFloat(input.dataset.minimoPedido) || 1;
-
-                    if (cantidad > 0 && cantidad % minimoPedido !== 0) {
-                        hayError = true;
-                        input.classList.add('is-invalid');
-                    } else if (cantidad > 0) {
-                        input.classList.add('is-valid');
+                    const unidades = lotes * minimoPedido;
+                    
+                    // Cambiar el nombre del input de lotes a qty para enviarlo al servidor
+                    if (lotes > 0) {
+                        const nombreOriginal = input.name;
+                        input.name = nombreOriginal.replace('lotes_', 'qty_');
+                        input.value = unidades; // Enviar unidades, no lotes
                     }
                 });
-
-                if (hayError) {
-                    e.preventDefault();
-                    alert('⚠️ Hay errores en las cantidades. Revisa que sean múltiplos válidos.');
-                }
             });
         }
 

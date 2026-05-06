@@ -11,6 +11,33 @@ from flask import current_app
 from utils.demanda_central import obtener_demanda_base, validar_cobertura_demanda_dia
 
 
+def _obtener_mapa_aprobaciones_ventas(empresa_id, semana_maxima):
+    """Retorna un mapa {(dia, producto_id, region): cantidad_aprobada}.
+
+    Si en un día no existe aprobación guardada para una combinación,
+    la función no inventa datos; el cálculo llamador debe usar el solicitado.
+    """
+    mapa = {}
+    decisiones = Decision.query.filter(
+        Decision.empresa_id == empresa_id,
+        Decision.tipo_decision == 'ventas_aprobacion_diaria',
+        Decision.semana_simulacion <= semana_maxima,
+    ).order_by(Decision.semana_simulacion.asc(), Decision.created_at.asc()).all()
+
+    for decision in decisiones:
+        if not decision.datos_decision:
+            continue
+        dia = int(decision.semana_simulacion or 0)
+        for item in decision.datos_decision.get('aprobaciones', []):
+            producto_id = int(item.get('producto_id', 0) or 0)
+            region = item.get('region')
+            cantidad_aprobada = int(item.get('cantidad_aprobada', 0) or 0)
+            if producto_id > 0 and region:
+                mapa[(dia, producto_id, region)] = max(0, cantidad_aprobada)
+
+    return mapa
+
+
 def calcular_precios_mercado(simulacion, producto_id, region):
     """
     Calcula el precio promedio del mercado para un producto en una región
@@ -430,8 +457,10 @@ def procesar_ventas_semana(simulacion, empresa):
             # Ventas reales = aprobado por Ventas limitado por stock.
             cantidad_vendida = min(cantidad_aprobada, stock_disponible)
 
-            # Calcular ventas perdidas
-            ventas_perdidas_sin_stock = max(0, cantidad_solicitada - cantidad_vendida)
+            # Calcular ventas perdidas solo por falta de stock.
+            # La diferencia entre demanda solicitada y aprobada es una decisión comercial,
+            # no una pérdida operativa del inventario.
+            ventas_perdidas_sin_stock = max(0, cantidad_aprobada - cantidad_vendida)
             cantidad_perdida_total = ventas_perdidas_sin_stock
 
             # Precio unitario — ya actualizado en DB si el equipo eligió Opción D
@@ -579,10 +608,13 @@ def calcular_costos_operativos(simulacion, empresa):
         empresa_id=empresa.id,
         semana_simulacion=semana_actual
     ).all()
+
+    aprobaciones_dia = _obtener_mapa_aprobaciones_ventas(empresa.id, semana_actual)
     
     penalizacion_ventas_perdidas = 0
     for venta in ventas_dia:
-        cantidad_perdida = venta.cantidad_solicitada - venta.cantidad_vendida
+        cantidad_aprobada = aprobaciones_dia.get((semana_actual, venta.producto_id, venta.region), venta.cantidad_solicitada)
+        cantidad_perdida = max(0, cantidad_aprobada - venta.cantidad_vendida)
         if cantidad_perdida > 0:
             # Obtener precio actual del producto
             producto = Producto.query.get(venta.producto_id)
@@ -644,8 +676,13 @@ def calcular_metricas_semana(simulacion, empresa, costos_operativos=None):
     ).filter(
         Venta.semana_simulacion <= semana_actual
     ).all()
+
+    aprobaciones_historicas = _obtener_mapa_aprobaciones_ventas(empresa.id, semana_actual)
     
-    total_solicitado_historico = sum(v.cantidad_solicitada for v in ventas_historicas)
+    total_solicitado_historico = sum(
+        aprobaciones_historicas.get((int(v.semana_simulacion), v.producto_id, v.region), v.cantidad_solicitada)
+        for v in ventas_historicas
+    )
     total_vendido_historico = sum(v.cantidad_vendida for v in ventas_historicas)
     
     # Nivel de servicio acumulativo: ventas totales / demanda total

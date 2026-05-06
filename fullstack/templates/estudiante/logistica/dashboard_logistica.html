@@ -176,6 +176,40 @@
         border-color: #ffc107 !important;
     }
     
+    .cost-cell {
+        padding: 8px 12px;
+        border-radius: 6px;
+        background: #f8f9fa;
+        min-height: 50px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-end;
+    }
+    
+    .costo-externo-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 4px;
+    }
+    
+    .costo-total-monto {
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+    
+    .cost-breakdown {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 100%;
+    }
+    
+    .cost-breakdown div {
+        line-height: 1.3;
+    }
+    
     .transito-card {
         background: white;
         border-radius: 12px;
@@ -254,8 +288,8 @@
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="fillrate-tab" data-bs-toggle="tab" data-bs-target="#fillrate" type="button" role="tab">
-                        <i class="fas fa-chart-bar"></i> Fill Rate por Región
+                    <button class="nav-link" id="historial-tab" data-bs-toggle="tab" data-bs-target="#historial" type="button" role="tab">
+                        <i class="fas fa-history"></i> Historial de Despachos
                     </button>
                 </li>
             </ul>
@@ -278,20 +312,6 @@
                                 <div class="summary-label">Stock total</div>
                                 <div class="summary-value text-success" style="font-size: 2rem;" id="stockTotalValue">0</div>
                                 <div class="text-muted small">Unidades en inventario central</div>
-                            </div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <div class="summary-card p-4">
-                                <div class="summary-label">Sobrestock</div>
-                                <div class="summary-value text-warning" style="font-size: 2rem;" id="sobrestockTotalValue">0</div>
-                                <div class="text-muted small">Unidades por encima del stock máximo</div>
-                            </div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <div class="summary-card p-4">
-                                <div class="summary-label">Costo del sobrestock</div>
-                                <div class="summary-value text-danger" style="font-size: 2rem;" id="costoSobrestockValue">$0</div>
-                                <div class="text-muted small">Costo inmovilizado por exceso de inventario</div>
                             </div>
                         </div>
                     </div>
@@ -341,6 +361,16 @@
                     <div class="row mb-3" id="resumenVehiculos">
                         <div class="col-12 text-muted small">Cargando capacidades de vehículos...</div>
                     </div>
+
+                    <!-- Tarjetas de Información de Vehículos -->
+                    <div class="row mb-4" id="tarjetasVehiculos">
+                        <!-- Se llenará dinámicamente con JavaScript -->
+                    </div>
+
+                    <!-- Tarjetas de Tiempos de Entrega por Región -->
+                    <div class="row mb-4" id="tarjetasTiemposEntrega">
+                        <!-- Se llenará dinámicamente con JavaScript -->
+                    </div>
                     
                     <div class="despacho-form">
                         <form id="despachoForm">
@@ -349,10 +379,10 @@
                                 <table class="table table-bordered table-hover align-middle table-logistica" id="matrizDespachos">
                                     <thead class="table-primary">
                                         <tr>
-                                            <th width="220"><i class="fas fa-map-marker-alt"></i> Región</th>
+                                            <th width="180"><i class="fas fa-map-marker-alt"></i> Región</th>
                                             <th width="250"><i class="fas fa-truck"></i> Vehículo asignado</th>
-                                            <th class="text-center" width="180"><i class="fas fa-clipboard-list"></i> Unidades solicitadas</th>
-                                            <th class="text-center" width="180"><i class="fas fa-paper-plane"></i> Unidades a enviar</th>
+                                            <th class="text-center" width="150"><i class="fas fa-paper-plane"></i> Unidades Externo</th>
+                                            <th class="text-right" width="200"><i class="fas fa-dollar-sign"></i> Costo Total Asignación</th>
                                         </tr>
                                     </thead>
                                     <tbody id="matrizDespachoBody">
@@ -366,6 +396,34 @@
                                         </tr>
                                     </tbody>
                                 </table>
+                            </div>
+
+                            <!-- Resumen de Costos por Región -->
+                            <div class="card mt-4 mb-4" id="costosResumenCard" style="display:none;">
+                                <div class="card-header bg-light">
+                                    <h5 class="mb-0"><i class="fas fa-dollar-sign"></i> Resumen de Costos de Transporte</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Región</th>
+                                                    <th class="text-center">Unidades</th>
+                                                    <th class="text-right">Costo Total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="costosResumenBody">
+                                            </tbody>
+                                            <tfoot class="table-light fw-bold">
+                                                <tr>
+                                                    <td colspan="2">COSTO TOTAL DE DESPACHO</td>
+                                                    <td class="text-right" id="costoTotalGeneral">$0</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Botón de Despacho General -->
@@ -476,40 +534,35 @@
                     </div>
                 </div>
 
-                <!-- TAB 4: Fill Rate por Región -->
-                <div class="tab-pane fade" id="fillrate" role="tabpanel">
+                <!-- TAB 5: Historial de Despachos -->
+                <div class="tab-pane fade" id="historial" role="tabpanel">
                     <div class="row mb-3">
                         <div class="col-12">
-                            <h4><i class="fas fa-chart-bar"></i> Fill Rate por Región</h4>
-                            <p class="text-muted">Porcentaje de demanda atendida en cada región desde el día 1</p>
+                            <h4><i class="fas fa-history"></i> Historial de Despachos</h4>
+                            <p class="text-muted">Registro de todos los despachos realizados</p>
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="col-lg-7 mb-4">
-                            <div class="card">
-                                <div class="card-header bg-white">
-                                    <h5><i class="fas fa-percentage"></i> Fill Rate (%)</h5>
-                                </div>
-                                <div class="card-body">
-                                    <canvas id="chartFillRate" height="120"></canvas>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-lg-5 mb-4">
-                            <div class="card">
-                                <div class="card-header bg-white">
-                                    <h5><i class="fas fa-table"></i> Detalle por Región</h5>
-                                </div>
-                                <div class="card-body p-0">
-                                    <table class="table table-sm mb-0" id="tablaFillRate">
-                                        <thead class="table-light">
-                                            <tr><th>Región</th><th class="text-center">Fill Rate</th><th class="text-center">Vendidas</th><th class="text-center">Perdidas</th></tr>
-                                        </thead>
-                                        <tbody id="tablaFillRateBody">
-                                            <tr><td colspan="4" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
+
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle table-logistica">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Día</th>
+                                            <th>Región</th>
+                                            <th class="text-center">Unidades Totales</th>
+                                            <th>Vehículos Asignados</th>
+                                            <th>Día de Entrega</th>
+                                            <th>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="historialDespachoBody">
+                                        <tr>
+                                            <td colspan="6" class="text-center py-4 text-muted">Cargando historial...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
@@ -537,9 +590,8 @@ document.addEventListener('DOMContentLoaded', function() {
         cargarTransito();
     });
 
-    // Cargar fill rate cuando se abre ese tab
-    document.getElementById('fillrate-tab').addEventListener('shown.bs.tab', function() {
-        cargarFillRate();
+    document.getElementById('historial-tab').addEventListener('shown.bs.tab', function() {
+        cargarHistorialDespachos();
     });
     
     // Configurar submit del formulario
@@ -577,12 +629,8 @@ function mostrarStock(stock) {
     const indicadores = resumen.indicadores_rotacion || {};
 
     const totalStock = resumen.stock_total ?? stock.reduce((acc, item) => acc + Math.round(item.stock_actual || 0), 0);
-    const totalSobrestock = resumen.sobrestock_total ?? stock.reduce((acc, item) => acc + Math.round(item.sobrestock || 0), 0);
-    const totalCostoSobrestock = resumen.costo_sobrestock_total ?? stock.reduce((acc, item) => acc + (item.costo_sobrestock || 0), 0);
 
     document.getElementById('stockTotalValue').textContent = totalStock.toLocaleString('es-CO');
-    document.getElementById('sobrestockTotalValue').textContent = totalSobrestock.toLocaleString('es-CO');
-    document.getElementById('costoSobrestockValue').textContent = '$' + totalCostoSobrestock.toLocaleString('es-CO', {maximumFractionDigits: 0});
 
     const rotacionTotal = indicadores.rotacion_total_dias;
     const rotacionNeta = indicadores.rotacion_neta_dias;
@@ -674,7 +722,7 @@ async function cargarMatrizDespachos() {
                     <tr class="pedido-row" data-index="${index}" data-region="${pedido.region}" data-demanda="${pedido.unidades_solicitadas}">
                         <td>
                             <div class="fw-bold">${pedido.region}</div>
-                            <small class="text-muted">Demanda disponible: ${pedido.unidades_solicitadas.toLocaleString('es-CO')} unds</small>
+                            <small class="text-muted">Demanda: ${pedido.unidades_solicitadas.toLocaleString('es-CO')} unds</small>
                         </td>
                         <td class="text-center">
                             <div class="vehiculo-grid">
@@ -685,15 +733,16 @@ async function cargarMatrizDespachos() {
                                     ${renderOpcionesVehiculo(null)}
                                 </select>
                             </div>
-                            <small class="text-muted d-block mt-2">Selecciona hasta 2 vehículos por región</small>
-                        </td>
-                        <td class="text-center">
-                            <span class="badge bg-primary">${pedido.unidades_solicitadas.toLocaleString('es-CO')} unds</span>
-                            <div class="small text-muted mt-2">Definido por Ventas</div>
+                            <small class="text-muted d-block mt-2">Hasta 2 vehículos</small>
                         </td>
                         <td class="text-center">
                             <span class="badge bg-warning text-dark external-badge" id="external-${index}">0</span>
-                            <div class="small text-muted mt-1 external-text" id="external-text-${index}">Sin uso</div>
+                        </td>
+                        <td class="text-right">
+                            <div class="cost-cell" id="cost-cell-${index}">
+                                <div class="costo-externo-label text-muted small" id="costo-label-${index}">--</div>
+                                <div class="costo-total-monto fw-bold" id="costo-total-${index}">$0</div>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -743,18 +792,70 @@ function renderResumenRegiones() {
         </div>
         ${cards}
     `;
+
+    // Mostrar resumen de costos
+    actualizarResumenCostos();
+}
+
+function actualizarResumenCostos() {
+    const card = document.getElementById('costosResumenCard');
+    const tbody = document.getElementById('costosResumenBody');
+    const totalSpan = document.getElementById('costoTotalGeneral');
+
+    if (!pedidosDia || pedidosDia.length === 0) {
+        card.style.display = 'none';
+        return;
+    }
+
+    let totalCostoGeneral = 0;
+    let html = '';
+
+    pedidosDia.forEach((pedido, index) => {
+        const unidades = pedido.unidades_solicitadas || 0;
+        const costTotalElement = document.getElementById(`costo-total-${index}`);
+        
+        // Extraer el costo total calculado de la tabla de asignación
+        let costoTotal = 0;
+        if (costTotalElement) {
+            const textoMonto = costTotalElement.textContent || '$0';
+            // Extraer número del formato "$X.XXX.XXX"
+            const numStr = textoMonto.replace(/[^0-9]/g, '');
+            costoTotal = parseInt(numStr) || 0;
+        }
+        
+        totalCostoGeneral += costoTotal;
+
+        html += `
+            <tr>
+                <td>${pedido.region}</td>
+                <td class="text-center">${unidades.toLocaleString('es-CO')}</td>
+                <td class="text-right">$${costoTotal.toLocaleString('es-CO')}</td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+    totalSpan.textContent = `$${totalCostoGeneral.toLocaleString('es-CO')}`;
+    card.style.display = 'block';
 }
 
 function renderOpcionesVehiculo(defaultVehiculo) {
     let html = '<option value="">-- Seleccionar vehículo --</option>';
     html += Object.values(vehiculosLogistica).map(v => {
         const capacidadTxt = v.capacidad === null ? 'Sin límite' : `${v.capacidad} unds`;
+        let costoFijo = 'Costo variable';
+        if (!v.externo && v.capacidad !== null) {
+            const costo = obtenerCostoVehiculo(v.capacidad);
+            if (costo !== null) {
+                costoFijo = `$${costo.toLocaleString('es-CO')} fijo`;
+            }
+        }
         const estadoTxt = v.disponible
             ? ''
-            : (v.dia_retorno ? ` (Fuera de servicio hasta día ${v.dia_retorno})` : ' (Fuera de servicio)');
+            : (v.dia_retorno ? ` (Fuera hasta día ${v.dia_retorno})` : ' (Fuera servicio)');
         const selected = v.codigo === defaultVehiculo ? 'selected' : '';
         const disabled = v.disponible ? '' : 'disabled';
-        return `<option value="${v.codigo}" ${selected} ${disabled}>${v.codigo} - ${capacidadTxt}${estadoTxt}</option>`;
+        return `<option value="${v.codigo}" ${selected} ${disabled}>${v.codigo} - ${capacidadTxt} - ${costoFijo}${estadoTxt}</option>`;
     }).join('');
     return html;
 }
@@ -778,6 +879,24 @@ function renderResumenVehiculos() {
         `;
     }).join('');
     container.innerHTML = cards;
+
+    // Renderizar tarjetas de vehículos
+    renderTarjetasVehiculos();
+    
+    // Renderizar tarjetas de tiempos de entrega
+    renderTarjetasTiemposEntrega();
+}
+
+function renderTarjetasVehiculos() {
+    const container = document.getElementById('tarjetasVehiculos');
+    // Tarjetas grandes desactivadas - solo resumen en tabla
+    container.innerHTML = '';
+}
+
+function renderTarjetasTiemposEntrega() {
+    const container = document.getElementById('tarjetasTiemposEntrega');
+    // Tarjetas de tiempos desactivadas
+    container.innerHTML = '';
 }
 
 function asignarVehiculosIniciales() {
@@ -841,10 +960,13 @@ function validarCapacidadesVehiculos() {
             .map(select => (select.value || '').toUpperCase())
             .filter(v => v);
 
+        // Si no hay vehículos seleccionados: envío por externo (válido)
         if (!vehiculosSeleccionados.length) {
-            hayErrores = true;
-            row.classList.add('table-danger');
-            return;
+            const badge = document.getElementById(`external-${index}`);
+            if (badge) {
+                badge.textContent = demanda.toLocaleString('es-CO') + ' unds';
+            }
+            return; // Continúa con el siguiente row
         }
 
         if (new Set(vehiculosSeleccionados).size !== vehiculosSeleccionados.length) {
@@ -893,12 +1015,8 @@ function validarCapacidadesVehiculos() {
         }
 
         const badge = document.getElementById(`external-${index}`);
-        const label = document.getElementById(`external-text-${index}`);
-        if (badge && label) {
-            badge.textContent = envioExterno.toLocaleString('es-CO');
-            label.textContent = tieneExterno
-                ? 'Todo el envío usa vehículo externo'
-                : (envioExterno > 0 ? 'Se activa vehículo externo automáticamente' : 'No aplica vehículo externo');
+        if (badge) {
+            badge.textContent = envioExterno.toLocaleString('es-CO') + ' unds';
         }
     });
 
@@ -909,7 +1027,83 @@ function validarCapacidadesVehiculos() {
         btn.disabled = hayErrores;
     }
 
+    // Actualizar costos en tiempo real
+    actualizarCostosPorFila();
+    actualizarResumenCostos();
+
     return { hayErrores, usoPorVehiculo };
+}
+
+function obtenerCostoVehiculo(capacidad) {
+    if (capacidad === null || capacidad === undefined) {
+        return null; // Ilimitado: $3.000 por unidad
+    }
+    const cap = parseInt(capacidad);
+    if (cap === 350) return 700000;
+    if (cap === 400) return 800000;
+    if (cap === 450) return 900000;
+    if (cap === 500) return 1000000;
+    return null; // Por defecto ilimitado
+}
+
+function actualizarCostosPorFila() {
+    document.querySelectorAll('.pedido-row').forEach((row, index) => {
+        const costLabel = document.getElementById(`costo-label-${index}`);
+        const costTotal = document.getElementById(`costo-total-${index}`);
+        if (!costLabel || !costTotal) return;
+        
+        const pedido = pedidosDia[index];
+        if (!pedido) return;
+        
+        const selectVehiculos = Array.from(row.querySelectorAll('.vehiculo-select'));
+        const vehiculosSeleccionados = selectVehiculos
+            .map(select => (select.value || '').toUpperCase())
+            .filter(v => v);
+        
+        const demanda = pedido.unidades_solicitadas || 0;
+        
+        // Sin vehículos seleccionados: costo total = demanda * $3.000
+        if (vehiculosSeleccionados.length === 0) {
+            const costoExterno = demanda * 3000;
+            costLabel.innerHTML = `<span>Costo externo: $${costoExterno.toLocaleString('es-CO')}</span><br><span class="fw-bold text-danger">Total: $${costoExterno.toLocaleString('es-CO')}</span>`;
+            costTotal.textContent = `$${costoExterno.toLocaleString('es-CO')}`;
+            costTotal.style.color = '#dc3545';
+            return;
+        }
+        
+        // Calcular capacidad total y costo de vehículos
+        let capacidadTotal = 0;
+        let costoVehiculos = 0;
+        
+        for (let codigoVehiculo of vehiculosSeleccionados) {
+            if (codigoVehiculo === 'EXTERNO') continue;
+            
+            const vehiculo = vehiculosLogistica[codigoVehiculo];
+            if (!vehiculo) continue;
+            
+            const capacidad = vehiculo.capacidad;
+            capacidadTotal += (capacidad || 0);
+            const costo = obtenerCostoVehiculo(capacidad);
+            if (costo !== null) {
+                costoVehiculos += costo;
+            }
+        }
+        
+        // Calcular unidades externo y costo externo
+        const unidadesExterno = Math.max(0, demanda - capacidadTotal);
+        const costoExterno = unidadesExterno * 3000;
+        const costoTotalFila = costoVehiculos + costoExterno;
+        
+        // Actualizar presentación
+        costLabel.innerHTML = `
+            <div class="cost-breakdown">
+                <div><small>Vehículos: $${costoVehiculos.toLocaleString('es-CO')}</small></div>
+                <div><small>Externo (${unidadesExterno} unds): $${costoExterno.toLocaleString('es-CO')}</small></div>
+            </div>
+        `;
+        costTotal.textContent = `$${costoTotalFila.toLocaleString('es-CO')}`;
+        costTotal.style.color = '#212529';
+    });
 }
 
 async function realizarDespachoGeneral() {
@@ -1022,6 +1216,51 @@ async function cargarTransito() {
     }
 }
 
+async function cargarHistorialDespachos() {
+    try {
+        const response = await fetch('/estudiante/api/logistica/historial-despachos');
+        const data = await response.json();
+
+        if (!data.success) {
+            document.getElementById('historialDespachoBody').innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Error cargando historial</td></tr>';
+            return;
+        }
+
+        renderHistorialDespachos(data.despachos || []);
+    } catch (error) {
+        console.error('Error cargando historial:', error);
+        document.getElementById('historialDespachoBody').innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Error cargando historial</td></tr>';
+    }
+}
+
+function renderHistorialDespachos(despachos) {
+    const container = document.getElementById('historialDespachoBody');
+
+    if (!despachos || despachos.length === 0) {
+        container.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No hay despachos registrados</td></tr>';
+        return;
+    }
+
+    let html = '';
+    despachos.forEach(despacho => {
+        const estadoClass = despacho.estado === 'entregado' ? 'success' : (despacho.estado === 'en_transito' ? 'warning' : 'info');
+        const estadoTexto = despacho.estado === 'entregado' ? 'Entregado' : (despacho.estado === 'en_transito' ? 'En Tránsito' : 'Pendiente');
+        
+        html += `
+            <tr>
+                <td><strong>Día ${despacho.dia}</strong></td>
+                <td>${despacho.region}</td>
+                <td class="text-center"><span class="badge bg-primary">${despacho.unidades.toLocaleString('es-CO')}</span></td>
+                <td>${despacho.vehiculos_asignados}</td>
+                <td><strong>Día ${despacho.dia_entrega}</strong></td>
+                <td><span class="badge bg-${estadoClass}">${estadoTexto}</span></td>
+            </tr>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
 function renderRecepcionTabla(compras) {
     const container = document.getElementById('recepcionTableBody');
     const transitoCount = document.getElementById('recepcionTransitoCount');
@@ -1099,58 +1338,5 @@ function renderTransitoTabla(compras, despachos) {
     container.innerHTML = filas.join('');
 }
 
-// ========== TAB 4: FILL RATE POR REGIÓN ==========
-let chartFillRate = null;
-async function cargarFillRate() {
-    try {
-        const response = await fetch('/estudiante/api/logistica/fill-rate-region');
-        const data = await response.json();
-
-        // Gráfica de barras
-        const ctx = document.getElementById('chartFillRate');
-        if (ctx) {
-            if (chartFillRate) chartFillRate.destroy();
-            const bgColors = data.fill_rates.map(r => r >= 90 ? '#2ecc71' : r >= 70 ? '#f39c12' : '#e74c3c');
-            chartFillRate = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: data.regiones,
-                    datasets: [{
-                        label: 'Fill Rate (%)',
-                        data: data.fill_rates,
-                        backgroundColor: bgColors,
-                        borderRadius: 6
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { beginAtZero: true, max: 100, title: { display: true, text: 'Fill Rate (%)' } }
-                    }
-                }
-            });
-        }
-
-        // Tabla detalle
-        const tbody = document.getElementById('tablaFillRateBody');
-        if (tbody) {
-            let html = '';
-            data.regiones.forEach((region, i) => {
-                const fr = data.fill_rates[i];
-                const badge = fr >= 90 ? 'success' : fr >= 70 ? 'warning' : 'danger';
-                html += `<tr>
-                    <td>${region}</td>
-                    <td class="text-center"><span class="badge bg-${badge}">${fr}%</span></td>
-                    <td class="text-center">${data.ventas_totales[i].toLocaleString()}</td>
-                    <td class="text-center text-danger">${data.ventas_perdidas[i].toLocaleString()}</td>
-                </tr>`;
-            });
-            tbody.innerHTML = html;
-        }
-    } catch (error) {
-        console.error('Error cargando fill rate:', error);
-    }
-}
 </script>
 {% endblock %}
