@@ -229,15 +229,15 @@
                     <div class="row mb-4">
                         <div class="col-md-3 mb-3">
                             <div class="metric-card">
-                                <h6 class="text-muted mb-2"><i class="fas fa-shopping-cart"></i> Ventas Hoy</h6>
-                                <div class="metric-value" id="ventasHoy">0</div>
+                                <h6 class="text-muted mb-2"><i class="fas fa-shopping-cart"></i> Ventas Totales</h6>
+                                <div class="metric-value" id="ventasTotales">0</div>
                                 <small class="text-muted">unidades</small>
                             </div>
                         </div>
                         <div class="col-md-4 mb-3">
                             <div class="metric-card">
-                                <h6 class="text-muted mb-2"><i class="fas fa-dollar-sign"></i> Ingresos Hoy</h6>
-                                <div class="metric-value text-success" id="ingresosHoy">$0</div>
+                                <h6 class="text-muted mb-2"><i class="fas fa-dollar-sign"></i> Ingresos Totales</h6>
+                                <div class="metric-value text-success" id="ingresosTotales">$0</div>
                                 <small class="text-muted">pesos</small>
                             </div>
                         </div>
@@ -569,8 +569,8 @@ async function cargarDashboard() {
         
         if (data.success) {
             // Actualizar métricas
-            document.getElementById('ventasHoy').textContent = data.metricas.ventas_hoy;
-            document.getElementById('ingresosHoy').textContent = `$${data.metricas.ingresos_hoy.toLocaleString()}`;
+            document.getElementById('ventasTotales').textContent = data.metricas.ventas_totales;
+            document.getElementById('ingresosTotales').textContent = `$${data.metricas.ingresos_totales.toLocaleString()}`;
             document.getElementById('ventasPerdidas').textContent = data.metricas.ventas_perdidas;
             
             // Top productos

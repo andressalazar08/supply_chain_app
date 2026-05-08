@@ -304,7 +304,7 @@
                                         <thead class="table-light">
                                             <tr>
                                                 <th>Producto</th>
-                                                <th>Unidades Mínimas</th>
+                                                <th>Unidades por Lote</th>
                                                 <th>Costo Unitario</th>
                                                 {% if disrupcion_retraso_activa %}
                                                 <th>Costo por Lote<br><small class="text-muted">Proveedor Actual</small></th>
@@ -341,6 +341,7 @@
                                                     <input
                                                         type="number"
                                                         min="0"
+                                                        step="1"
                                                         value="0"
                                                         name="lotes_actual_{{ producto.id }}"
                                                         class="form-control lotes-input"
@@ -363,6 +364,7 @@
                                                     <input
                                                         type="number"
                                                         min="0"
+                                                        step="1"
                                                         value="0"
                                                         name="lotes_externo_{{ producto.id }}"
                                                         class="form-control lotes-input"
@@ -387,6 +389,7 @@
                                                     <input
                                                         type="number"
                                                         min="0"
+                                                        step="1"
                                                         value="0"
                                                         name="lotes_actual_{{ producto.id }}"
                                                         class="form-control lotes-input"
@@ -583,22 +586,22 @@
             });
         });
 
-        // Validar antes de submit - convertir lotes a unidades en el formulario
+        // Validar antes de submit - mantener nombres de lotes tal como están
         const form = document.querySelector('form[action*="crear_pedido_general"]');
         if (form) {
             form.addEventListener('submit', function(e) {
                 const inputs = document.querySelectorAll('.lotes-input');
                 
+                // Validar que todos los valores sean números enteros
                 inputs.forEach((input) => {
                     const lotes = parseFloat(input.value) || 0;
-                    const minimoPedido = parseFloat(input.dataset.minimoPedido) || 1;
-                    const unidades = lotes * minimoPedido;
                     
-                    // Cambiar el nombre del input de lotes a qty para enviarlo al servidor
                     if (lotes > 0) {
-                        const nombreOriginal = input.name;
-                        input.name = nombreOriginal.replace('lotes_', 'qty_');
-                        input.value = unidades; // Enviar unidades, no lotes
+                        // Asegurar que es un número entero
+                        const lotesEntero = Math.floor(lotes);
+                        if (lotesEntero !== lotes) {
+                            input.value = lotesEntero;
+                        }
                     }
                 });
             });

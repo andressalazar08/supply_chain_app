@@ -3,12 +3,99 @@ Utilidades para procesamiento automático de semanas de simulación
 """
 
 from models import (Simulacion, Empresa, Producto, Inventario, Venta, Compra,
-                    DespachoRegional, MovimientoInventario, Metrica, DisrupcionEmpresa, Decision)
+                    DespachoRegional, MovimientoInventario, Metrica, DisrupcionEmpresa, Decision,
+                    DemandaMercadoDiaria)
 from extensions import db
 from datetime import datetime
 from sqlalchemy import func
 from flask import current_app
 from utils.demanda_central import obtener_demanda_base, validar_cobertura_demanda_dia
+
+# Definir regiones y variantes para cálculo de Fill Rate
+REGIONES_CANONICAS = [
+    'Andina',
+    'Caribe',
+    'Pacífica',
+    'Orinoquía',
+    'Amazonía',
+]
+
+REGION_VARIANTES = {
+    'Andina': ['Andina'],
+    'Caribe': ['Caribe'],
+    'Pacífica': ['Pacífica', 'Pacifica', 'Pac\u00edfica'],
+    'Orinoquía': ['Orinoquía', 'Orinoquia', 'Orinoqu\u00eda'],
+    'Amazonía': ['Amazonía', 'Amazonia', 'Amazon\u00eda'],
+}
+
+def variantes_region(region):
+    """Retorna alias válidos de una región para tolerar datos legados mal codificados."""
+    return REGION_VARIANTES.get(region, [region])
+
+
+def _calcular_fill_rate_promedio_regiones(empresa_id, simulacion):
+    """
+    Calcula el Fill Rate para cada región y devuelve el promedio.
+    Fill Rate por región = (Cantidad Aprobada / Demanda Total del Mercado por región) × 100
+    
+    Luego promedia los 5 valores regionales.
+    """
+    dia_inicio = 1
+    dia_fin = max(1, simulacion.dia_actual - 1)
+    
+    # Obtener todas las decisiones de aprobación para esta empresa
+    decisiones = Decision.query.filter(
+        Decision.empresa_id == empresa_id,
+        Decision.tipo_decision == 'ventas_aprobacion_diaria',
+        Decision.semana_simulacion >= dia_inicio,
+        Decision.semana_simulacion <= dia_fin,
+    ).order_by(Decision.semana_simulacion.asc(), Decision.created_at.asc()).all()
+
+    # Construir mapa de aprobaciones por (región, día)
+    aprobaciones_por_region_dia = {}
+    for dec in decisiones:
+        if not dec.datos_decision:
+            continue
+        dia = int(dec.semana_simulacion)
+        for item in dec.datos_decision.get('aprobaciones', []):
+            region = (item.get('region') or '').strip()
+            cantidad = int(item.get('cantidad_aprobada', 0) or 0)
+            if region not in REGIONES_CANONICAS:
+                continue
+            aprobaciones_por_region_dia.setdefault((region, dia), 0)
+            aprobaciones_por_region_dia[(region, dia)] += max(0, cantidad)
+
+    fill_rates = []
+    for region in REGIONES_CANONICAS:
+        # Obtener demanda del mercado por día para esta región
+        demanda_rango = db.session.query(
+            DemandaMercadoDiaria.dia_simulacion,
+            db.func.coalesce(db.func.sum(DemandaMercadoDiaria.demanda_base), 0).label('demanda_total')
+        ).filter(
+            DemandaMercadoDiaria.simulacion_id == simulacion.id,
+            DemandaMercadoDiaria.dia_simulacion >= dia_inicio,
+            DemandaMercadoDiaria.dia_simulacion <= dia_fin,
+            DemandaMercadoDiaria.region.in_(variantes_region(region)),
+        ).group_by(DemandaMercadoDiaria.dia_simulacion).all()
+
+        demanda_por_dia = {
+            int(row.dia_simulacion): int(round(float(row.demanda_total or 0)))
+            for row in demanda_rango
+        }
+
+        # Calcular totales acumulados por región
+        demanda_total = sum(demanda_por_dia.values())
+        aprobada_total = sum(
+            int(aprobaciones_por_region_dia.get((region, dia), 0))
+            for dia in range(dia_inicio, dia_fin + 1)
+        )
+        
+        # Fill rate por región: cantidad APROBADA / demanda total del mercado para esa región
+        fill_rate = (aprobada_total / demanda_total * 100) if demanda_total > 0 else 100.0
+        fill_rates.append(fill_rate)
+
+    # Retornar el promedio de los 5 fill rates
+    return round(sum(fill_rates) / len(fill_rates), 1) if fill_rates else 100.0
 
 
 def _obtener_mapa_aprobaciones_ventas(empresa_id, semana_maxima):
@@ -670,23 +757,10 @@ def calcular_metricas_semana(simulacion, empresa, costos_operativos=None):
     ).all()
     costos_transporte = sum(d.costo_transporte or 0 for d in despachos_dia)
 
-    # Calcular nivel de servicio ACUMULATIVO (todo el historial de la simulación)
-    ventas_historicas = Venta.query.filter_by(
-        empresa_id=empresa.id
-    ).filter(
-        Venta.semana_simulacion <= semana_actual
-    ).all()
-
-    aprobaciones_historicas = _obtener_mapa_aprobaciones_ventas(empresa.id, semana_actual)
-    
-    total_solicitado_historico = sum(
-        aprobaciones_historicas.get((int(v.semana_simulacion), v.producto_id, v.region), v.cantidad_solicitada)
-        for v in ventas_historicas
-    )
-    total_vendido_historico = sum(v.cantidad_vendida for v in ventas_historicas)
-    
-    # Nivel de servicio acumulativo: ventas totales / demanda total
-    nivel_servicio = (total_vendido_historico / total_solicitado_historico * 100) if total_solicitado_historico > 0 else 100
+    # Calcular FILL RATE (Nivel de Servicio) = Promedio de Fill Rates de las 5 regiones
+    # Cada región: (Cantidad Aprobada / Demanda Total del Mercado) × 100
+    # Luego promedia los 5 valores
+    nivel_servicio = _calcular_fill_rate_promedio_regiones(empresa.id, simulacion)
     
     # Calcular valor del inventario
     inventarios = Inventario.query.filter_by(empresa_id=empresa.id).all()

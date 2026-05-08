@@ -1153,13 +1153,14 @@ def api_ventas_dashboard():
         simulacion = Simulacion.query.filter_by(activa=True).first()
         
         # Ventas del d�a actual
-        ventas_hoy = Venta.query.filter_by(
-            empresa_id=empresa.id,
-            semana_simulacion=simulacion.dia_actual
+        ventas_acumuladas = Venta.query.filter(
+            Venta.empresa_id == empresa.id,
+            Venta.semana_simulacion >= 0,
+            Venta.semana_simulacion <= simulacion.dia_actual
         ).all()
         
-        total_unidades = sum([v.cantidad_vendida for v in ventas_hoy])
-        total_ingresos = sum([v.ingreso_total for v in ventas_hoy])
+        total_unidades = sum([v.cantidad_vendida for v in ventas_acumuladas])
+        total_ingresos = sum([v.ingreso_total for v in ventas_acumuladas])
         total_perdidas = _calcular_ventas_perdidas_registradas(
             empresa.id,
             1,
@@ -1167,7 +1168,7 @@ def api_ventas_dashboard():
         )
         
         # Calcular margen promedio
-        margenes = [v.margen for v in ventas_hoy if v.margen > 0]
+        margenes = [v.margen for v in ventas_acumuladas if v.margen > 0]
         margen_promedio = int(sum(margenes) / len(margenes)) if margenes else 0
         
         # Top productos (�ltimos 7 d�as)
@@ -1193,8 +1194,8 @@ def api_ventas_dashboard():
         return jsonify({
             'success': True,
             'metricas': {
-                'ventas_hoy': int(total_unidades),
-                'ingresos_hoy': int(total_ingresos),
+                'ventas_totales': int(total_unidades),
+                'ingresos_totales': int(total_ingresos),
                 'margen_promedio': margen_promedio,
                 'ventas_perdidas': int(total_perdidas)
             },
@@ -1394,9 +1395,9 @@ def api_ventas_analisis_regiones():
 @estudiante_required
 @rol_required('ventas')
 def api_ventas_fill_rate_region():
-    """API: Fill rate por región calculado como nivel de servicio de Ventas.
+    """API: Fill rate por región = (Unidades Aprobadas / Unidades Demandadas) × 100
 
-    Se define como demanda aprobada / demanda total del mercado, usando solo
+    Se define como cantidad_aprobada / demanda_total del mercado, usando solo
     días cerrados para no mezclar el día actual en curso.
     """
     empresa_id = current_user.empresa_id
@@ -1413,6 +1414,7 @@ def api_ventas_fill_rate_region():
     aprobadas_totales = []
     perdidas_totales = []
 
+    # Obtener todas las decisiones de aprobación
     decisiones = Decision.query.filter(
         Decision.empresa_id == empresa_id,
         Decision.tipo_decision == 'ventas_aprobacion_diaria',
@@ -1420,6 +1422,7 @@ def api_ventas_fill_rate_region():
         Decision.semana_simulacion <= dia_fin,
     ).order_by(Decision.semana_simulacion.asc(), Decision.created_at.asc()).all()
 
+    # Construir mapa de aprobaciones por (región, día)
     aprobaciones_por_region_dia = {}
     for dec in decisiones:
         if not dec.datos_decision:
@@ -1434,6 +1437,7 @@ def api_ventas_fill_rate_region():
             aprobaciones_por_region_dia[(region, dia)] += max(0, cantidad)
 
     for region in regiones:
+        # Obtener demanda del mercado por día para esta región
         demanda_rango = db.session.query(
             DemandaMercadoDiaria.dia_simulacion,
             db.func.coalesce(db.func.sum(DemandaMercadoDiaria.demanda_base), 0).label('demanda_total')
@@ -1449,12 +1453,15 @@ def api_ventas_fill_rate_region():
             for row in demanda_rango
         }
 
+        # Calcular totales acumulados
         demanda_total = sum(demanda_por_dia.values())
         aprobada_total = sum(
             int(aprobaciones_por_region_dia.get((region, dia), 0))
             for dia in range(dia_inicio, dia_fin + 1)
         )
         perdida_total = max(0, demanda_total - aprobada_total)
+        
+        # Fill rate: cantidad APROBADA / demanda total del mercado
         fill_rate = round((aprobada_total / demanda_total) * 100, 1) if demanda_total > 0 else 100.0
 
         fill_rates.append(fill_rate)
@@ -2110,7 +2117,13 @@ def dashboard_compras():
     inventarios_dict = {inv.producto_id: inv for inv in inventarios}
     
     # �rdenes de compra recientes
-    ordenes_compra = Compra.query.filter_by(empresa_id=empresa.id)\
+    ordenes_compra = Compra.query\
+        .join(Empresa)\
+        .filter(
+            Compra.empresa_id == empresa.id,
+            Empresa.simulacion_id == simulacion.id,
+            Compra.semana_orden >= 0
+        )\
         .order_by(Compra.semana_orden.desc())\
         .limit(15).all()
     
@@ -2475,16 +2488,20 @@ def crear_pedido_general():
 
         solicitudes = []
         for key, value in request.form.items():
-            # Procesa qty_actual_<id> y qty_externo_<id>
-            if key.startswith('qty_actual_') or key.startswith('qty_externo_'):
+            # Procesa lotes_actual_<id> y lotes_externo_<id>
+            if key.startswith('lotes_actual_') or key.startswith('lotes_externo_'):
                 try:
-                    if key.startswith('qty_actual_'):
+                    if key.startswith('lotes_actual_'):
                         producto_id = int(key.split('_', 2)[2])
                         proveedor = 'ACTUAL'
                     else:
                         producto_id = int(key.split('_', 2)[2])
                         proveedor = 'EXTERNO'
-                    cantidad = float(value or 0)
+                    # Convertir a int para asegurar que sea un número entero positivo
+                    cantidad_valor = value.strip() if isinstance(value, str) else value
+                    if not cantidad_valor or cantidad_valor == '0':
+                        continue
+                    cantidad = int(float(cantidad_valor))  # Permite input de decimales pero convierte a int
                 except (ValueError, TypeError, IndexError):
                     continue
 
@@ -2492,25 +2509,36 @@ def crear_pedido_general():
                     solicitudes.append((producto_id, cantidad, proveedor))
 
         if not solicitudes:
-            flash('Debes ingresar al menos una cantidad mayor a 0 para crear el pedido general.', 'warning')
+            flash('Debes ingresar al menos una cantidad (lotes) mayor a 0 en algún producto para crear el pedido.', 'warning')
             return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
 
         ordenes_preparadas = []
-        for producto_id, cantidad, proveedor in solicitudes:
+        for producto_id, cantidad_lotes, proveedor in solicitudes:
             producto = productos_activos.get(producto_id)
             if not producto:
                 flash(f'Producto inválido en pedido general: {producto_id}', 'error')
                 return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
 
-            # Validar múltiplos: 30 para 750mL, 20 para 1L
-            multiplo_valido, mensaje_multiplo = _validar_multiplos_pedido(producto, cantidad)
+            # Calcular mínimo_pedido (unidades por lote)
+            if '750' in producto.codigo:
+                minimo_pedido = 30
+            elif '1L' in producto.codigo or 'L' in producto.codigo.upper():
+                minimo_pedido = 20
+            else:
+                minimo_pedido = 1
+
+            # Convertir lotes a unidades reales
+            cantidad_unidades = int(cantidad_lotes) * minimo_pedido
+
+            # Validar múltiplos: con la conversión a unidades ya son múltiplos correctos
+            multiplo_valido, mensaje_multiplo = _validar_multiplos_pedido(producto, cantidad_unidades)
             if not multiplo_valido:
                 flash(f"{producto.nombre} ({proveedor}): {mensaje_multiplo}", 'error')
                 return redirect(url_for('estudiante.dashboard_compras') + '#pedido-general')
 
             condiciones = _calcular_condiciones_compra(
                 producto=producto,
-                cantidad=cantidad,
+                cantidad=cantidad_unidades,
                 simulacion=simulacion,
                 empresa_id=current_user.empresa_id,
                 proveedor=proveedor,
@@ -2523,12 +2551,14 @@ def crear_pedido_general():
             tiempo_entrega = condiciones['tiempo_entrega']
             delay_extra = condiciones['delay_extra']
 
-            costo_total = cantidad * costo_unitario
+            costo_total = cantidad_unidades * costo_unitario
             semana_entrega = simulacion.dia_actual + tiempo_entrega + delay_extra
 
             ordenes_preparadas.append({
                 'producto': producto,
-                'cantidad': cantidad,
+                'cantidad': cantidad_unidades,
+                'cantidad_lotes': cantidad_lotes,
+                'minimo_pedido': minimo_pedido,
                 'proveedor': proveedor,
                 'costo_unitario': costo_unitario,
                 'costo_total': costo_total,
