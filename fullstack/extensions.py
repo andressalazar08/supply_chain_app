@@ -1,0 +1,10 @@
+﻿"""Instancias compartidas de extensiones Flask."""
+
+from flask_mail import Mail
+from flask_migrate import Migrate
+from flask_sqlalchemy import SQLAlchemy
+
+# Se inicializan en app.py con init_app(app)
+db = SQLAlchemy()
+mail = Mail()
+migrate = Migrate()

@@ -1,0 +1,792 @@
+{% extends "base.html" %}
+
+{% block title %}Ventas - {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sidebar {
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
+        min-height: 100vh;
+        padding: 0;
+    }
+    
+    .sidebar a {
+        display: block;
+        padding: 15px 20px;
+        color: rgba(255,255,255,0.8);
+        text-decoration: none;
+        transition: all 0.3s;
+        border-left: 3px solid transparent;
+    }
+    
+    .sidebar a:hover,
+    .sidebar a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-left-color: #fff;
+    }
+
+    .content-area {
+        background-color: #f8f9fa;
+        padding: 20px;
+        min-height: 100vh;
+    }
+    
+    .nav-tabs .nav-link {
+        color: #666;
+        font-weight: 600;
+        border: none;
+        border-bottom: 3px solid transparent;
+        padding: 15px 25px;
+        transition: all 0.3s;
+    }
+    
+    .nav-tabs .nav-link:hover {
+        color: #c41e3a;
+    }
+    
+    .nav-tabs .nav-link.active {
+        color: #c41e3a;
+        border-bottom-color: #c41e3a;
+        background: transparent;
+    }
+    
+    .metric-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        border-left: 5px solid #c41e3a;
+        height: 100%;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    .metric-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #c41e3a;
+    }
+    
+    #matrizPrecios input[type="number"] {
+        width: 100px;
+        text-align: center;
+        padding: 8px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+    
+    #matrizPrecios input[type="number"]:focus {
+        border-color: #c41e3a;
+        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        outline: none;
+    }
+    
+    #matrizPrecios .producto-row:hover {
+        background-color: #f8f9fa;
+    }
+    
+    #matrizPrecios .precio-bajo {
+        background-color: #fff3cd;
+        border-color: #ffc107 !important;
+    }
+    
+    #matrizPrecios .precio-negativo {
+        background-color: #f8d7da;
+        border-color: #dc3545 !important;
+    }
+    
+    .margen-badge {
+        font-size: 0.85rem;
+        padding: 4px 8px;
+    }
+    
+    .region-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        transition: all 0.3s ease;
+        border-left: 4px solid #c41e3a;
+    }
+    
+    .region-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        {% include 'estudiante/_sidebar.html' %}
+        
+        <!-- Main Content -->
+        <div class="col-md-10 content-area">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2><i class="fas fa-chart-line"></i> Gestión de Ventas</h2>
+                    <p class="text-muted">Pedidos del día, demanda de mercado y ventas efectivas</p>
+                </div>
+                <div class="text-end">
+                    <div class="badge bg-primary fs-6 px-3 py-2">
+                        <i class="fas fa-calendar"></i> Día {{ simulacion.dia_actual }} (Sem. {{ simulacion.semana_actual }})
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <ul class="nav nav-tabs mb-4" id="ventasTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="pedidos-tab" data-bs-toggle="tab" data-bs-target="#pedidos" type="button" role="tab">
+                        <i class="fas fa-clipboard-list"></i> Pedidos del Día
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab">
+                        <i class="fas fa-chart-pie"></i> Dashboard
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="regiones-tab" data-bs-toggle="tab" data-bs-target="#regiones" type="button" role="tab">
+                        <i class="fas fa-map-marked-alt"></i> Análisis por Región
+                    </button>
+                </li>
+            </ul>
+
+            <!-- Tabs Content -->
+            <div class="tab-content" id="ventasTabsContent">
+
+                <!-- TAB 0: Pedidos del Día -->
+                <div class="tab-pane fade show active" id="pedidos" role="tabpanel">
+                    <div class="card mb-4">
+                        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1"><i class="fas fa-clipboard-check"></i> Pedidos Solicitados vs Aprobados</h5>
+                                <small class="text-muted">No puedes aprobar más de lo solicitado ni superar el inventario del producto.</small>
+                            </div>
+                            <button class="btn btn-outline-primary btn-sm" onclick="cargarPedidosDia()">
+                                <i class="fas fa-sync-alt"></i> Actualizar
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="resumenPedidosDia" class="alert alert-light border mb-3">
+                                <strong>Día {{ simulacion.dia_actual }}:</strong> ajusta cantidades aprobadas por región según tu estrategia.
+                            </div>
+
+                            <div id="pedidosDiaContainer" class="table-responsive">
+                                <div class="text-center py-4">
+                                    <div class="spinner-border text-primary"></div>
+                                    <p class="text-muted mt-2">Cargando pedidos del día...</p>
+                                </div>
+                            </div>
+
+                            <!-- Resumen Global de Ingresos -->
+                            <div class="card mt-3 mb-3" id="resumenIngresosCard" style="display:none;">
+                                <div class="card-header bg-light">
+                                    <h6 class="mb-0"><i class="fas fa-money-bill-wave"></i> Resumen de Ingresos Potenciales</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <div class="small text-muted">Total Solicitado</div>
+                                            <div class="h5" id="resumenSolicitado">0 unds</div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="small text-muted">Total Aprobado</div>
+                                            <div class="h5" id="resumenAprobado">0 unds</div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="small text-muted">Ingreso Potencial (Aprobado)</div>
+                                            <div class="h5 text-success" id="resumenIngresoAprobado">$0</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-3 d-flex gap-2">
+                                <button class="btn btn-success" onclick="guardarAprobacionesVentas()">
+                                    <i class="fas fa-save"></i> Guardar Aprobaciones
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="aprobarTodoGlobal()">
+                                    <i class="fas fa-bolt"></i> Aprobar Rápido Todo
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- TAB 1: Dashboard de Métricas -->
+                <div class="tab-pane fade" id="dashboard" role="tabpanel">
+                    <!-- Métricas principales -->
+                    <div class="row mb-4">
+                        <div class="col-md-3 mb-3">
+                            <div class="metric-card">
+                                <h6 class="text-muted mb-2"><i class="fas fa-shopping-cart"></i> Ventas Totales</h6>
+                                <div class="metric-value" id="ventasTotales">0</div>
+                                <small class="text-muted">unidades</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="metric-card">
+                                <h6 class="text-muted mb-2"><i class="fas fa-dollar-sign"></i> Ingresos Totales</h6>
+                                <div class="metric-value text-success" id="ingresosTotales">$0</div>
+                                <small class="text-muted">pesos</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="metric-card">
+                                <h6 class="text-muted mb-2"><i class="fas fa-exclamation-triangle"></i> Ventas Perdidas Acumuladas</h6>
+                                <div class="metric-value text-danger" id="ventasPerdidas">0</div>
+                                <small class="text-muted">unidades acumuladas</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Top productos -->
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="card">
+                                <div class="card-header bg-white">
+                                    <h5><i class="fas fa-trophy"></i> Productos Más Vendidos</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="topProductos">
+                                        <div class="text-center py-4">
+                                            <div class="spinner-border text-primary"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card">
+                                <div class="card-header bg-white">
+                                    <h5><i class="fas fa-map-marker-alt"></i> Ventas por Región</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="ventasPorRegion">
+                                        <div class="text-center py-4">
+                                            <div class="spinner-border text-primary"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Demanda de Mercado vs Ventas -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h5><i class="fas fa-chart-line"></i> Demanda de Mercado vs Ventas Reales</h5>
+                                        <small class="text-muted">Demanda total del mercado y demanda aprobada</small>
+                                    </div>
+                                    <select id="diasDemandaMercado" class="form-select form-select-sm" style="width:120px;" onchange="cargarDemandaMercado()">
+                                        <option value="14">14 días</option>
+                                        <option value="30" selected>30 días</option>
+                                        <option value="60">60 días</option>
+                                    </select>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="chartDemandaMercado" height="90"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: Análisis por Región -->
+                <div class="tab-pane fade" id="regiones" role="tabpanel">
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <h4><i class="fas fa-map-marked-alt"></i> Desempeño Regional</h4>
+                            <p class="text-muted">Análisis de ventas y oportunidades por región</p>
+                        </div>
+                    </div>
+                    
+                    <div class="row" id="regionesContainer">
+                        <div class="col-12 text-center py-5">
+                            <div class="spinner-border text-primary"></div>
+                            <p class="text-muted mt-3">Cargando datos...</p>
+                        </div>
+                    </div>
+
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h5><i class="fas fa-chart-bar"></i> Fill Rate por Región</h5>
+                                        <small class="text-muted">Nivel de servicio de Ventas: demanda aprobada frente a demanda total</small>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-lg-7 mb-4">
+                                            <canvas id="chartFillRateVentas" height="120"></canvas>
+                                        </div>
+                                        <div class="col-lg-5 mb-4">
+                                            <div class="table-responsive">
+                                                <table class="table table-sm align-middle mb-0">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th>Región</th>
+                                                            <th class="text-center">Fill Rate</th>
+                                                            <th class="text-center">Demanda</th>
+                                                            <th class="text-center">Aprobadas</th>
+                                                            <th class="text-center">Perdidas</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="tablaFillRateVentasBody">
+                                                        <tr>
+                                                            <td colspan="5" class="text-center py-3">
+                                                                <div class="spinner-border spinner-border-sm text-primary"></div>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let pedidosDiaData = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    cargarPedidosDia();
+    cargarDashboard();
+    cargarAnalisisRegional();
+    cargarDemandaMercado();
+    cargarFillRateVentas();
+});
+
+// ========== TAB 0: PEDIDOS DEL DIA ==========
+async function cargarPedidosDia() {
+    try {
+        const response = await fetch('/estudiante/api/ventas/pedidos-dia');
+        const data = await response.json();
+
+        if (!data.success) {
+            document.getElementById('pedidosDiaContainer').innerHTML = `<div class="alert alert-danger">${data.message || 'No fue posible cargar los pedidos del día.'}</div>`;
+            return;
+        }
+
+        pedidosDiaData = data.productos || [];
+        renderTablaPedidosDia();
+    } catch (error) {
+        document.getElementById('pedidosDiaContainer').innerHTML = '<div class="alert alert-danger">Error cargando pedidos del día.</div>';
+    }
+}
+
+function renderTablaPedidosDia() {
+    const container = document.getElementById('pedidosDiaContainer');
+    if (!pedidosDiaData.length) {
+        container.innerHTML = '<div class="alert alert-warning">No hay pedidos de demanda para el día actual.</div>';
+        return;
+    }
+
+    let html = '<table class="table table-bordered table-sm align-middle">';
+    html += '<thead class="table-light"><tr><th>Producto | Precio de Venta</th><th>Stock (unidades)</th>';
+    html += '<th>Andina</th><th>Caribe</th><th>Pacífica</th><th>Orinoquía</th><th>Amazonía</th><th>Aprobación Rápida</th><th>Ingresos Generados</th></tr></thead><tbody>';
+
+    pedidosDiaData.forEach((p) => {
+        const ingresoPotencial = p.total_aprobado * p.precio_venta;
+        html += `<tr data-producto-id="${p.producto_id}" data-inventario="${p.inventario_actual}">`;
+        html += `<td><strong>${p.producto_nombre}</strong><br><small class="text-muted">$${p.precio_venta.toLocaleString('es-CO')}</small></td>`;
+        html += `<td><span class="badge bg-dark" id="inv-${p.producto_id}">${p.inventario_actual}</span></td>`;
+
+        p.regiones.forEach((r) => {
+            const key = `${p.producto_id}__${r.region}`;
+            html += '<td>';
+            html += `<div><small class="text-muted">Solicitado: <strong>${r.solicitado}</strong></small></div>`;
+            html += '<div class="d-flex gap-1 mt-1">';
+            html += `<input type="number" class="form-control form-control-sm aprobado-input" style="max-width:90px" min="0" max="${r.solicitado}" value="${r.aprobado}" data-key="${key}" data-producto="${p.producto_id}" data-region="${r.region}" data-solicitado="${r.solicitado}" oninput="validarFilaProducto(${p.producto_id})">`;
+            html += `<button type="button" class="btn btn-outline-success btn-sm" onclick="aprobarRapido('${key}', ${r.solicitado}, ${p.producto_id})" title="Aprobar solicitado"><i class="fas fa-check"></i></button>`;
+            html += '</div></td>';
+        });
+
+        html += `<td><button class="btn btn-outline-primary btn-sm" onclick="aprobarTodoProducto(${p.producto_id})"><i class="fas fa-bolt"></i> Aprobar todo</button></td>`;
+        html += `<td><strong class="text-success" id="ingresos-${p.producto_id}">$${ingresoPotencial.toLocaleString('es-CO')}</strong><br><small class="text-muted">${p.total_aprobado} unds</small></td>`;
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    pedidosDiaData.forEach((p) => validarFilaProducto(p.producto_id));
+    
+    // Actualizar ingresos en la tabla
+    actualizarIngresosEnTabla();
+    actualizarResumenIngresos();
+}
+
+function actualizarIngresosEnTabla() {
+    // Esta función ya no es necesaria - los ingresos se actualizan en tiempo real en validarFilaProducto()
+    // Se mantiene aquí solo por compatibilidad
+}
+
+function actualizarResumenIngresos() {
+    if (!pedidosDiaData || pedidosDiaData.length === 0) {
+        document.getElementById('resumenIngresosCard').style.display = 'none';
+        return;
+    }
+
+    let totalSolicitado = 0;
+    let totalAprobado = 0;
+    let totalIngresoAprobado = 0;
+
+    pedidosDiaData.forEach((p) => {
+        totalSolicitado += p.total_solicitado;
+        totalAprobado += p.total_aprobado;
+        totalIngresoAprobado += p.total_aprobado * p.precio_venta;
+    });
+
+    document.getElementById('resumenSolicitado').textContent = totalSolicitado.toLocaleString('es-CO') + ' unds';
+    document.getElementById('resumenAprobado').textContent = totalAprobado.toLocaleString('es-CO') + ' unds';
+    document.getElementById('resumenIngresoAprobado').textContent = '$' + totalIngresoAprobado.toLocaleString('es-CO');
+    document.getElementById('resumenIngresosCard').style.display = 'block';
+}
+
+function aprobarRapido(key, solicitado, productoId) {
+    const input = document.querySelector(`input[data-key="${key}"]`);
+    if (!input) return;
+    input.value = solicitado;
+    validarFilaProducto(productoId);
+}
+
+function aprobarTodoProducto(productoId) {
+    const inputs = document.querySelectorAll(`input.aprobado-input[data-producto="${productoId}"]`);
+    inputs.forEach((input) => {
+        input.value = input.dataset.solicitado;
+    });
+    validarFilaProducto(productoId);
+}
+
+function aprobarTodoGlobal() {
+    pedidosDiaData.forEach((p) => aprobarTodoProducto(p.producto_id));
+}
+
+function validarFilaProducto(productoId) {
+    const inputs = document.querySelectorAll(`input.aprobado-input[data-producto="${productoId}"]`);
+    const invEl = document.getElementById(`inv-${productoId}`);
+    const inventario = parseInt(invEl ? invEl.textContent : '0') || 0;
+
+    let totalAprobado = 0;
+    inputs.forEach((input) => {
+        let val = parseInt(input.value || '0') || 0;
+        const solicitado = parseInt(input.dataset.solicitado || '0') || 0;
+        if (val < 0) val = 0;
+        if (val > solicitado) val = solicitado;
+        input.value = val;
+        totalAprobado += val;
+    });
+
+    if (totalAprobado > inventario) {
+        let excedente = totalAprobado - inventario;
+        const arr = Array.from(inputs).reverse();
+        arr.forEach((input) => {
+            if (excedente <= 0) return;
+            const cur = parseInt(input.value || '0') || 0;
+            const reducir = Math.min(cur, excedente);
+            input.value = cur - reducir;
+            excedente -= reducir;
+        });
+        totalAprobado = inventario;
+    }
+
+    // Actualizar ingresos en la tabla
+    const productoData = pedidosDiaData.find(p => p.producto_id === productoId);
+    if (productoData) {
+        productoData.total_aprobado = totalAprobado;
+        const ingresoPotencial = totalAprobado * productoData.precio_venta;
+        const ingresosCell = document.getElementById(`ingresos-${productoId}`);
+        if (ingresosCell) {
+            ingresosCell.innerHTML = `<strong class="text-success">$${ingresoPotencial.toLocaleString('es-CO')}</strong><br><small class="text-muted">${totalAprobado} unds</small>`;
+        }
+    }
+    
+    // Actualizar el resumen de ingresos después de cambios
+    actualizarResumenIngresos();
+}
+
+async function guardarAprobacionesVentas() {
+    const inputs = document.querySelectorAll('input.aprobado-input');
+    const payload = [];
+
+    inputs.forEach((input) => {
+        payload.push({
+            producto_id: parseInt(input.dataset.producto),
+            region: input.dataset.region,
+            cantidad_aprobada: parseInt(input.value || '0') || 0,
+        });
+    });
+
+    try {
+        const response = await fetch('/estudiante/api/ventas/aprobar-pedidos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ aprobaciones: payload })
+        });
+        const data = await response.json();
+        if (data.success) {
+            alert(data.message || 'Aprobaciones guardadas.');
+            await cargarPedidosDia();
+        } else {
+            alert(data.message || 'No fue posible guardar aprobaciones.');
+        }
+    } catch (error) {
+        alert('Error guardando aprobaciones de ventas.');
+    }
+}
+
+// ========== TAB 1: DASHBOARD ==========
+async function cargarDashboard() {
+    try {
+        const response = await fetch('/estudiante/api/ventas/dashboard');
+        const data = await response.json();
+        
+        if (data.success) {
+            // Actualizar métricas
+            document.getElementById('ventasTotales').textContent = data.metricas.ventas_totales;
+            document.getElementById('ingresosTotales').textContent = `$${data.metricas.ingresos_totales.toLocaleString()}`;
+            document.getElementById('ventasPerdidas').textContent = data.metricas.ventas_perdidas;
+            
+            // Top productos
+            mostrarTopProductos(data.top_productos);
+            
+            // Ventas por región
+            mostrarVentasPorRegion(data.ventas_region);
+        }
+    } catch (error) {
+        console.error('Error cargando dashboard:', error);
+    }
+}
+
+function mostrarTopProductos(productos) {
+    const container = document.getElementById('topProductos');
+    if (!productos || productos.length === 0) {
+        container.innerHTML = '<p class="text-muted">No hay ventas registradas</p>';
+        return;
+    }
+    
+    let html = '<div class="list-group">';
+    productos.forEach((prod, index) => {
+        const badge = index === 0 ? 'warning' : index === 1 ? 'secondary' : 'info';
+        html += `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="badge bg-${badge} me-2">${index + 1}</span>
+                    <strong>${prod.nombre}</strong>
+                </div>
+                <span class="badge bg-primary rounded-pill">${prod.cantidad} unidades</span>
+            </div>
+        `;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function mostrarVentasPorRegion(regiones) {
+    const container = document.getElementById('ventasPorRegion');
+    if (!regiones || regiones.length === 0) {
+        container.innerHTML = '<p class="text-muted">No hay ventas por región</p>';
+        return;
+    }
+    
+    let html = '<div class="list-group">';
+    regiones.forEach(region => {
+        html += `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="fas fa-map-marker-alt text-primary me-2"></i>
+                    <strong>${region.nombre}</strong>
+                </div>
+                <div>
+                    <span class="badge bg-success me-2">$${region.ingresos.toLocaleString()}</span>
+                    <span class="badge bg-info">${region.cantidad} und</span>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+// ========== TAB 3: ANÁLISIS REGIONAL ==========
+async function cargarAnalisisRegional() {
+    try {
+        const response = await fetch('/estudiante/api/ventas/analisis-regiones');
+        const data = await response.json();
+        
+        if (data.success) {
+            const container = document.getElementById('regionesContainer');
+            let html = '';
+            
+            data.regiones.forEach(region => {
+                html += `
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="region-card">
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <h5><i class="fas fa-map-marker-alt text-primary"></i> ${region.nombre}</h5>
+                                <span class="badge bg-primary">${region.ventas_totales} ventas</span>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <small class="text-muted">Ingresos Totales</small>
+                                <h4 class="text-success">$${region.ingresos.toLocaleString()}</h4>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <small class="text-muted">Producto más vendido:</small>
+                                <div class="fw-bold">${region.top_producto || 'N/A'}</div>
+                            </div>
+                            
+                            ${region.ventas_perdidas > 0 ? `
+                                <div class="alert alert-warning py-2 px-3 mb-0 mt-2">
+                                    <small><i class="fas fa-exclamation-triangle"></i> ${region.ventas_perdidas} ventas perdidas por demanda no atendida</small>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('Error cargando análisis regional:', error);
+    }
+}
+
+// ========== DEMANDA DE MERCADO ==========
+let chartDemandaMercado = null;
+async function cargarDemandaMercado() {
+    try {
+        const dias = document.getElementById('diasDemandaMercado')?.value || 30;
+        const response = await fetch(`/estudiante/api/ventas/demanda-mercado?dias=${dias}`);
+        const data = await response.json();
+
+        const ctx = document.getElementById('chartDemandaMercado');
+        if (!ctx) return;
+
+        if (chartDemandaMercado) chartDemandaMercado.destroy();
+
+        chartDemandaMercado = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.dias,
+                datasets: [
+                    {
+                        label: 'Demanda Total Mercado',
+                        data: data.demanda_mercado,
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231,76,60,0.08)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Demanda Aprobada',
+                        data: data.cantidad_asignada,
+                        borderColor: '#2ecc71',
+                        backgroundColor: 'rgba(46,204,113,0.12)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: { mode: 'index', intersect: false }
+                },
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Unidades' } },
+                    x: { title: { display: true, text: 'Día de simulación' } }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error cargando demanda de mercado:', error);
+    }
+}
+
+let chartFillRateVentas = null;
+async function cargarFillRateVentas() {
+    try {
+        const response = await fetch('/estudiante/api/ventas/fill-rate-region');
+        const data = await response.json();
+
+        if (!data.success) return;
+
+        const ctx = document.getElementById('chartFillRateVentas');
+        if (ctx) {
+            if (chartFillRateVentas) chartFillRateVentas.destroy();
+            const bgColors = data.fill_rates.map(r => r >= 95 ? '#2ecc71' : r >= 80 ? '#f39c12' : '#e74c3c');
+            chartFillRateVentas = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.regiones,
+                    datasets: [{
+                        label: 'Fill Rate / Nivel de Servicio (%)',
+                        data: data.fill_rates,
+                        backgroundColor: bgColors,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, max: 100, title: { display: true, text: 'Fill Rate (%)' } }
+                    }
+                }
+            });
+        }
+
+        const tbody = document.getElementById('tablaFillRateVentasBody');
+        if (tbody) {
+            let html = '';
+            data.regiones.forEach((region, i) => {
+                const fr = data.fill_rates[i];
+                const badge = fr >= 95 ? 'success' : fr >= 80 ? 'warning' : 'danger';
+                html += `<tr>
+                    <td>${region}</td>
+                    <td class="text-center"><span class="badge bg-${badge}">${fr}%</span></td>
+                    <td class="text-center">${Number(data.demanda_totales[i] || 0).toLocaleString('es-CO')}</td>
+                    <td class="text-center">${Number(data.aprobadas_totales[i] || 0).toLocaleString('es-CO')}</td>
+                    <td class="text-center text-danger">${Number(data.perdidas_totales[i] || 0).toLocaleString('es-CO')}</td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('Error cargando fill rate de ventas:', error);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+
+{% block title %}Crear Cuenta - ERP Educativo{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center align-items-center" style="min-height: 95vh; padding: 20px 0;">
+        <div class="col-md-7">
+            <div class="card shadow-lg">
+                <div class="card-body p-5">
+                    <div class="text-center mb-4">
+                        <i class="fas fa-user-plus fa-3x text-primary mb-3"></i>
+                        <h2 class="fw-bold">Crear Nueva Cuenta</h2>
+                        <p class="text-muted">Únete a la simulación de Supply Chain</p>
+                    </div>
+
+                    <form method="POST" action="{{ url_for('auth.register') }}" id="registerForm">
+                        <!-- Tipo de Usuario -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Tipo de Usuario <span class="text-danger">*</span></label>
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="form-check card p-3 text-center" style="cursor: pointer;" onclick="selectTipoUsuario('estudiante')">
+                                        <input class="form-check-input" type="radio" name="tipo_usuario" id="tipo_estudiante" 
+                                               value="estudiante" required checked>
+                                        <label class="form-check-label w-100" for="tipo_estudiante" style="cursor: pointer;">
+                                            <i class="fas fa-user-graduate fa-2x mb-2 text-primary"></i>
+                                            <h6 class="mb-0">Estudiante</h6>
+                                            <small class="text-muted">Participar en simulación</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="form-check card p-3 text-center" style="cursor: pointer;" onclick="selectTipoUsuario('docente')">
+                                        <input class="form-check-input" type="radio" name="tipo_usuario" id="tipo_docente" 
+                                               value="docente" required>
+                                        <label class="form-check-label w-100" for="tipo_docente" style="cursor: pointer;">
+                                            <i class="fas fa-chalkboard-teacher fa-2x mb-2 text-success"></i>
+                                            <h6 class="mb-0">Docente</h6>
+                                            <small class="text-muted">Gestionar cursos</small>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="my-4">
+
+                        <!-- Información Personal -->
+                        <h5 class="mb-3"><i class="fas fa-user me-2"></i>Información Personal</h5>
+                        <div class="mb-3">
+                            <label for="nombre_completo" class="form-label">Nombre Completo <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-id-card"></i></span>
+                                <input type="text" class="form-control" id="nombre_completo" name="nombre_completo" 
+                                       placeholder="Juan Pérez García" required>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Correo Institucional <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-envelope"></i></span>
+                                <input type="email" class="form-control" id="email" name="email" 
+                                       placeholder="tu.correo@correounivalle.edu.co" required>
+                            </div>
+                            <small class="form-text text-muted">
+                                <i class="fas fa-info-circle"></i> Debes usar tu correo institucional
+                            </small>
+                        </div>
+
+                        <!-- Información Académica -->
+                        <hr class="my-4">
+                        <h5 class="mb-3"><i class="fas fa-university me-2"></i>Información Académica</h5>
+
+                        <div class="mb-3">
+                            <label for="universidad" class="form-label">Universidad</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-university"></i></span>
+                                <select class="form-select" id="universidad" name="universidad" onchange="toggleUniversidadOtro()">
+                                    <option value="">Selecciona tu universidad...</option>
+                                    <option value="Universidad del Valle">Universidad del Valle</option>
+                                    <option value="otro">Otra universidad</option>
+                                </select>
+                            </div>
+                            <input type="text" class="form-control mt-2" id="universidad_otro" name="universidad_otro" 
+                                   placeholder="Escribe el nombre de tu universidad" style="display: none;">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="sede" class="form-label">Sede</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-map-marker-alt"></i></span>
+                                <select class="form-select" id="sede" name="sede" onchange="toggleSedeOtro()">
+                                    <option value="">Selecciona tu sede...</option>
+                                    <option value="Palmira">Palmira</option>
+                                    <option value="Cali">Cali</option>
+                                    <option value="Buga">Buga</option>
+                                    <option value="Zarzal">Zarzal</option>
+                                    <option value="otro">Otra sede</option>
+                                </select>
+                            </div>
+                            <input type="text" class="form-control mt-2" id="sede_otro" name="sede_otro" 
+                                   placeholder="Escribe el nombre de tu sede" style="display: none;">
+                        </div>
+
+                        <!-- Campos específicos para ESTUDIANTES -->
+                        <div id="campos_estudiante">
+                            <div class="mb-3">
+                                <label for="codigo_estudiante" class="form-label">
+                                    Código de Estudiante
+                                </label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="fas fa-hashtag"></i></span>
+                                    <input type="text" class="form-control" id="codigo_estudiante" name="codigo_estudiante" 
+                                           placeholder="Ejemplo: 202158314" pattern="[0-9]{9,10}" maxlength="10">
+                                </div>
+                                <small class="form-text text-muted">
+                                    <i class="fas fa-info-circle"></i> Ingresa tu código de estudiante (9-10 dígitos)
+                                </small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="carrera" class="form-label">
+                                    Carrera
+                                </label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="fas fa-graduation-cap"></i></span>
+                                    <select class="form-select" id="carrera" name="carrera" onchange="toggleCarreraOtro()">
+                                        <option value="">Selecciona...</option>
+                                        <option value="Ingeniería Industrial">Ingeniería Industrial</option>
+                                        <option value="otro">Otra carrera</option>
+                                    </select>
+                                </div>
+                                <input type="text" class="form-control mt-2" id="carrera_otro" name="carrera_otro" 
+                                       placeholder="Escribe el nombre de tu carrera" style="display: none;">
+                            </div>
+                        </div>
+
+                        <!-- Campos específicos para DOCENTES -->
+                        <div id="campos_docente" style="display: none;">
+                            <div class="mb-3">
+                                <label for="codigo_profesor" class="form-label">
+                                    Código de Profesor <span class="text-danger">*</span>
+                                </label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="fas fa-id-badge"></i></span>
+                                    <input type="text" class="form-control" id="codigo_profesor" name="codigo_profesor" 
+                                           placeholder="Ejemplo: DOC123456" maxlength="20">
+                                </div>
+                                <small class="form-text text-muted">
+                                    <i class="fas fa-info-circle"></i> Ingresa tu código de profesor
+                                </small>
+                            </div>
+                        </div>
+
+                        <!-- Contraseña -->
+                        <hr class="my-4">
+                        <h5 class="mb-3"><i class="fas fa-lock me-2"></i>Seguridad</h5>
+
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Contraseña <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                                <input type="password" class="form-control" id="password" name="password" 
+                                       placeholder="Mínimo 6 caracteres" required minlength="6">
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="confirm_password" class="form-label">Confirmar Contraseña <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                                <input type="password" class="form-control" id="confirm_password" name="confirm_password" 
+                                       placeholder="Repite tu contraseña" required minlength="6">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-custom w-100 mb-3">
+                            <i class="fas fa-check-circle me-2"></i>Crear Cuenta
+                        </button>
+
+                        <div class="text-center">
+                            <a href="{{ url_for('auth.login') }}" class="text-decoration-none">
+                                <i class="fas fa-arrow-left me-1"></i>Volver al inicio de sesión
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="alert alert-info mt-3">
+                <strong><i class="fas fa-info-circle me-2"></i>Nota:</strong>
+                Después de registrarte, recibirás un código de verificación en tu correo institucional.
+                <ul class="mb-0 mt-2">
+                    <li><strong>Estudiantes:</strong> El rol y empresa serán asignados por el docente.</li>
+                    <li><strong>Docentes:</strong> Podrán crear y gestionar sus propios cursos y empresas.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    body {
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
+    }
+    
+    .card {
+        border-radius: 15px;
+    }
+    
+    .input-group-text {
+        background-color: #c41e3a;
+        color: white;
+        border-color: #c41e3a;
+    }
+    
+    .btn-primary {
+        background-color: #c41e3a;
+        border-color: #c41e3a;
+    }
+    
+    .btn-primary:hover {
+        background-color: #a01729;
+        border-color: #a01729;
+    }
+    
+    .text-primary {
+        color: #c41e3a !important;
+    }
+    
+    .text-danger {
+        color: #e74c3c !important;
+    }
+</style>
+
+<script>
+    function selectTipoUsuario(tipo) {
+        document.getElementById('tipo_' + tipo).checked = true;
+        updateFormByTipo();
+    }
+
+    function updateFormByTipo() {
+        const tipoEstudiante = document.getElementById('tipo_estudiante').checked;
+        const camposEstudiante = document.getElementById('campos_estudiante');
+        const camposDocente = document.getElementById('campos_docente');
+        const codigoEstudianteInput = document.getElementById('codigo_estudiante');
+        const codigoProfesorInput = document.getElementById('codigo_profesor');
+        const carreraInput = document.getElementById('carrera');
+        
+        if (tipoEstudiante) {
+            // Mostrar campos de estudiante
+            camposEstudiante.style.display = 'block';
+            camposDocente.style.display = 'none';
+            codigoEstudianteInput.required = false;
+            carreraInput.required = false;
+            codigoProfesorInput.required = false;
+            codigoProfesorInput.value = '';
+        } else {
+            // Mostrar campos de docente
+            camposEstudiante.style.display = 'none';
+            camposDocente.style.display = 'block';
+            codigoEstudianteInput.required = false;
+            carreraInput.required = false;
+            codigoProfesorInput.required = true;
+            codigoEstudianteInput.value = '';
+            carreraInput.value = '';
+            document.getElementById('carrera_otro').value = '';
+        }
+    }
+
+    // Ejecutar al cargar la página
+    document.addEventListener('DOMContentLoaded', function() {
+        updateFormByTipo();
+        
+        // Listener para cambios en tipo de usuario
+        document.querySelectorAll('input[name="tipo_usuario"]').forEach(radio => {
+            radio.addEventListener('change', updateFormByTipo);
+        });
+    });
+
+    function toggleUniversidadOtro() {
+        const select = document.getElementById('universidad');
+        const inputOtro = document.getElementById('universidad_otro');
+        if (select.value === 'otro') {
+            inputOtro.style.display = 'block';
+            inputOtro.required = true;
+        } else {
+            inputOtro.style.display = 'none';
+            inputOtro.required = false;
+            inputOtro.value = '';
+        }
+    }
+
+    function toggleSedeOtro() {
+        const select = document.getElementById('sede');
+        const inputOtro = document.getElementById('sede_otro');
+        if (select.value === 'otro') {
+            inputOtro.style.display = 'block';
+            inputOtro.required = true;
+        } else {
+            inputOtro.style.display = 'none';
+            inputOtro.required = false;
+            inputOtro.value = '';
+        }
+    }
+
+    function toggleCarreraOtro() {
+        const select = document.getElementById('carrera');
+        const inputOtro = document.getElementById('carrera_otro');
+        if (select.value === 'otro') {
+            inputOtro.style.display = 'block';
+            inputOtro.required = true;
+        } else {
+            inputOtro.style.display = 'none';
+            inputOtro.required = false;
+            inputOtro.value = '';
+        }
+    }
+
+    // Validar código de estudiante (solo números)
+    document.getElementById('codigo_estudiante').addEventListener('input', function(e) {
+        this.value = this.value.replace(/[^0-9]/g, '');
+    });
+
+    // Validar que las contraseñas coincidan
+    document.getElementById('registerForm').addEventListener('submit', function(e) {
+        const password = document.getElementById('password').value;
+        const confirmPassword = document.getElementById('confirm_password').value;
+        
+        if (password !== confirmPassword) {
+            e.preventDefault();
+            alert('Las contraseñas no coinciden');
+        }
+    });
+</script>
+{% endblock %}

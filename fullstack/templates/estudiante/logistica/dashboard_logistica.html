@@ -1,0 +1,1342 @@
+{% extends "base.html" %}
+
+{% block title %}Logística - {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sidebar {
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
+        min-height: 100vh;
+        padding: 0;
+    }
+    
+    .sidebar a {
+        display: block;
+        padding: 15px 20px;
+        color: rgba(255,255,255,0.8);
+        text-decoration: none;
+        transition: all 0.3s;
+        border-left: 3px solid transparent;
+    }
+    
+    .sidebar a:hover,
+    .sidebar a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-left-color: #fff;
+    }
+    
+    .content-area {
+        background-color: #f8f9fa;
+        padding: 20px;
+        min-height: 100vh;
+    }
+    
+    .nav-tabs .nav-link {
+        color: #666;
+        font-weight: 600;
+        border: none;
+        border-bottom: 3px solid transparent;
+        padding: 15px 25px;
+        transition: all 0.3s;
+    }
+    
+    .nav-tabs .nav-link:hover {
+        color: #4facfe;
+    }
+    
+    .nav-tabs .nav-link.active {
+        color: #4facfe;
+        border-bottom-color: #4facfe;
+        background: transparent;
+    }
+    
+    .stock-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        border-left: 5px solid #6c757d;
+        height: 100%;
+    }
+    
+    .stock-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    .stock-card.critico {
+        border-left-color: #dc3545;
+    }
+    
+    .stock-card.advertencia {
+        border-left-color: #ffc107;
+    }
+    
+    .stock-card.normal {
+        border-left-color: #28a745;
+    }
+
+    .summary-card {
+        background: linear-gradient(135deg, rgba(220, 53, 69, 0.08), rgba(255, 255, 255, 0.98));
+        border: 1px solid rgba(220, 53, 69, 0.14);
+        border-radius: 16px;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+        height: 100%;
+    }
+
+    .summary-label {
+        color: #6c757d;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 0.35rem;
+    }
+
+    .summary-value {
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .table-logistica th,
+    .table-logistica td {
+        vertical-align: middle;
+    }
+
+    .table-logistica input[type="number"] {
+        width: 100%;
+        min-width: 96px;
+        text-align: center;
+    }
+    
+    .stock-cantidad {
+        font-size: 2rem;
+        font-weight: bold;
+        margin: 10px 0;
+    }
+    
+    .stock-cantidad.critico {
+        color: #dc3545;
+    }
+    
+    .stock-cantidad.advertencia {
+        color: #ffc107;
+    }
+    
+    .stock-cantidad.normal {
+        color: #28a745;
+    }
+    
+    .badge-estado {
+        padding: 6px 12px;
+        font-size: 0.85rem;
+    }
+    
+    #matrizDespachos input[type="number"] {
+        width: 100px;
+        text-align: center;
+        padding: 8px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+    }
+    
+    #matrizDespachos input[type="number"]:focus {
+        border-color: #4facfe;
+        box-shadow: 0 0 0 0.2rem rgba(79, 172, 254, 0.25);
+        outline: none;
+    }
+    
+    .vehiculo-select {
+        min-height: 120px;
+        padding: 8px;
+    }
+    
+    .vehiculo-select option {
+        padding: 8px;
+    }
+    
+    .vehiculo-select option:checked {
+        background: #4facfe;
+        color: white;
+    }
+
+    #matrizDespachos .producto-row:hover {
+        background-color: #f8f9fa;
+    }
+    
+    #matrizDespachos .stock-value {
+        font-size: 1.1rem;
+        font-weight: bold;
+        color: #28a745;
+    }
+    
+    #matrizDespachos .excede-stock {
+        background-color: #fff3cd;
+        border-color: #ffc107 !important;
+    }
+    
+    .cost-cell {
+        padding: 8px 12px;
+        border-radius: 6px;
+        background: #f8f9fa;
+        min-height: 50px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-end;
+    }
+    
+    .costo-externo-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 4px;
+    }
+    
+    .costo-total-monto {
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+    
+    .cost-breakdown {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 100%;
+    }
+    
+    .cost-breakdown div {
+        line-height: 1.3;
+    }
+    
+    .transito-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        border-left: 4px solid #6c757d;
+        transition: all 0.3s ease;
+    }
+    
+    .transito-card:hover {
+        transform: translateX(5px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+    }
+    
+    .transito-card.compra {
+        border-left-color: #17a2b8;
+        background: linear-gradient(135deg, #ffffff 0%, #e0f7fa 100%);
+    }
+    
+    .transito-card.despacho {
+        border-left-color: #c41e3a;
+        background: linear-gradient(135deg, #ffffff 0%, #f3e5f5 100%);
+    }
+    
+    .bg-purple {
+        background-color: #c41e3a !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        {% include 'estudiante/_sidebar.html' %}
+        
+        <!-- Main Content -->
+        <div class="col-md-10 content-area">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2><i class="fas fa-truck"></i> Logística</h2>
+                    <p class="text-muted">Gestión de inventario y distribución regional</p>
+                </div>
+                <div class="text-end d-flex gap-2 align-items-center">
+                    <a href="{{ url_for('estudiante.vista_recepcion') }}" class="btn btn-outline-success">
+                        <i class="fas fa-inbox me-2"></i>Ir a Recepción
+                    </a>
+                    <div class="badge bg-primary fs-6 px-3 py-2">
+                        <i class="fas fa-calendar"></i> Día {{ simulacion.dia_actual }} (Sem. {{ simulacion.semana_actual }})
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <ul class="nav nav-tabs mb-4" id="logisticaTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="stock-tab" data-bs-toggle="tab" data-bs-target="#stock" type="button" role="tab">
+                        <i class="fas fa-box"></i> Stock Disponible
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="despachos-tab" data-bs-toggle="tab" data-bs-target="#despachos" type="button" role="tab">
+                        <i class="fas fa-paper-plane"></i> Realizar Despachos
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="recepcion-tab" data-bs-toggle="tab" data-bs-target="#recepcion" type="button" role="tab">
+                        <i class="fas fa-inbox"></i> Recepción
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="transito-tab" data-bs-toggle="tab" data-bs-target="#transito" type="button" role="tab">
+                        <i class="fas fa-route"></i> Stock en Tránsito
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="historial-tab" data-bs-toggle="tab" data-bs-target="#historial" type="button" role="tab">
+                        <i class="fas fa-history"></i> Historial de Despachos
+                    </button>
+                </li>
+            </ul>
+
+            <!-- Tabs Content -->
+            <div class="tab-content" id="logisticaTabsContent">
+                
+                <!-- TAB 1: Stock Disponible -->
+                <div class="tab-pane fade show active" id="stock" role="tabpanel">
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <h4><i class="fas fa-box"></i> Inventario Central</h4>
+                            <p class="text-muted">Stock disponible para despacho a regiones</p>
+                        </div>
+                    </div>
+
+                    <div class="row mb-4" id="stockResumenContainer">
+                        <div class="col-md-4 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Stock total</div>
+                                <div class="summary-value text-success" style="font-size: 2rem;" id="stockTotalValue">0</div>
+                                <div class="text-muted small">Unidades en inventario central</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-4" id="stockIndicadoresRotacion">
+                        <div class="col-md-6 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Rotación del Inventario en Días (Total)</div>
+                                <div class="summary-value text-primary" style="font-size: 2rem;" id="rotacionTotalDiasValue">N/A</div>
+                                <div class="text-muted small" id="rotacionTotalDetalle">(Inventario promedio mensual al costo / Ventas mensuales al costo) x 30</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Rotación Neta del Inventario en Días</div>
+                                <div class="summary-value text-info" style="font-size: 2rem;" id="rotacionNetaDiasValue">N/A</div>
+                                <div class="text-muted small" id="rotacionNetaDetalle">(Inventario promedio mensual al costo pagado / Ventas mensuales al costo) x 30</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row" id="stockContainer">
+                        <div class="col-12 text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Cargando...</span>
+                            </div>
+                            <p class="text-muted mt-3">Cargando inventario...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: Realizar Despachos -->
+                <div class="tab-pane fade" id="despachos" role="tabpanel">
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <h4><i class="fas fa-paper-plane"></i> Asignación de Pedidos por Vehículo</h4>
+                            <p class="text-muted">Asigna cada pedido del día a un vehículo respetando capacidades y envío total.</p>
+                        </div>
+                    </div>
+
+                    <div id="fallaFlotaAlert"></div>
+
+                    <div class="row mb-3" id="resumenRegiones">
+                        <div class="col-12 text-muted small">Cargando resumen regional...</div>
+                    </div>
+
+                    <div class="row mb-3" id="resumenVehiculos">
+                        <div class="col-12 text-muted small">Cargando capacidades de vehículos...</div>
+                    </div>
+
+                    <!-- Tarjetas de Información de Vehículos -->
+                    <div class="row mb-4" id="tarjetasVehiculos">
+                        <!-- Se llenará dinámicamente con JavaScript -->
+                    </div>
+
+                    <!-- Tarjetas de Tiempos de Entrega por Región -->
+                    <div class="row mb-4" id="tarjetasTiemposEntrega">
+                        <!-- Se llenará dinámicamente con JavaScript -->
+                    </div>
+                    
+                    <div class="despacho-form">
+                        <form id="despachoForm">
+                            <!-- Tabla de pedidos del día -->
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-hover align-middle table-logistica" id="matrizDespachos">
+                                    <thead class="table-primary">
+                                        <tr>
+                                            <th width="180"><i class="fas fa-map-marker-alt"></i> Región</th>
+                                            <th width="250"><i class="fas fa-truck"></i> Vehículo asignado</th>
+                                            <th class="text-center" width="150"><i class="fas fa-paper-plane"></i> Unidades Externo</th>
+                                            <th class="text-right" width="200"><i class="fas fa-dollar-sign"></i> Costo Total Asignación</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="matrizDespachoBody">
+                                        <tr>
+                                            <td colspan="4" class="text-center py-4">
+                                                <div class="spinner-border text-primary" role="status">
+                                                    <span class="visually-hidden">Cargando...</span>
+                                                </div>
+                                                <p class="text-muted mt-2">Cargando pedidos del día...</p>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Resumen de Costos por Región -->
+                            <div class="card mt-4 mb-4" id="costosResumenCard" style="display:none;">
+                                <div class="card-header bg-light">
+                                    <h5 class="mb-0"><i class="fas fa-dollar-sign"></i> Resumen de Costos de Transporte</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Región</th>
+                                                    <th class="text-center">Unidades</th>
+                                                    <th class="text-right">Costo Total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="costosResumenBody">
+                                            </tbody>
+                                            <tfoot class="table-light fw-bold">
+                                                <tr>
+                                                    <td colspan="2">COSTO TOTAL DE DESPACHO</td>
+                                                    <td class="text-right" id="costoTotalGeneral">$0</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Botón de Despacho General -->
+                            <div class="d-grid gap-2 mt-4">
+                                <button type="submit" class="btn btn-primary btn-lg" id="btnDespachoGeneral">
+                                    <i class="fas fa-paper-plane"></i> Confirmar Asignación y Despachar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- TAB 3: Recepción -->
+                <div class="tab-pane fade" id="recepcion" role="tabpanel">
+                    <div class="row mb-3">
+                        <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>
+                                <h4><i class="fas fa-inbox"></i> Recepción de Pedidos</h4>
+                                <p class="text-muted mb-0">Tabla general de órdenes en tránsito listas para recibir.</p>
+                            </div>
+                            <form method="POST" action="{{ url_for('estudiante.recibir_todas_ordenes_logistica') }}" class="d-inline">
+                                <button type="submit" class="btn btn-success" onclick="return confirm('¿Deseas recibir todas las órdenes listas ahora mismo?')">
+                                    <i class="fas fa-check-double me-2"></i>Recibir todas las órdenes
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-md-4 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Órdenes en tránsito</div>
+                                <div class="summary-value text-info" style="font-size: 2rem;" id="recepcionTransitoCount">0</div>
+                                <div class="text-muted small">Pendientes por recibir</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Órdenes listas</div>
+                                <div class="summary-value text-success" style="font-size: 2rem;" id="recepcionListaCount">0</div>
+                                <div class="text-muted small">Con entrega hoy o anterior</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="summary-card p-4">
+                                <div class="summary-label">Unidades en camino</div>
+                                <div class="summary-value text-warning" style="font-size: 2rem;" id="recepcionUnidadesCount">0</div>
+                                <div class="text-muted small">Total en tránsito</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle table-logistica">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Orden</th>
+                                            <th>Producto</th>
+                                            <th>Cantidad</th>
+                                            <th>Día orden</th>
+                                            <th>Día entrega</th>
+                                            <th>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="recepcionTableBody">
+                                        <tr>
+                                            <td colspan="6" class="text-center py-4 text-muted">Cargando órdenes...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: Stock en Tránsito -->
+                <div class="tab-pane fade" id="transito" role="tabpanel">
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <h4><i class="fas fa-truck-loading"></i> Productos en Tránsito</h4>
+                            <p class="text-muted">Despachos y compras que están en camino</p>
+                        </div>
+                    </div>
+
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle table-logistica">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Tipo</th>
+                                            <th>Referencia</th>
+                                            <th>Detalle</th>
+                                            <th>Cantidad</th>
+                                            <th>Entrega</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="transitoTableBody">
+                                        <tr>
+                                            <td colspan="5" class="text-center py-4 text-muted">Cargando tránsito...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 5: Historial de Despachos -->
+                <div class="tab-pane fade" id="historial" role="tabpanel">
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <h4><i class="fas fa-history"></i> Historial de Despachos</h4>
+                            <p class="text-muted">Registro de todos los despachos realizados</p>
+                        </div>
+                    </div>
+
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle table-logistica">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Día</th>
+                                            <th>Región</th>
+                                            <th class="text-center">Unidades Totales</th>
+                                            <th>Vehículos Asignados</th>
+                                            <th>Tiempo Total de Tránsito</th>
+                                            <th>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="historialDespachoBody">
+                                        <tr>
+                                            <td colspan="6" class="text-center py-4 text-muted">Cargando historial...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Cargar datos iniciales
+    cargarStock();
+    cargarMatrizDespachos();
+    cargarTransito();
+
+    document.getElementById('recepcion-tab').addEventListener('shown.bs.tab', function() {
+        cargarTransito();
+    });
+
+    document.getElementById('transito-tab').addEventListener('shown.bs.tab', function() {
+        cargarTransito();
+    });
+
+    document.getElementById('historial-tab').addEventListener('shown.bs.tab', function() {
+        cargarHistorialDespachos();
+    });
+    
+    // Configurar submit del formulario
+    const form = document.getElementById('despachoForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            realizarDespachoGeneral();
+        });
+    }
+});
+
+const DIA_ACTUAL = {{ simulacion.dia_actual }};
+
+// ========== TAB 1: STOCK DISPONIBLE ==========
+async function cargarStock() {
+    try {
+        const response = await fetch('/estudiante/api/logistica/stock');
+        const data = await response.json();
+        
+        if (data.success) {
+            window.stockResumen = data.resumen || {};
+            mostrarStock(data.stock);
+        } else {
+            console.error('Error:', data.message);
+        }
+    } catch (error) {
+        console.error('Error cargando stock:', error);
+    }
+}
+
+function mostrarStock(stock) {
+    const container = document.getElementById('stockContainer');
+    const resumen = window.stockResumen || {};
+    const indicadores = resumen.indicadores_rotacion || {};
+
+    const totalStock = resumen.stock_total ?? stock.reduce((acc, item) => acc + Math.round(item.stock_actual || 0), 0);
+
+    document.getElementById('stockTotalValue').textContent = totalStock.toLocaleString('es-CO');
+
+    const rotacionTotal = indicadores.rotacion_total_dias;
+    const rotacionNeta = indicadores.rotacion_neta_dias;
+    const ventasMensualesCosto = indicadores.ventas_mensuales_costo || 0;
+
+    const rotacionTotalEl = document.getElementById('rotacionTotalDiasValue');
+    const rotacionNetaEl = document.getElementById('rotacionNetaDiasValue');
+    const rotacionTotalDetalle = document.getElementById('rotacionTotalDetalle');
+    const rotacionNetaDetalle = document.getElementById('rotacionNetaDetalle');
+
+    if (rotacionTotalEl) {
+        rotacionTotalEl.textContent = (rotacionTotal === null || rotacionTotal === undefined)
+            ? 'N/A'
+            : `${Number(rotacionTotal).toLocaleString('es-CO', { maximumFractionDigits: 2 })} días`;
+    }
+
+    if (rotacionNetaEl) {
+        rotacionNetaEl.textContent = (rotacionNeta === null || rotacionNeta === undefined)
+            ? 'N/A'
+            : `${Number(rotacionNeta).toLocaleString('es-CO', { maximumFractionDigits: 2 })} días`;
+    }
+
+    if (rotacionTotalDetalle && rotacionNetaDetalle) {
+        if (ventasMensualesCosto > 0) {
+            const ventasTxt = Number(ventasMensualesCosto).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+            rotacionTotalDetalle.textContent = `Base cálculo: ventas mensuales al costo = $${ventasTxt}.`;
+            rotacionNetaDetalle.textContent = `Periodo de cálculo: ${indicadores.periodo_dias || 30} días.`;
+        } else {
+            rotacionTotalDetalle.textContent = 'Sin ventas al costo en el periodo. No se puede calcular el indicador.';
+            rotacionNetaDetalle.textContent = 'Sin ventas al costo en el periodo. No se puede calcular el indicador.';
+        }
+    }
+    
+    if (!stock || stock.length === 0) {
+        container.innerHTML = '<div class="col-12"><div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> No hay productos en inventario</div></div>';
+        return;
+    }
+    
+    let html = '';
+    stock.forEach(item => {
+        let estadoClass = 'normal';
+        if (item.stock_actual <= item.stock_seguridad * 0.5) {
+            estadoClass = 'critico';
+        } else if (item.stock_actual <= item.stock_seguridad) {
+            estadoClass = 'advertencia';
+        }
+        
+        html += `
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="stock-card ${estadoClass}">
+                    <h5 class="mb-3">${item.producto_nombre}</h5>
+                    <div class="stock-cantidad ${estadoClass}">${Math.round(item.stock_actual)}</div>
+                    <div class="text-muted small">unidades disponibles</div>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+// ========== TAB 2: ASIGNACION POR VEHICULO ==========
+let pedidosDia = [];
+let vehiculosLogistica = {};
+
+async function cargarMatrizDespachos() {
+    try {
+        const response = await fetch('/estudiante/api/logistica/pedidos-dia');
+        const data = await response.json();
+        
+        if (data.success) {
+            const tbody = document.getElementById('matrizDespachoBody');
+            pedidosDia = data.pedidos || [];
+            vehiculosLogistica = {};
+
+            (data.vehiculos || []).forEach(v => {
+                vehiculosLogistica[v.codigo] = v;
+            });
+
+            renderResumenRegiones();
+
+            renderResumenVehiculos();
+            renderFallaFlotaAlert(Boolean(data.falla_flota_activa));
+
+            let html = '';
+            
+            pedidosDia.forEach((pedido, index) => {
+                html += `
+                    <tr class="pedido-row" data-index="${index}" data-region="${pedido.region}" data-demanda="${pedido.unidades_solicitadas}">
+                        <td>
+                            <div class="fw-bold">${pedido.region}</div>
+                            <small class="text-muted">Demanda: ${pedido.unidades_solicitadas.toLocaleString('es-CO')} unds</small>
+                        </td>
+                        <td class="text-center">
+                            <div class="vehiculo-grid">
+                                <select class="form-select vehiculo-select" data-index="${index}" data-slot="1">
+                                    ${renderOpcionesVehiculo(null)}
+                                </select>
+                                <select class="form-select vehiculo-select mt-2" data-index="${index}" data-slot="2">
+                                    ${renderOpcionesVehiculo(null)}
+                                </select>
+                            </div>
+                            <small class="text-muted d-block mt-2">Hasta 2 vehículos</small>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-warning text-dark external-badge" id="external-${index}">0</span>
+                        </td>
+                        <td class="text-right">
+                            <div class="cost-cell" id="cost-cell-${index}">
+                                <div class="costo-externo-label text-muted small" id="costo-label-${index}">--</div>
+                                <div class="costo-total-monto fw-bold" id="costo-total-${index}">$0</div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            if (html === '') {
+                html = `<tr><td colspan="4" class="text-center text-muted py-4">No hay pedidos de demanda para el día actual</td></tr>`;
+            }
+
+            tbody.innerHTML = html;
+
+            document.querySelectorAll('.vehiculo-select').forEach(select => {
+                select.addEventListener('change', validarCapacidadesVehiculos);
+            });
+
+            asignarVehiculosIniciales();
+            validarCapacidadesVehiculos();
+        }
+    } catch (error) {
+        console.error('Error cargando matriz:', error);
+        document.getElementById('matrizDespachoBody').innerHTML = `
+            <tr><td colspan="4" class="text-center text-danger py-4">Error al cargar pedidos</td></tr>
+        `;
+    }
+}
+
+function renderResumenRegiones() {
+    const container = document.getElementById('resumenRegiones');
+    const totalGeneral = pedidosDia.reduce((acc, pedido) => acc + (pedido.unidades_solicitadas || 0), 0);
+
+    const cards = pedidosDia.map(pedido => `
+        <div class="col-md-4 col-lg-2 mb-2">
+            <div class="card h-100 border-primary">
+                <div class="card-body p-2 text-center">
+                    <div class="fw-bold">${pedido.region}</div>
+                    <div class="small text-muted">${(pedido.unidades_solicitadas || 0).toLocaleString('es-CO')} unds</div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    container.innerHTML = `
+        <div class="col-12 mb-2">
+            <div class="alert alert-light border mb-0">
+                <strong>Total del día:</strong> ${totalGeneral.toLocaleString('es-CO')} unidades a despachar en todas las regiones.
+            </div>
+        </div>
+        ${cards}
+    `;
+
+    // Mostrar resumen de costos
+    actualizarResumenCostos();
+}
+
+function actualizarResumenCostos() {
+    const card = document.getElementById('costosResumenCard');
+    const tbody = document.getElementById('costosResumenBody');
+    const totalSpan = document.getElementById('costoTotalGeneral');
+
+    if (!pedidosDia || pedidosDia.length === 0) {
+        card.style.display = 'none';
+        return;
+    }
+
+    let totalCostoGeneral = 0;
+    let html = '';
+
+    pedidosDia.forEach((pedido, index) => {
+        const unidades = pedido.unidades_solicitadas || 0;
+        const costTotalElement = document.getElementById(`costo-total-${index}`);
+        
+        // Extraer el costo total calculado de la tabla de asignación
+        let costoTotal = 0;
+        if (costTotalElement) {
+            const textoMonto = costTotalElement.textContent || '$0';
+            // Extraer número del formato "$X.XXX.XXX"
+            const numStr = textoMonto.replace(/[^0-9]/g, '');
+            costoTotal = parseInt(numStr) || 0;
+        }
+        
+        totalCostoGeneral += costoTotal;
+
+        html += `
+            <tr>
+                <td>${pedido.region}</td>
+                <td class="text-center">${unidades.toLocaleString('es-CO')}</td>
+                <td class="text-right">$${costoTotal.toLocaleString('es-CO')}</td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+    totalSpan.textContent = `$${totalCostoGeneral.toLocaleString('es-CO')}`;
+    card.style.display = 'block';
+}
+
+function renderOpcionesVehiculo(defaultVehiculo) {
+    let html = '<option value="">-- Seleccionar vehículo --</option>';
+    html += Object.values(vehiculosLogistica).map(v => {
+        const capacidadTxt = v.capacidad === null ? 'Sin límite' : `${v.capacidad} unds`;
+        let costoFijo = 'Costo variable';
+        if (!v.externo && v.capacidad !== null) {
+            const costo = obtenerCostoVehiculo(v.capacidad);
+            if (costo !== null) {
+                costoFijo = `$${costo.toLocaleString('es-CO')} fijo`;
+            }
+        }
+        const estadoTxt = v.disponible
+            ? ''
+            : (v.dia_retorno ? ` (Fuera hasta día ${v.dia_retorno})` : ' (Fuera servicio)');
+        const selected = v.codigo === defaultVehiculo ? 'selected' : '';
+        const disabled = v.disponible ? '' : 'disabled';
+        return `<option value="${v.codigo}" ${selected} ${disabled}>${v.codigo} - ${capacidadTxt} - ${costoFijo}${estadoTxt}</option>`;
+    }).join('');
+    return html;
+}
+
+function renderResumenVehiculos() {
+    const container = document.getElementById('resumenVehiculos');
+    const cards = Object.values(vehiculosLogistica).map(v => {
+        const capacidadTxt = v.capacidad === null ? 'Sin límite' : `${v.capacidad.toLocaleString('es-CO')} unds`;
+        const estadoClass = v.disponible ? (v.externo ? 'warning' : 'success') : 'secondary';
+        const estado = v.disponible ? 'Disponible' : 'Fuera de servicio';
+        return `
+            <div class="col-md-4 col-lg-2 mb-2">
+                <div class="card h-100 border-${estadoClass}">
+                    <div class="card-body p-2 text-center">
+                        <div class="fw-bold">${v.codigo}</div>
+                        <div class="small text-muted">${capacidadTxt}</div>
+                        <span class="badge bg-${estadoClass}">${estado}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    container.innerHTML = cards;
+
+    // Renderizar tarjetas de vehículos
+    renderTarjetasVehiculos();
+    
+    // Renderizar tarjetas de tiempos de entrega
+    renderTarjetasTiemposEntrega();
+}
+
+function renderTarjetasVehiculos() {
+    const container = document.getElementById('tarjetasVehiculos');
+    // Tarjetas grandes desactivadas - solo resumen en tabla
+    container.innerHTML = '';
+}
+
+function renderTarjetasTiemposEntrega() {
+    const container = document.getElementById('tarjetasTiemposEntrega');
+    // Tarjetas de tiempos desactivadas
+    container.innerHTML = '';
+}
+
+function asignarVehiculosIniciales() {
+    // Los selectores van vacíos para que los estudiantes tomen la decisión
+    renderResumenSeleccion();
+}
+
+function renderResumenSeleccion() {
+    const todosSeleccionados = new Set();
+    document.querySelectorAll('.vehiculo-select').forEach(select => {
+        const codigo = (select.value || '').toUpperCase();
+        if (codigo && codigo !== 'EXTERNO') {
+            todosSeleccionados.add(codigo);
+        }
+    });
+
+    document.querySelectorAll('.vehiculo-select').forEach(select => {
+        const actual = (select.value || '').toUpperCase();
+        Array.from(select.options).forEach(option => {
+            const codigo = (option.value || '').toUpperCase();
+            const conf = vehiculosLogistica[codigo];
+            if (!conf) return;
+
+            const yaSeleccionadoEnOtro = codigo !== 'EXTERNO' && todosSeleccionados.has(codigo) && codigo !== actual;
+            option.disabled = (!conf.disponible) || yaSeleccionadoEnOtro;
+        });
+    });
+}
+
+function renderFallaFlotaAlert(activa) {
+    const container = document.getElementById('fallaFlotaAlert');
+    if (!activa) {
+        container.innerHTML = '';
+        return;
+    }
+    container.innerHTML = `
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            Disrupción activa: Reducción de capacidad logística por fallas en flota.
+            Los vehículos propios de capacidad 500 están fuera de operación mientras la disrupción esté activa.
+            El transporte externo tiene un costo por unidad de $3.000.
+        </div>
+    `;
+}
+
+function validarCapacidadesVehiculos() {
+    const usoPorVehiculo = {};
+    let hayErrores = false;
+
+    Object.keys(vehiculosLogistica).forEach(codigo => {
+        usoPorVehiculo[codigo] = 0;
+    });
+
+    const usedVehicles = new Set();
+    document.querySelectorAll('.pedido-row').forEach(row => {
+        row.classList.remove('table-danger');
+        const index = Number(row.getAttribute('data-index'));
+        const demanda = Number(row.getAttribute('data-demanda')) || 0;
+        const selectVehiculos = Array.from(row.querySelectorAll('.vehiculo-select'));
+        const vehiculosSeleccionados = selectVehiculos
+            .map(select => (select.value || '').toUpperCase())
+            .filter(v => v);
+
+        // Si no hay vehículos seleccionados: envío por externo (válido)
+        if (!vehiculosSeleccionados.length) {
+            const badge = document.getElementById(`external-${index}`);
+            if (badge) {
+                badge.textContent = demanda.toLocaleString('es-CO') + ' unds';
+            }
+            return; // Continúa con el siguiente row
+        }
+
+        if (new Set(vehiculosSeleccionados).size !== vehiculosSeleccionados.length) {
+            hayErrores = true;
+            row.classList.add('table-danger');
+            return;
+        }
+
+        // Validar que cada vehículo no esté duplicado en otros rows
+        let tieneExterno = false;
+        let capacidadTotal = 0;
+        
+        for (let vehiculo of vehiculosSeleccionados) {
+            if (vehiculo === 'EXTERNO') {
+                tieneExterno = true;
+            } else {
+                const conf = vehiculosLogistica[vehiculo];
+                if (!conf) {
+                    hayErrores = true;
+                    continue;
+                }
+                
+                if (!conf.disponible) {
+                    hayErrores = true;
+                }
+                
+                if (usedVehicles.has(vehiculo)) {
+                    hayErrores = true;
+                    row.classList.add('table-danger');
+                }
+                usedVehicles.add(vehiculo);
+                capacidadTotal += conf.capacidad || 0;
+            }
+        }
+
+        if (tieneExterno && vehiculosSeleccionados.length > 1) {
+            hayErrores = true;
+            row.classList.add('table-danger');
+        }
+
+        let envioExterno = 0;
+        if (tieneExterno) {
+            envioExterno = demanda;
+        } else if (capacidadTotal > 0 && demanda > capacidadTotal) {
+            envioExterno = demanda - capacidadTotal;
+        }
+
+        const badge = document.getElementById(`external-${index}`);
+        if (badge) {
+            badge.textContent = envioExterno.toLocaleString('es-CO') + ' unds';
+        }
+    });
+
+    renderResumenSeleccion();
+
+    const btn = document.getElementById('btnDespachoGeneral');
+    if (btn) {
+        btn.disabled = hayErrores;
+    }
+
+    // Actualizar costos en tiempo real
+    actualizarCostosPorFila();
+    actualizarResumenCostos();
+
+    return { hayErrores, usoPorVehiculo };
+}
+
+function obtenerCostoVehiculo(capacidad) {
+    if (capacidad === null || capacidad === undefined) {
+        return null; // Ilimitado: $3.000 por unidad
+    }
+    const cap = parseInt(capacidad);
+    if (cap === 350) return 700000;
+    if (cap === 400) return 800000;
+    if (cap === 450) return 900000;
+    if (cap === 500) return 1000000;
+    return null; // Por defecto ilimitado
+}
+
+function actualizarCostosPorFila() {
+    document.querySelectorAll('.pedido-row').forEach((row, index) => {
+        const costLabel = document.getElementById(`costo-label-${index}`);
+        const costTotal = document.getElementById(`costo-total-${index}`);
+        if (!costLabel || !costTotal) return;
+        
+        const pedido = pedidosDia[index];
+        if (!pedido) return;
+        
+        const selectVehiculos = Array.from(row.querySelectorAll('.vehiculo-select'));
+        const vehiculosSeleccionados = selectVehiculos
+            .map(select => (select.value || '').toUpperCase())
+            .filter(v => v);
+        
+        const demanda = pedido.unidades_solicitadas || 0;
+        
+        // Sin vehículos seleccionados: costo total = demanda * $3.000
+        if (vehiculosSeleccionados.length === 0) {
+            const costoExterno = demanda * 3000;
+            costLabel.innerHTML = `<span>Costo externo: $${costoExterno.toLocaleString('es-CO')}</span><br><span class="fw-bold text-danger">Total: $${costoExterno.toLocaleString('es-CO')}</span>`;
+            costTotal.textContent = `$${costoExterno.toLocaleString('es-CO')}`;
+            costTotal.style.color = '#dc3545';
+            return;
+        }
+        
+        // Calcular capacidad total y costo de vehículos
+        let capacidadTotal = 0;
+        let costoVehiculos = 0;
+        
+        for (let codigoVehiculo of vehiculosSeleccionados) {
+            if (codigoVehiculo === 'EXTERNO') continue;
+            
+            const vehiculo = vehiculosLogistica[codigoVehiculo];
+            if (!vehiculo) continue;
+            
+            const capacidad = vehiculo.capacidad;
+            capacidadTotal += (capacidad || 0);
+            const costo = obtenerCostoVehiculo(capacidad);
+            if (costo !== null) {
+                costoVehiculos += costo;
+            }
+        }
+        
+        // Calcular unidades externo y costo externo
+        const unidadesExterno = Math.max(0, demanda - capacidadTotal);
+        const costoExterno = unidadesExterno * 3000;
+        const costoTotalFila = costoVehiculos + costoExterno;
+        
+        // Actualizar presentación
+        costLabel.innerHTML = `
+            <div class="cost-breakdown">
+                <div><small>Vehículos: $${costoVehiculos.toLocaleString('es-CO')}</small></div>
+                <div><small>Externo (${unidadesExterno} unds): $${costoExterno.toLocaleString('es-CO')}</small></div>
+            </div>
+        `;
+        costTotal.textContent = `$${costoTotalFila.toLocaleString('es-CO')}`;
+        costTotal.style.color = '#212529';
+    });
+}
+
+async function realizarDespachoGeneral() {
+    const validacion = validarCapacidadesVehiculos();
+    if (validacion.hayErrores) {
+        alert('⚠️ Selecciona un vehículo válido para cada región y no repitas vehículos propios en el mismo día.');
+        return;
+    }
+
+    const asignaciones = [];
+    let errorFormulario = false;
+    document.querySelectorAll('.pedido-row').forEach(row => {
+        const index = Number(row.getAttribute('data-index'));
+        const demanda = Number(row.getAttribute('data-demanda')) || 0;
+        const pedido = pedidosDia[index];
+        const selectVehiculos = Array.from(row.querySelectorAll('.vehiculo-select'));
+        const vehiculosSeleccionados = selectVehiculos
+            .map(select => (select.value || '').toUpperCase())
+            .filter(v => v);
+        
+        if (!vehiculosSeleccionados.length) {
+            alert(`Debes seleccionar al menos un vehículo para ${pedido.region}`);
+            errorFormulario = true;
+            return;
+        }
+        
+        // Calcular capacidad total de los vehículos seleccionados
+        let capacidadTotal = 0;
+        let tieneExterno = false;
+        for (let v of vehiculosSeleccionados) {
+            if (v === 'EXTERNO') {
+                tieneExterno = true;
+            } else {
+                capacidadTotal += vehiculosLogistica[v]?.capacidad ?? 0;
+            }
+        }
+        
+        const unidadesExternas = tieneExterno
+            ? demanda
+            : (capacidadTotal > 0 && demanda > capacidadTotal ? demanda - capacidadTotal : 0);
+
+        asignaciones.push({
+            region: pedido.region,
+            unidades_solicitadas: demanda,
+            unidades_enviar: demanda,
+            vehiculos: vehiculosSeleccionados,
+            unidades_externas: unidadesExternas,
+        });
+    });
+
+    if (errorFormulario) {
+        return;
+    }
+
+    const total = asignaciones.reduce((acc, a) => acc + a.unidades_enviar, 0);
+    if (!confirm(`¿Confirmar despacho diario de ${total.toLocaleString('es-CO')} unidades?`)) {
+        return;
+    }
+
+    const btnDespacho = document.getElementById('btnDespachoGeneral');
+    btnDespacho.disabled = true;
+    btnDespacho.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
+    
+    try {
+        const response = await fetch('/estudiante/api/logistica/despachar-multiple', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ asignaciones })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            alert(`✅ ${data.message}`);
+            cargarStock();
+            cargarMatrizDespachos();
+            cargarTransito();
+        } else {
+            alert(`❌ ${data.message || 'No se pudo guardar la asignación logística.'}`);
+        }
+    } catch (error) {
+        console.error('Error general:', error);
+        alert('❌ Error al procesar asignaciones: ' + error.message);
+    } finally {
+        btnDespacho.disabled = false;
+        btnDespacho.innerHTML = '<i class="fas fa-paper-plane"></i> Confirmar Asignación y Despachar';
+    }
+}
+
+// ========== TAB 3: RECEPCIÓN / TRÁNSITO ==========
+let transitoCache = { compras: [], despachos: [] };
+
+async function cargarTransito() {
+    try {
+        const response = await fetch('/estudiante/api/logistica/transito');
+        const data = await response.json();
+
+        if (!data.success) {
+            return;
+        }
+
+        transitoCache = {
+            compras: data.compras || [],
+            despachos: data.despachos || [],
+        };
+
+        renderRecepcionTabla(transitoCache.compras);
+        renderTransitoTabla(transitoCache.compras, transitoCache.despachos);
+    } catch (error) {
+        console.error('Error cargando tránsito:', error);
+    }
+}
+
+async function cargarHistorialDespachos() {
+    try {
+        const response = await fetch('/estudiante/api/logistica/historial-despachos');
+        const data = await response.json();
+
+        if (!data.success) {
+            document.getElementById('historialDespachoBody').innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Error cargando historial</td></tr>';
+            return;
+        }
+
+        renderHistorialDespachos(data.despachos || []);
+    } catch (error) {
+        console.error('Error cargando historial:', error);
+        document.getElementById('historialDespachoBody').innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Error cargando historial</td></tr>';
+    }
+}
+
+function renderHistorialDespachos(despachos) {
+    const container = document.getElementById('historialDespachoBody');
+
+    if (!despachos || despachos.length === 0) {
+        container.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No hay despachos registrados</td></tr>';
+        return;
+    }
+
+    let html = '';
+    despachos.forEach(despacho => {
+        const estadoClass = despacho.estado === 'entregado' ? 'success' : (despacho.estado === 'en_transito' ? 'warning' : 'info');
+        const estadoTexto = despacho.estado === 'entregado' ? 'Entregado' : (despacho.estado === 'en_transito' ? 'En Tránsito' : 'Pendiente');
+        
+        html += `
+            <tr>
+                <td><strong>Día ${despacho.dia}</strong></td>
+                <td>${despacho.region}</td>
+                <td class="text-center"><span class="badge bg-primary">${despacho.unidades.toLocaleString('es-CO')}</span></td>
+                <td>${despacho.vehiculos_asignados}</td>
+                <td><strong>Día ${despacho.dia_entrega}</strong></td>
+                <td><span class="badge bg-${estadoClass}">${estadoTexto}</span></td>
+            </tr>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function renderRecepcionTabla(compras) {
+    const container = document.getElementById('recepcionTableBody');
+    const transitoCount = document.getElementById('recepcionTransitoCount');
+    const listaCount = document.getElementById('recepcionListaCount');
+    const unidadesCount = document.getElementById('recepcionUnidadesCount');
+
+    const totalUnidades = compras.reduce((acc, compra) => acc + (parseInt(compra.cantidad || 0, 10) || 0), 0);
+    const listas = compras.filter(compra => Boolean(compra.lista_para_recibir)).length;
+
+    if (transitoCount) transitoCount.textContent = compras.length;
+    if (listaCount) listaCount.textContent = listas;
+    if (unidadesCount) unidadesCount.textContent = totalUnidades.toLocaleString('es-CO');
+
+    if (!compras || compras.length === 0) {
+        container.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No hay órdenes en tránsito</td></tr>';
+        return;
+    }
+
+    let html = '';
+    compras.forEach(compra => {
+        const lista = Boolean(compra.lista_para_recibir);
+        html += `
+            <tr>
+                <td>#${compra.id}</td>
+                <td>${compra.producto_nombre}</td>
+                <td>${Number(compra.cantidad || 0).toLocaleString('es-CO')}</td>
+                <td>Día ${compra.semana_orden || '-'}</td>
+                <td>Día ${compra.semana_entrega}</td>
+                <td>
+                    <span class="badge bg-${lista ? 'success' : 'warning'}">${lista ? 'Lista para recibir' : 'En tránsito'}</span>
+                </td>
+            </tr>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function renderTransitoTabla(compras, despachos) {
+    const container = document.getElementById('transitoTableBody');
+    const totalCompras = compras.length;
+    const totalDespachos = despachos.length;
+
+    if ((!compras || compras.length === 0) && (!despachos || despachos.length === 0)) {
+        container.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">No hay movimientos en tránsito</td></tr>';
+        return;
+    }
+
+    const filas = [];
+
+    compras.forEach(compra => {
+        filas.push(`
+            <tr>
+                <td><span class="badge bg-info">Compra</span></td>
+                <td>#${compra.id}</td>
+                <td>${compra.producto_nombre}</td>
+                <td>${Number(compra.cantidad || 0).toLocaleString('es-CO')}</td>
+                <td>Día ${compra.semana_entrega}</td>
+            </tr>
+        `);
+    });
+
+    despachos.forEach(despacho => {
+        filas.push(`
+            <tr>
+                <td><span class="badge bg-purple">Despacho</span></td>
+                <td>#${despacho.id}</td>
+                <td>${despacho.producto_nombre} - ${despacho.region_destino}</td>
+                <td>${Number(despacho.cantidad || 0).toLocaleString('es-CO')}</td>
+                <td>Día ${despacho.semana_llegada}</td>
+            </tr>
+        `);
+    });
+
+    container.innerHTML = filas.join('');
+}
+
+</script>
+{% endblock %}

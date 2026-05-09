@@ -1,0 +1,301 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Estudiante{% endblock %}
+
+{% block content %}
+<div class="container-fluid dashboard-container">
+    <div class="row g-4">
+        <!-- Sidebar Izquierdo - Perfil -->
+        <div class="col-lg-3">
+            {% include 'components/sidebar_perfil.html' %}
+        </div>
+        
+        <!-- Panel Principal - Empresas -->
+        <div class="col-lg-9">
+            <div class="main-panel">
+                <div class="panel-header mb-4">
+                    <h2><i class="fas fa-building"></i> Mis Empresas</h2>
+                    <p class="text-muted">Selecciona una empresa para acceder al sistema ERP</p>
+                </div>
+                
+                {% if not empresas_acceso %}
+                    <!-- Sin Empresas Asignadas -->
+                    <div class="empty-state">
+                        <i class="fas fa-inbox fa-5x text-muted mb-4"></i>
+                        <h4>No tienes empresas asignadas</h4>
+                        <p class="text-muted">
+                            Tu docente aún no te ha asignado a ninguna empresa.<br>
+                            Por favor, contacta con tu profesor para que te asigne un rol y empresa.
+                        </p>
+                        <div class="alert alert-info mt-4">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>¿Qué necesitas hacer?</strong>
+                            <ul class="mb-0 mt-2">
+                                <li>Asegúrate de haber verificado tu correo electrónico</li>
+                                <li>Espera a que tu docente te asigne a una empresa</li>
+                                <li>Se te notificará cuando tengas acceso</li>
+                            </ul>
+                        </div>
+                    </div>
+                {% else %}
+                    <!-- Tarjetas de Empresas -->
+                    <div class="row g-4">
+                        {% for acceso in empresas_acceso %}
+                        <div class="col-md-6 col-xl-4">
+                            <div class="empresa-card {% if acceso.empresa.activa %}empresa-clickable{% else %}empresa-disabled{% endif %}" 
+                                 {% if acceso.empresa.activa %}onclick="accederEmpresa({{ acceso.empresa.id }})"{% endif %}>
+                                <div class="empresa-header">
+                                    <div class="empresa-icon">
+                                        <i class="fas fa-building"></i>
+                                    </div>
+                                    <h4>{{ acceso.empresa.nombre }}</h4>
+                                </div>
+                                
+                                <div class="empresa-body">
+                                    <div class="rol-badge">
+                                        <i class="fas fa-user-tag"></i>
+                                        <span class="rol-{{ acceso.rol }}">
+                                            {{ acceso.rol|upper }}
+                                        </span>
+                                    </div>
+                                    
+                                    <div class="empresa-stats mt-3">
+                                        <div class="stat-item">
+                                            <i class="fas fa-dollar-sign text-success"></i>
+                                            <div>
+                                                <small>Capital</small>
+                                                <strong>${{ '{:,.0f}'.format(acceso.empresa.capital_actual) }}</strong>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="stat-item">
+                                            <i class="fas fa-calendar-day text-primary"></i>
+                                            <div>
+                                                <small>Día</small>
+                                                <strong>{{ simulacion.dia_actual if simulacion else 1 }}</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="empresa-status mt-3">
+                                        {% if acceso.empresa.activa %}
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-check-circle"></i> Activa
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">
+                                                <i class="fas fa-pause-circle"></i> Inactiva
+                                            </span>
+                                        {% endif %}
+                                        
+                                        {% if simulacion and simulacion.estado == 'en_curso' %}
+                                            <span class="badge bg-primary">
+                                                <i class="fas fa-play"></i> Simulación en curso
+                                            </span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <div class="empresa-footer">
+                                    {% if acceso.empresa.activa %}
+                                    <button class="btn btn-primary w-100" onclick="event.stopPropagation(); accederEmpresa({{ acceso.empresa.id }})">
+                                        <i class="fas fa-arrow-right"></i> Acceder al ERP
+                                    </button>
+                                    {% else %}
+                                    <button class="btn btn-secondary w-100" disabled>
+                                        <i class="fas fa-lock"></i> Empresa Inactiva
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <!-- Información adicional -->
+                    <div class="alert alert-info mt-4">
+                        <i class="fas fa-lightbulb"></i>
+                        <strong>Información:</strong>
+                        Puedes acceder a las funciones del ERP según tu rol asignado:
+                        <ul class="mb-0 mt-2">
+                            <li><strong>Ventas:</strong> Gestionar pronósticos y análisis de ventas</li>
+                            <li><strong>Planeación:</strong> Planificación de producción y demanda</li>
+                            <li><strong>Compras:</strong> Gestionar órdenes de compra y proveedores</li>
+                            <li><strong>Logística:</strong> Control de inventario y distribución</li>
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .dashboard-container {
+        padding: 30px;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+    
+    .main-panel {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        min-height: 600px;
+    }
+    
+    .panel-header h2 {
+        color: #333;
+        margin-bottom: 5px;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+    }
+    
+    .empresa-card {
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        overflow: hidden;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .empresa-clickable {
+        cursor: pointer;
+    }
+    
+    .empresa-clickable:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    .empresa-disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    
+    .empresa-header {
+        background: linear-gradient(135deg, #c41e3a 0%, #e63946 100%);
+        color: white;
+        padding: 25px;
+        text-align: center;
+    }
+    
+    .empresa-icon {
+        width: 60px;
+        height: 60px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 15px;
+        font-size: 1.8rem;
+    }
+    
+    .empresa-header h4 {
+        margin: 0;
+        font-size: 1.3rem;
+    }
+    
+    .empresa-body {
+        padding: 25px;
+        flex: 1;
+    }
+    
+    .rol-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        border-radius: 25px;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+    
+    .rol-ventas {
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    
+    .rol-planeacion {
+        background: #f3e5f5;
+        color: #7b1fa2;
+    }
+    
+    .rol-compras {
+        background: #e8f5e9;
+        color: #388e3c;
+    }
+    
+    .rol-logistica {
+        background: #fff3e0;
+        color: #f57c00;
+    }
+    
+    .empresa-stats {
+        display: flex;
+        justify-content: space-between;
+        gap: 15px;
+    }
+    
+    .stat-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: 1;
+        padding: 12px;
+        background: #f8f9fa;
+        border-radius: 10px;
+    }
+    
+    .stat-item i {
+        font-size: 1.5rem;
+    }
+    
+    .stat-item div {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .stat-item small {
+        font-size: 0.75rem;
+        color: #6c757d;
+    }
+    
+    .stat-item strong {
+        font-size: 1rem;
+        color: #333;
+    }
+    
+    .empresa-status {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .empresa-footer {
+        padding: 20px 25px;
+        background: #f8f9fa;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    .empresa-footer .btn {
+        font-weight: 600;
+        padding: 12px;
+    }
+</style>
+
+<script>
+    function accederEmpresa(empresaId) {
+        // Redirigir al dashboard general del estudiante
+        window.location.href = '/estudiante/general';
+    }
+</script>
+{% endblock %}
